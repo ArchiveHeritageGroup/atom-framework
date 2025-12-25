@@ -1,0 +1,14 @@
+#!/usr/bin/env php
+<?php
+/**
+ * Extension Manager CLI
+ * 
+ * Usage: php bin/extension <command> [arguments] [options]
+ */
+
+require_once __DIR__ . '/../bootstrap.php';
+
+use AtomFramework\Console\ExtensionCommand;
+
+$command = new ExtensionCommand($argv);
+exit($command->run());
