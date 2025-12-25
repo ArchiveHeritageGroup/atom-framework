@@ -2,11 +2,15 @@
 <?php
 /**
  * AtoM CLI - Extension Manager
- * 
- * Usage: php atom extension:list
- *        php atom extension:install <name>
- *        php atom extension:enable <name>
+ *
+ * Usage: php bin/atom extension:list
+ *        php bin/atom extension:install <name>
+ *        php bin/atom extension:enable <name>
  */
+
+// Define paths
+define('ATOM_ROOT', dirname(__DIR__, 2));
+define('FRAMEWORK_ROOT', dirname(__DIR__));
 
 // Parse command (extension:list -> extension list)
 $args = $argv;
@@ -18,29 +22,50 @@ if (isset($args[0]) && strpos($args[0], ':') !== false) {
     array_splice($args, 1, 0, $parts[1]);
 }
 
-// Route to appropriate handler
-$module = $args[0] ?? 'help';
+// Bootstrap the framework
+$bootstrap = FRAMEWORK_ROOT . '/bootstrap.php';
+if (!file_exists($bootstrap)) {
+    echo "\033[31mError: bootstrap.php not found at {$bootstrap}\033[0m\n";
+    exit(1);
+}
 
-if ($module === 'extension' || $module === 'plugin') {
-    array_shift($args); // Remove 'extension'
-    array_unshift($args, $script, ...[]); // Rebuild for ExtensionCommand
-    
-    require_once __DIR__ . '/../bootstrap.php';
-    
-    $newArgv = array_merge([$script], $args);
-    $command = new \AtomFramework\Console\ExtensionCommand($newArgv);
-    exit($command->run());
-} else {
-    echo "\nAtoM CLI v1.0.0\n\n";
-    echo "Usage: php atom <module>:<command> [arguments]\n\n";
-    echo "Modules:\n";
-    echo "  extension    Manage extensions\n";
-    echo "  plugin       Alias for extension\n";
-    echo "\nExamples:\n";
-    echo "  php atom extension:list\n";
-    echo "  php atom extension:discover\n";
-    echo "  php atom extension:install arSecurityClearancePlugin\n";
-    echo "  php atom extension:enable arSecurityClearancePlugin\n";
-    echo "  php atom extension:disable arSecurityClearancePlugin\n\n";
-    exit(0);
+require_once $bootstrap;
+
+// Route to appropriate command
+$module = $args[0] ?? 'help';
+$command = $args[1] ?? 'help';
+$remaining = array_slice($args, 2);
+
+switch ($module) {
+    case 'extension':
+        require_once FRAMEWORK_ROOT . '/src/Console/ExtensionCommand.php';
+        $cmd = new \AtomFramework\Console\ExtensionCommand(array_merge(['atom', $command], $remaining));
+        exit($cmd->run());
+        
+    case 'help':
+    case '--help':
+    case '-h':
+        echo <<<HELP
+AtoM Framework CLI v1.0.0
+
+Usage: php bin/atom <module>:<command> [arguments] [options]
+
+Available modules:
+  extension     Manage extensions (list, install, enable, disable, etc.)
+
+Examples:
+  php bin/atom extension:list
+  php bin/atom extension:discover
+  php bin/atom extension:install arSecurityClearancePlugin
+  php bin/atom extension:enable arSecurityClearancePlugin
+
+Run 'php bin/atom extension:help' for extension-specific commands.
+
+HELP;
+        exit(0);
+        
+    default:
+        echo "\033[31mUnknown module: {$module}\033[0m\n";
+        echo "Run 'php bin/atom help' for available commands.\n";
+        exit(1);
 }
