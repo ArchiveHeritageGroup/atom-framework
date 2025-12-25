@@ -3,11 +3,13 @@
 namespace AtomFramework\Console;
 
 use AtomFramework\Extensions\ExtensionManager;
+use AtomFramework\Extensions\PluginFetcher;
 
 class ExtensionCommand
 {
     protected array $argv;
     protected ExtensionManager $manager;
+    protected PluginFetcher $fetcher;
     
     protected array $commands = [
         'list' => 'List all extensions',
@@ -26,6 +28,7 @@ class ExtensionCommand
     {
         $this->argv = $argv;
         $this->manager = new ExtensionManager();
+        $this->fetcher = new PluginFetcher($this->manager->getSetting('extensions_path', null, '/usr/share/nginx/atom/plugins'));
     }
 
     public function run(): int
@@ -54,9 +57,6 @@ class ExtensionCommand
         }
     }
 
-    /**
-     * List all extensions
-     */
     protected function listExtensions(array $args): int
     {
         $status = $this->getOption($args, 'status');
@@ -66,18 +66,12 @@ class ExtensionCommand
         $this->line('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
         $this->line('');
 
-        // Get installed extensions
         if ($status) {
             $extensions = $this->manager->getByStatus($status);
         } else {
             $extensions = $this->manager->all();
         }
 
-        // Get discovered but not installed
-        $discovered = $this->manager->discover();
-        $notInstalled = $discovered->filter(fn($e) => !($e['is_registered'] ?? false));
-
-        // Display installed extensions
         $this->line('INSTALLED EXTENSIONS:');
         $this->line('───────────────────────────────────────────────────────────');
         $this->line(sprintf('  %-3s %-35s %-10s %-15s', '#', 'Name', 'Version', 'Status'));
@@ -97,20 +91,6 @@ class ExtensionCommand
             }
         }
 
-        // Display available but not installed
-        if ($notInstalled->isNotEmpty()) {
-            $this->line('');
-            $this->line('AVAILABLE (Not Installed):');
-            $this->line('───────────────────────────────────────────────────────────');
-            
-            foreach ($notInstalled as $ext) {
-                $this->line(sprintf('  • %-35s v%s', 
-                    $ext['name'] ?? $ext['machine_name'],
-                    $ext['version'] ?? '?'
-                ));
-            }
-        }
-
         $this->line('');
         $this->line('Commands: info <name> | install <name> | enable <name> | disable <name>');
         $this->line('');
@@ -118,9 +98,6 @@ class ExtensionCommand
         return 0;
     }
 
-    /**
-     * Show extension info
-     */
     protected function showInfo(array $args): int
     {
         $name = $args[0] ?? null;
@@ -130,11 +107,9 @@ class ExtensionCommand
             return 1;
         }
 
-        // Try to find installed extension
         $extension = $this->manager->find($name);
         
         if (!$extension) {
-            // Check discovered
             $discovered = $this->manager->discover();
             $found = $discovered->first(fn($e) => ($e['machine_name'] ?? '') === $name);
             
@@ -196,9 +171,6 @@ class ExtensionCommand
         return 0;
     }
 
-    /**
-     * Install extension
-     */
     protected function install(array $args): int
     {
         $name = $args[0] ?? null;
@@ -209,6 +181,23 @@ class ExtensionCommand
         }
 
         $this->line('');
+        
+        // Check if plugin exists locally
+        $pluginsPath = $this->manager->getSetting('extensions_path', null, '/usr/share/nginx/atom/plugins');
+        $pluginPath = "{$pluginsPath}/{$name}";
+        
+        if (!is_dir($pluginPath)) {
+            $this->info("→ Plugin not found locally. Fetching from GitHub...");
+            
+            if ($this->fetcher->fetch($name)) {
+                $this->success("Downloaded {$name}");
+            } else {
+                $this->error("Plugin '{$name}' not found in AHG repository.");
+                $this->line("  Run 'extension discover' to see available plugins.");
+                return 1;
+            }
+        }
+        
         $this->info("Installing {$name}...");
         
         $this->manager->install($name);
@@ -220,9 +209,6 @@ class ExtensionCommand
         return 0;
     }
 
-    /**
-     * Uninstall extension
-     */
     protected function uninstall(array $args): int
     {
         $name = $args[0] ?? null;
@@ -252,9 +238,6 @@ class ExtensionCommand
         return 0;
     }
 
-    /**
-     * Enable extension
-     */
     protected function enable(array $args): int
     {
         $name = $args[0] ?? null;
@@ -273,9 +256,6 @@ class ExtensionCommand
         return 0;
     }
 
-    /**
-     * Disable extension
-     */
     protected function disable(array $args): int
     {
         $name = $args[0] ?? null;
@@ -294,9 +274,6 @@ class ExtensionCommand
         return 0;
     }
 
-    /**
-     * Restore pending deletion
-     */
     protected function restore(array $args): int
     {
         $name = $args[0] ?? null;
@@ -315,9 +292,6 @@ class ExtensionCommand
         return 0;
     }
 
-    /**
-     * Process pending deletions (cron job)
-     */
     protected function cleanup(array $args): int
     {
         $this->line('');
@@ -341,41 +315,69 @@ class ExtensionCommand
         return $results['failed'] > 0 ? 1 : 0;
     }
 
-    /**
-     * Discover available extensions
-     */
     protected function discover(array $args): int
     {
         $this->line('');
         $this->info('Discovering extensions...');
         $this->line('');
         
-        $discovered = $this->manager->discover();
+        // Get local plugins
+        $local = $this->manager->discover();
         
-        if ($discovered->isEmpty()) {
-            $this->line('No extensions with extension.json found in plugins directory.');
-        } else {
-            $this->line(sprintf('  %-35s %-10s %-10s', 'Name', 'Version', 'Status'));
-            $this->line('───────────────────────────────────────────────────────────');
-            
-            foreach ($discovered as $ext) {
-                $status = ($ext['is_registered'] ?? false) ? 'Installed' : 'Available';
-                $this->line(sprintf('  %-35s %-10s %-10s',
-                    $ext['name'] ?? $ext['machine_name'] ?? 'Unknown',
-                    $ext['version'] ?? '?',
-                    $status
-                ));
+        // Get remote plugins
+        $this->line('  Checking GitHub for available plugins...');
+        $remote = $this->fetcher->getRemotePlugins();
+        
+        // Merge lists
+        $all = [];
+        
+        foreach ($local as $plugin) {
+            $name = $plugin['machine_name'] ?? '';
+            $all[$name] = $plugin;
+            $all[$name]['source'] = 'local';
+        }
+        
+        foreach ($remote as $plugin) {
+            $name = $plugin['machine_name'] ?? '';
+            if (!isset($all[$name])) {
+                $all[$name] = $plugin;
+                $all[$name]['source'] = 'remote';
             }
         }
         
+        if (empty($all)) {
+            $this->line('  No extensions found.');
+            $this->line('');
+            return 0;
+        }
+        
+        $this->line('');
+        $this->line(sprintf('  %-35s %-10s %-12s %-10s', 'Name', 'Version', 'Source', 'Status'));
+        $this->line('───────────────────────────────────────────────────────────────────');
+        
+        foreach ($all as $ext) {
+            $name = $ext['name'] ?? $ext['machine_name'] ?? 'Unknown';
+            $version = $ext['version'] ?? '?';
+            $source = $ext['source'] ?? 'local';
+            $status = ($ext['is_registered'] ?? false) ? 'Installed' : 'Available';
+            
+            $sourceDisplay = $source === 'remote' ? "\033[36m(GitHub)\033[0m" : '(Local)';
+            
+            $this->line(sprintf('  %-35s %-10s %-20s %-10s',
+                $this->truncate($name, 35),
+                $version,
+                $sourceDisplay,
+                $status
+            ));
+        }
+        
+        $this->line('');
+        $this->line('  Install with: php bin/extension install <machine_name>');
         $this->line('');
 
         return 0;
     }
 
-    /**
-     * Show audit log
-     */
     protected function audit(array $args): int
     {
         $name = $args[0] ?? null;
@@ -405,9 +407,6 @@ class ExtensionCommand
         return 0;
     }
 
-    /**
-     * Display manifest for not-installed extension
-     */
     protected function displayManifest(array $manifest): int
     {
         $this->line('');
@@ -419,7 +418,7 @@ class ExtensionCommand
         $this->line("  Machine Name:  {$manifest['machine_name']}");
         $this->line("  Version:       " . ($manifest['version'] ?? 'Unknown'));
         $this->line("  Author:        " . ($manifest['author'] ?? 'Unknown'));
-        $this->line("  Path:          " . ($manifest['path'] ?? 'Unknown'));
+        $this->line("  Path:          " . ($manifest['path'] ?? 'Remote'));
         
         if (!empty($manifest['description'])) {
             $this->line('');
@@ -434,9 +433,6 @@ class ExtensionCommand
         return 0;
     }
 
-    /**
-     * Show help
-     */
     protected function showHelp(): int
     {
         $this->line('');
@@ -453,18 +449,14 @@ class ExtensionCommand
         $this->line('');
         $this->line('Examples:');
         $this->line('  php bin/extension list');
-        $this->line('  php bin/extension list --status=enabled');
-        $this->line('  php bin/extension info ahgLandingPageBuilderPlugin');
-        $this->line('  php bin/extension install ahgLandingPageBuilderPlugin');
-        $this->line('  php bin/extension enable ahgLandingPageBuilderPlugin');
+        $this->line('  php bin/extension discover');
+        $this->line('  php bin/extension install arSecurityClearancePlugin');
+        $this->line('  php bin/extension enable arSecurityClearancePlugin');
         $this->line('');
 
         return 0;
     }
 
-    /**
-     * Unknown command
-     */
     protected function unknownCommand(string $command): int
     {
         $this->error("Unknown command: {$command}");
@@ -472,10 +464,7 @@ class ExtensionCommand
         return 1;
     }
 
-    // ==========================================
-    // Output Helpers
-    // ==========================================
-
+    // Output helpers
     protected function line(string $text): void
     {
         echo $text . PHP_EOL;
