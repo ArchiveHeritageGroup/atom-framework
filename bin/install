@@ -1,0 +1,56 @@
+#!/usr/bin/env php
+<?php
+/**
+ * AtoM Framework Installer
+ */
+
+echo "\n";
+echo "╔══════════════════════════════════════════════════════════╗\n";
+echo "║          AtoM Framework Installer v1.0.0                 ║\n";
+echo "╚══════════════════════════════════════════════════════════╝\n";
+echo "\n";
+
+// Load bootstrap
+require_once __DIR__ . '/../bootstrap.php';
+
+// Run migration
+echo "→ Creating database tables...\n";
+
+$migrationFile = __DIR__ . '/../database/migrations/2025_01_01_000001_create_extension_tables.php';
+
+if (!file_exists($migrationFile)) {
+    echo "✗ Migration file not found!\n";
+    exit(1);
+}
+
+require_once $migrationFile;
+
+try {
+    $migration = new CreateExtensionTables();
+    $migration->up();
+    echo "✓ Database tables created.\n";
+} catch (Exception $e) {
+    if (strpos($e->getMessage(), 'already exists') !== false || strpos($e->getMessage(), 'Duplicate') !== false) {
+        echo "✓ Tables already exist.\n";
+    } else {
+        echo "✗ Error: " . $e->getMessage() . "\n";
+        exit(1);
+    }
+}
+
+// Create backup directory
+$backupPath = '/usr/share/nginx/atom/data/backups/extensions';
+if (!is_dir($backupPath)) {
+    @mkdir($backupPath, 0755, true);
+    echo "✓ Backup directory created.\n";
+} else {
+    echo "✓ Backup directory exists.\n";
+}
+
+echo "\n";
+echo "════════════════════════════════════════════════════════════\n";
+echo "  Installation complete!\n";
+echo "════════════════════════════════════════════════════════════\n";
+echo "\n";
+echo "  Test with: php bin/extension list\n";
+echo "\n";
