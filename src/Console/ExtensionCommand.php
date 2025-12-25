@@ -17,7 +17,7 @@ class ExtensionCommand
     protected array $commands = [
         'list' => 'List all extensions',
         'info' => 'Show extension details',
-        'install' => 'Install an extension',
+        'install' => 'Install an extension (auto-enables)',
         'uninstall' => 'Uninstall an extension',
         'enable' => 'Enable an extension',
         'disable' => 'Disable an extension',
@@ -98,7 +98,7 @@ class ExtensionCommand
         }
 
         $this->line('');
-        $this->line('Commands: discover | install <name> | enable <name> | disable <name>');
+        $this->line('Commands: php atom extension:discover | extension:install <name>');
         $this->line('');
 
         return 0;
@@ -109,7 +109,7 @@ class ExtensionCommand
         $name = $args[0] ?? null;
         
         if (!$name) {
-            $this->error('Usage: extension info <machine_name>');
+            $this->error('Usage: php atom extension:info <machine_name>');
             return 1;
         }
 
@@ -166,9 +166,10 @@ class ExtensionCommand
         $name = $args[0] ?? null;
         $autoTables = in_array('--with-tables', $args) || in_array('-t', $args);
         $skipTables = in_array('--skip-tables', $args) || in_array('-s', $args);
+        $noEnable = in_array('--no-enable', $args);
         
         if (!$name) {
-            $this->error('Usage: extension install <machine_name> [--with-tables|-t] [--skip-tables|-s]');
+            $this->error('Usage: php atom extension:install <machine_name> [--with-tables|-t] [--skip-tables|-s] [--no-enable]');
             return 1;
         }
 
@@ -185,7 +186,7 @@ class ExtensionCommand
                 $this->success("Downloaded {$name}");
             } else {
                 $this->error("Plugin '{$name}' not found in AHG repository.");
-                $this->line("  Run 'extension discover' to see available plugins.");
+                $this->line("  Run 'php atom extension:discover' to see available plugins.");
                 return 1;
             }
         }
@@ -277,8 +278,15 @@ class ExtensionCommand
         
         $this->manager->install($name);
         
-        $this->success("Extension '{$name}' installed successfully.");
-        $this->line("Run 'extension enable {$name}' to enable it.");
+        // Auto-enable unless --no-enable flag
+        if (!$noEnable) {
+            $this->manager->enable($name);
+            $this->success("Extension '{$name}' installed and enabled.");
+        } else {
+            $this->success("Extension '{$name}' installed.");
+            $this->line("Run 'php atom extension:enable {$name}' to enable it.");
+        }
+        
         $this->line('');
 
         return 0;
@@ -291,7 +299,7 @@ class ExtensionCommand
         $dropTables = in_array('--drop-tables', $args);
         
         if (!$name) {
-            $this->error('Usage: extension uninstall <machine_name> [--no-backup] [--drop-tables]');
+            $this->error('Usage: php atom extension:uninstall <machine_name> [--no-backup] [--drop-tables]');
             return 1;
         }
 
@@ -334,15 +342,13 @@ class ExtensionCommand
         
         $this->manager->uninstall($name, !$noBackup);
         
-        $gracePeriod = $this->manager->getSetting('grace_period_days', null, 30);
-        
         $this->success("Extension '{$name}' uninstalled.");
         
         if (!$dropTables && $hasMigrations) {
             $this->line("Database tables were preserved.");
         }
         
-        $this->line("Run 'extension restore {$name}' to cancel if needed.");
+        $this->line("Run 'php atom extension:restore {$name}' to undo if needed.");
         $this->line('');
 
         return 0;
@@ -353,7 +359,7 @@ class ExtensionCommand
         $name = $args[0] ?? null;
         
         if (!$name) {
-            $this->error('Usage: extension enable <machine_name>');
+            $this->error('Usage: php atom extension:enable <machine_name>');
             return 1;
         }
 
@@ -371,7 +377,7 @@ class ExtensionCommand
         $name = $args[0] ?? null;
         
         if (!$name) {
-            $this->error('Usage: extension disable <machine_name>');
+            $this->error('Usage: php atom extension:disable <machine_name>');
             return 1;
         }
 
@@ -389,14 +395,14 @@ class ExtensionCommand
         $name = $args[0] ?? null;
         
         if (!$name) {
-            $this->error('Usage: extension restore <machine_name>');
+            $this->error('Usage: php atom extension:restore <machine_name>');
             return 1;
         }
 
         $this->manager->restore($name);
         
         $this->line('');
-        $this->success("Extension '{$name}' restored. Pending deletion cancelled.");
+        $this->success("Extension '{$name}' restored.");
         $this->line('');
 
         return 0;
@@ -482,7 +488,7 @@ class ExtensionCommand
         }
         
         $this->line('');
-        $this->line('  Install with: php bin/extension install <machine_name>');
+        $this->line('  Install: php atom extension:install <machine_name>');
         $this->line('');
 
         return 0;
@@ -536,7 +542,7 @@ class ExtensionCommand
         }
 
         $this->line('');
-        $this->info("  Run: extension install {$manifest['machine_name']}");
+        $this->info("  Install: php atom extension:install {$manifest['machine_name']}");
         $this->line('');
 
         return 0;
@@ -547,7 +553,7 @@ class ExtensionCommand
         $this->line('');
         $this->info('AHG Extension Manager v1.0.0');
         $this->line('');
-        $this->line('Usage: php bin/extension <command> [arguments] [options]');
+        $this->line('Usage: php atom extension:<command> [arguments] [options]');
         $this->line('');
         $this->line('Commands:');
         
@@ -559,6 +565,7 @@ class ExtensionCommand
         $this->line('Install Options:');
         $this->line('  --with-tables, -t    Create database tables automatically');
         $this->line('  --skip-tables, -s    Skip table creation');
+        $this->line('  --no-enable          Install without enabling');
         $this->line('  --no-interaction, -n Non-interactive mode');
         $this->line('');
         $this->line('Uninstall Options:');
@@ -566,10 +573,10 @@ class ExtensionCommand
         $this->line('  --drop-tables        Drop database tables');
         $this->line('');
         $this->line('Examples:');
-        $this->line('  php bin/extension discover');
-        $this->line('  php bin/extension install arSecurityClearancePlugin');
-        $this->line('  php bin/extension install arSecurityClearancePlugin --with-tables');
-        $this->line('  php bin/extension enable arSecurityClearancePlugin');
+        $this->line('  php atom extension:discover');
+        $this->line('  php atom extension:install arSecurityClearancePlugin');
+        $this->line('  php atom extension:disable arSecurityClearancePlugin');
+        $this->line('  php atom extension:enable arSecurityClearancePlugin');
         $this->line('');
 
         return 0;
@@ -578,7 +585,7 @@ class ExtensionCommand
     protected function unknownCommand(string $command): int
     {
         $this->error("Unknown command: {$command}");
-        $this->line("Run 'extension help' for available commands.");
+        $this->line("Run 'php atom extension:help' for available commands.");
         return 1;
     }
 

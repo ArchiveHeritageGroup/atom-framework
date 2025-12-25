@@ -1,0 +1,46 @@
+#!/usr/bin/env php
+<?php
+/**
+ * AtoM CLI - Extension Manager
+ * 
+ * Usage: php atom extension:list
+ *        php atom extension:install <name>
+ *        php atom extension:enable <name>
+ */
+
+// Parse command (extension:list -> extension list)
+$args = $argv;
+$script = array_shift($args);
+
+if (isset($args[0]) && strpos($args[0], ':') !== false) {
+    $parts = explode(':', $args[0], 2);
+    $args[0] = $parts[0];
+    array_splice($args, 1, 0, $parts[1]);
+}
+
+// Route to appropriate handler
+$module = $args[0] ?? 'help';
+
+if ($module === 'extension' || $module === 'plugin') {
+    array_shift($args); // Remove 'extension'
+    array_unshift($args, $script, ...[]); // Rebuild for ExtensionCommand
+    
+    require_once __DIR__ . '/../bootstrap.php';
+    
+    $newArgv = array_merge([$script], $args);
+    $command = new \AtomFramework\Console\ExtensionCommand($newArgv);
+    exit($command->run());
+} else {
+    echo "\nAtoM CLI v1.0.0\n\n";
+    echo "Usage: php atom <module>:<command> [arguments]\n\n";
+    echo "Modules:\n";
+    echo "  extension    Manage extensions\n";
+    echo "  plugin       Alias for extension\n";
+    echo "\nExamples:\n";
+    echo "  php atom extension:list\n";
+    echo "  php atom extension:discover\n";
+    echo "  php atom extension:install arSecurityClearancePlugin\n";
+    echo "  php atom extension:enable arSecurityClearancePlugin\n";
+    echo "  php atom extension:disable arSecurityClearancePlugin\n\n";
+    exit(0);
+}
