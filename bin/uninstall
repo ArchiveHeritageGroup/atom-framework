@@ -1,0 +1,63 @@
+#!/usr/bin/env php
+<?php
+/**
+ * AtoM Framework Uninstaller
+ */
+
+echo "\n";
+echo "╔══════════════════════════════════════════════════════════╗\n";
+echo "║          AtoM Framework Uninstaller                      ║\n";
+echo "╚══════════════════════════════════════════════════════════╝\n";
+echo "\n";
+
+require_once __DIR__ . '/../bootstrap.php';
+
+use Illuminate\Database\Capsule\Manager as DB;
+
+// Check for installed extensions
+try {
+    $extensions = DB::table('atom_extension')
+        ->whereIn('status', ['installed', 'enabled'])
+        ->get();
+    
+    if ($extensions->count() > 0) {
+        echo "✗ Cannot uninstall! The following extensions depend on atom-framework:\n\n";
+        foreach ($extensions as $ext) {
+            echo "  • {$ext->display_name} ({$ext->status})\n";
+        }
+        echo "\nPlease uninstall all extensions first:\n";
+        echo "  php bin/extension uninstall <name>\n\n";
+        exit(1);
+    }
+} catch (Exception $e) {
+    // Tables might not exist
+}
+
+echo "⚠ WARNING: This will:\n";
+echo "  • Drop all atom_extension_* tables\n";
+echo "  • Remove all extension data\n";
+echo "\n";
+echo "Are you sure? Type 'yes' to confirm: ";
+
+$answer = trim(fgets(STDIN));
+if ($answer !== 'yes') {
+    echo "Uninstall cancelled.\n";
+    exit(0);
+}
+
+// Drop tables
+echo "\n→ Removing database tables...\n";
+$migrationFile = __DIR__ . '/../database/migrations/2025_01_01_000001_create_extension_tables.php';
+if (file_exists($migrationFile)) {
+    require_once $migrationFile;
+    $migration = new CreateExtensionTables();
+    $migration->down();
+    echo "✓ Tables removed.\n";
+}
+
+echo "\n";
+echo "════════════════════════════════════════════════════════════\n";
+echo "  Database cleaned. You can now remove the framework:\n";
+echo "  rm -rf /usr/share/nginx/atom/atom-framework\n";
+echo "════════════════════════════════════════════════════════════\n";
+echo "\n";

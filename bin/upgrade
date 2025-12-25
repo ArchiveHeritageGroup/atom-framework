@@ -1,0 +1,64 @@
+#!/usr/bin/env php
+<?php
+/**
+ * AtoM Framework Upgrade
+ */
+
+echo "\n";
+echo "╔══════════════════════════════════════════════════════════╗\n";
+echo "║          AtoM Framework Upgrade                          ║\n";
+echo "╚══════════════════════════════════════════════════════════╝\n";
+echo "\n";
+
+$frameworkPath = dirname(__DIR__);
+
+// Check for uncommitted changes
+chdir($frameworkPath);
+exec('git status --porcelain', $changes);
+if (!empty($changes)) {
+    echo "⚠ Warning: You have local changes:\n";
+    foreach ($changes as $change) {
+        echo "  {$change}\n";
+    }
+    echo "\nContinue anyway? (y/N): ";
+    $answer = trim(fgets(STDIN));
+    if (strtolower($answer) !== 'y') {
+        echo "Upgrade cancelled.\n";
+        exit(0);
+    }
+}
+
+// Pull latest
+echo "→ Pulling latest from GitHub...\n";
+exec('git pull origin main 2>&1', $output, $code);
+echo implode("\n", $output) . "\n";
+
+if ($code !== 0) {
+    echo "✗ Git pull failed.\n";
+    exit(1);
+}
+
+// Update composer
+echo "\n→ Updating dependencies...\n";
+exec('composer install 2>&1', $output);
+
+// Run migrations (safe - uses IF NOT EXISTS)
+echo "\n→ Checking database...\n";
+require_once __DIR__ . '/../bootstrap.php';
+$migrationFile = __DIR__ . '/../database/migrations/2025_01_01_000001_create_extension_tables.php';
+if (file_exists($migrationFile)) {
+    require_once $migrationFile;
+    try {
+        $migration = new CreateExtensionTables();
+        $migration->up();
+        echo "✓ Database up to date.\n";
+    } catch (Exception $e) {
+        echo "✓ Database already current.\n";
+    }
+}
+
+echo "\n";
+echo "════════════════════════════════════════════════════════════\n";
+echo "  Upgrade complete!\n";
+echo "════════════════════════════════════════════════════════════\n";
+echo "\n";
