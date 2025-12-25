@@ -4,12 +4,15 @@ namespace AtomFramework\Console;
 
 use AtomFramework\Extensions\ExtensionManager;
 use AtomFramework\Extensions\PluginFetcher;
+use AtomFramework\Extensions\MigrationHandler;
 
 class ExtensionCommand
 {
     protected array $argv;
     protected ExtensionManager $manager;
     protected PluginFetcher $fetcher;
+    protected MigrationHandler $migrationHandler;
+    protected bool $interactive = true;
     
     protected array $commands = [
         'list' => 'List all extensions',
@@ -28,7 +31,10 @@ class ExtensionCommand
     {
         $this->argv = $argv;
         $this->manager = new ExtensionManager();
-        $this->fetcher = new PluginFetcher($this->manager->getSetting('extensions_path', null, '/usr/share/nginx/atom/plugins'));
+        $pluginsPath = $this->manager->getSetting('extensions_path', null, '/usr/share/nginx/atom/plugins');
+        $this->fetcher = new PluginFetcher($pluginsPath);
+        $this->migrationHandler = new MigrationHandler($pluginsPath);
+        $this->interactive = !in_array('--no-interaction', $argv) && !in_array('-n', $argv);
     }
 
     public function run(): int
@@ -92,7 +98,7 @@ class ExtensionCommand
         }
 
         $this->line('');
-        $this->line('Commands: info <name> | install <name> | enable <name> | disable <name>');
+        $this->line('Commands: discover | install <name> | enable <name> | disable <name>');
         $this->line('');
 
         return 0;
@@ -139,22 +145,6 @@ class ExtensionCommand
             $this->line("  " . wordwrap($extension['description'], 60, "\n  "));
         }
 
-        if (!empty($extension['dependencies'])) {
-            $this->line('');
-            $this->line("  Dependencies:");
-            foreach ($extension['dependencies'] as $dep) {
-                $this->line("    • {$dep}");
-            }
-        }
-
-        if (!empty($extension['theme_support'])) {
-            $this->line('');
-            $this->line("  Theme Support:");
-            foreach ($extension['theme_support'] as $theme) {
-                $this->line("    • {$theme}");
-            }
-        }
-
         if (!empty($extension['tables_created'])) {
             $this->line('');
             $this->line("  Database Tables:");
@@ -174,9 +164,11 @@ class ExtensionCommand
     protected function install(array $args): int
     {
         $name = $args[0] ?? null;
+        $autoTables = in_array('--with-tables', $args) || in_array('-t', $args);
+        $skipTables = in_array('--skip-tables', $args) || in_array('-s', $args);
         
         if (!$name) {
-            $this->error('Usage: extension install <machine_name>');
+            $this->error('Usage: extension install <machine_name> [--with-tables|-t] [--skip-tables|-s]');
             return 1;
         }
 
@@ -197,8 +189,91 @@ class ExtensionCommand
                 return 1;
             }
         }
+
+        // Check for migrations/tables
+        $hasMigrations = $this->migrationHandler->hasMigrations($name);
+        $hasSql = $this->migrationHandler->hasSqlFile($name);
         
-        $this->info("Installing {$name}...");
+        if ($hasMigrations || $hasSql) {
+            $this->line('');
+            $this->warning("⚠ This extension requires database tables.");
+            
+            // Check if tables already exist
+            $manifestPath = "{$pluginPath}/extension.json";
+            $tables = [];
+            if (file_exists($manifestPath)) {
+                $manifest = json_decode(file_get_contents($manifestPath), true);
+                $tables = $manifest['tables'] ?? [];
+            }
+            
+            $tablesExist = !empty($tables) && $this->migrationHandler->tablesExist($tables);
+            
+            if ($tablesExist) {
+                $this->line("  Tables already exist. Skipping creation.");
+                $createTables = false;
+            } elseif ($autoTables) {
+                $createTables = true;
+            } elseif ($skipTables) {
+                $createTables = false;
+            } elseif ($this->interactive) {
+                $this->line('');
+                $this->line("  Options:");
+                $this->line("    [Y] Create tables automatically");
+                $this->line("    [N] Skip - I will create tables manually");
+                $this->line('');
+                
+                if ($hasSql) {
+                    $sqlPath = $this->migrationHandler->getSqlFilePath($name);
+                    $this->line("  SQL file location: {$sqlPath}");
+                    $this->line('');
+                }
+                
+                echo "  Create tables automatically? [Y/n]: ";
+                $answer = strtolower(trim(fgets(STDIN)));
+                $createTables = ($answer === '' || $answer === 'y' || $answer === 'yes');
+            } else {
+                $createTables = false;
+                $this->line("  Run with --with-tables to create automatically.");
+            }
+
+            if ($createTables) {
+                $this->line('');
+                $this->info("→ Creating database tables...");
+                
+                if ($hasMigrations) {
+                    $results = $this->migrationHandler->runMigrations($name);
+                    
+                    foreach ($results['success'] as $file) {
+                        $this->success("  {$file}");
+                    }
+                    foreach ($results['skipped'] as $file) {
+                        $this->line("  ○ {$file}");
+                    }
+                    foreach ($results['failed'] as $error) {
+                        $this->error("  {$error}");
+                    }
+                } elseif ($hasSql) {
+                    try {
+                        $this->migrationHandler->runSqlFile($name);
+                        $this->success("  Tables created from SQL file");
+                    } catch (\Exception $e) {
+                        $this->error("  " . $e->getMessage());
+                        return 1;
+                    }
+                }
+            } else {
+                $this->line('');
+                $this->warning("  Skipping table creation.");
+                if ($hasSql) {
+                    $sqlPath = $this->migrationHandler->getSqlFilePath($name);
+                    $this->line("  To create tables manually, run:");
+                    $this->line("    mysql -u root -p archive < {$sqlPath}");
+                }
+            }
+        }
+        
+        $this->line('');
+        $this->info("→ Installing {$name}...");
         
         $this->manager->install($name);
         
@@ -213,17 +288,48 @@ class ExtensionCommand
     {
         $name = $args[0] ?? null;
         $noBackup = in_array('--no-backup', $args);
+        $dropTables = in_array('--drop-tables', $args);
         
         if (!$name) {
-            $this->error('Usage: extension uninstall <machine_name> [--no-backup]');
+            $this->error('Usage: extension uninstall <machine_name> [--no-backup] [--drop-tables]');
             return 1;
         }
 
         $this->line('');
+        
+        // Check for migrations
+        $hasMigrations = $this->migrationHandler->hasMigrations($name);
+        
+        if ($hasMigrations && !$dropTables && $this->interactive) {
+            $this->warning("⚠ This extension has database tables.");
+            $this->line('');
+            $this->line("  Options:");
+            $this->line("    [Y] Keep tables (data preserved)");
+            $this->line("    [N] Drop tables (data deleted)");
+            $this->line('');
+            
+            echo "  Keep database tables? [Y/n]: ";
+            $answer = strtolower(trim(fgets(STDIN)));
+            $dropTables = ($answer === 'n' || $answer === 'no');
+        }
+        
         $this->warning("Uninstalling {$name}...");
         
         if (!$noBackup) {
             $this->line("Creating backup...");
+        }
+        
+        // Drop tables if requested
+        if ($dropTables && $hasMigrations) {
+            $this->info("→ Dropping database tables...");
+            $results = $this->migrationHandler->rollbackMigrations($name);
+            
+            foreach ($results['success'] as $file) {
+                $this->success("  Rolled back: {$file}");
+            }
+            foreach ($results['failed'] as $error) {
+                $this->error("  {$error}");
+            }
         }
         
         $this->manager->uninstall($name, !$noBackup);
@@ -231,8 +337,12 @@ class ExtensionCommand
         $gracePeriod = $this->manager->getSetting('grace_period_days', null, 30);
         
         $this->success("Extension '{$name}' uninstalled.");
-        $this->line("Data will be permanently deleted in {$gracePeriod} days.");
-        $this->line("Run 'extension restore {$name}' to cancel deletion.");
+        
+        if (!$dropTables && $hasMigrations) {
+            $this->line("Database tables were preserved.");
+        }
+        
+        $this->line("Run 'extension restore {$name}' to cancel if needed.");
         $this->line('');
 
         return 0;
@@ -319,7 +429,6 @@ class ExtensionCommand
     {
         $this->line('');
         $this->info('Discovering extensions...');
-        $this->line('');
         
         // Get local plugins
         $local = $this->manager->discover();
@@ -346,6 +455,7 @@ class ExtensionCommand
         }
         
         if (empty($all)) {
+            $this->line('');
             $this->line('  No extensions found.');
             $this->line('');
             return 0;
@@ -418,7 +528,6 @@ class ExtensionCommand
         $this->line("  Machine Name:  {$manifest['machine_name']}");
         $this->line("  Version:       " . ($manifest['version'] ?? 'Unknown'));
         $this->line("  Author:        " . ($manifest['author'] ?? 'Unknown'));
-        $this->line("  Path:          " . ($manifest['path'] ?? 'Remote'));
         
         if (!empty($manifest['description'])) {
             $this->line('');
@@ -447,10 +556,19 @@ class ExtensionCommand
         }
         
         $this->line('');
+        $this->line('Install Options:');
+        $this->line('  --with-tables, -t    Create database tables automatically');
+        $this->line('  --skip-tables, -s    Skip table creation');
+        $this->line('  --no-interaction, -n Non-interactive mode');
+        $this->line('');
+        $this->line('Uninstall Options:');
+        $this->line('  --no-backup          Skip backup creation');
+        $this->line('  --drop-tables        Drop database tables');
+        $this->line('');
         $this->line('Examples:');
-        $this->line('  php bin/extension list');
         $this->line('  php bin/extension discover');
         $this->line('  php bin/extension install arSecurityClearancePlugin');
+        $this->line('  php bin/extension install arSecurityClearancePlugin --with-tables');
         $this->line('  php bin/extension enable arSecurityClearancePlugin');
         $this->line('');
 
@@ -465,30 +583,11 @@ class ExtensionCommand
     }
 
     // Output helpers
-    protected function line(string $text): void
-    {
-        echo $text . PHP_EOL;
-    }
-
-    protected function info(string $text): void
-    {
-        echo "\033[36m{$text}\033[0m" . PHP_EOL;
-    }
-
-    protected function success(string $text): void
-    {
-        echo "\033[32m✓ {$text}\033[0m" . PHP_EOL;
-    }
-
-    protected function warning(string $text): void
-    {
-        echo "\033[33m{$text}\033[0m" . PHP_EOL;
-    }
-
-    protected function error(string $text): void
-    {
-        echo "\033[31m✗ {$text}\033[0m" . PHP_EOL;
-    }
+    protected function line(string $text): void { echo $text . PHP_EOL; }
+    protected function info(string $text): void { echo "\033[36m{$text}\033[0m" . PHP_EOL; }
+    protected function success(string $text): void { echo "\033[32m✓ {$text}\033[0m" . PHP_EOL; }
+    protected function warning(string $text): void { echo "\033[33m{$text}\033[0m" . PHP_EOL; }
+    protected function error(string $text): void { echo "\033[31m✗ {$text}\033[0m" . PHP_EOL; }
 
     protected function formatStatus(string $status): string
     {
@@ -503,10 +602,7 @@ class ExtensionCommand
 
     protected function truncate(string $text, int $length): string
     {
-        if (strlen($text) <= $length) {
-            return $text;
-        }
-        return substr($text, 0, $length - 3) . '...';
+        return strlen($text) <= $length ? $text : substr($text, 0, $length - 3) . '...';
     }
 
     protected function getOption(array $args, string $name): ?string
