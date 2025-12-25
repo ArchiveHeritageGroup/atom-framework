@@ -1,0 +1,591 @@
+<?php
+
+declare(strict_types=1);
+
+namespace AtomExtensions\Repositories;
+
+use AtomExtensions\Helpers\CultureHelper;
+
+use Illuminate\Database\Capsule\Manager as DB;
+
+/**
+ * Digital Object Repository
+ *
+ * Pure Laravel Query Builder implementation for digital object lookups.
+ *
+ * @author Johan Pieterse <johan@theahg.co.za>
+ */
+class DigitalObjectRepository
+{
+    // Usage IDs (corrected)
+    protected const USAGE_MASTER = 140;
+    protected const USAGE_REFERENCE = 141;
+    protected const USAGE_THUMBNAIL = 142;
+    protected const USAGE_CHAPTERS = 195;
+    protected const USAGE_SUBTITLES = 196;
+
+    // Media Type IDs (corrected)
+    protected const MEDIA_AUDIO = 135;
+    protected const MEDIA_IMAGE = 136;
+    protected const MEDIA_TEXT = 137;
+    protected const MEDIA_VIDEO = 138;
+    protected const MEDIA_OTHER = 139;
+
+    /**
+     * Get digital object by ID
+     */
+    public function findById(int $id): ?object
+    {
+        return DB::table('digital_object as do')
+            ->join('object as o', 'do.id', '=', 'o.id')
+            ->where('do.id', $id)
+            ->select(
+                'do.id',
+                'do.object_id as objectId',
+                'do.usage_id as usageId',
+                'do.mime_type as mimeType',
+                'do.media_type_id as mediaTypeId',
+                'do.name',
+                'do.path',
+                'do.byte_size as byteSize',
+                'do.checksum',
+                'do.checksum_type as checksumType',
+                'do.parent_id as parentId',
+                'do.sequence',
+                'o.class_name as className',
+                'o.created_at as createdAt',
+                'o.updated_at as updatedAt'
+            )
+            ->first();
+    }
+
+    /**
+     * Get digital object by slug
+     */
+    public function findBySlug(string $slug): ?object
+    {
+        return DB::table('digital_object as do')
+            ->join('object as o', 'do.id', '=', 'o.id')
+            ->join('slug as s', 'do.id', '=', 's.object_id')
+            ->where('s.slug', $slug)
+            ->select(
+                'do.id',
+                'do.object_id as objectId',
+                'do.usage_id as usageId',
+                'do.mime_type as mimeType',
+                'do.media_type_id as mediaTypeId',
+                'do.name',
+                'do.path',
+                'do.byte_size as byteSize',
+                'do.checksum',
+                'do.parent_id as parentId',
+                's.slug'
+            )
+            ->first();
+    }
+
+    /**
+     * Get parent object for a digital object
+     */
+    public function getParentObject(int $digitalObjectId): ?object
+    {
+        $do = $this->findById($digitalObjectId);
+        if (!$do || !$do->objectId) {
+            return null;
+        }
+
+        return $this->getParentObjectByObjectId($do->objectId);
+    }
+
+    /**
+     * Get parent object by object_id field
+     */
+    public function getParentObjectByObjectId(int $objectId): ?object
+    {
+        // Check InformationObject first
+        $info = DB::table('information_object as io')
+            ->join('object as o', 'io.id', '=', 'o.id')
+            ->leftJoin('information_object_i18n as i18n', function ($join) {
+                $join->on('io.id', '=', 'i18n.id')
+                    ->where('i18n.culture', '=', CultureHelper::getCulture());
+            })
+            ->leftJoin('slug as s', 'io.id', '=', 's.object_id')
+            ->where('io.id', $objectId)
+            ->where('o.class_name', 'QubitInformationObject')
+            ->select(
+                'io.id',
+                'io.identifier',
+                'io.parent_id as parentId',
+                'io.repository_id as repositoryId',
+                'io.level_of_description_id as levelOfDescriptionId',
+                'i18n.title',
+                's.slug',
+                DB::raw("'QubitInformationObject' as className"),
+                DB::raw("'informationobject' as module")
+            )
+            ->first();
+
+        if ($info) {
+            return $info;
+        }
+
+        // Check Actor/Repository
+        $actor = DB::table('actor as a')
+            ->join('object as o', 'a.id', '=', 'o.id')
+            ->leftJoin('actor_i18n as i18n', function ($join) {
+                $join->on('a.id', '=', 'i18n.id')
+                    ->where('i18n.culture', '=', CultureHelper::getCulture());
+            })
+            ->leftJoin('slug as s', 'a.id', '=', 's.object_id')
+            ->where('a.id', $objectId)
+            ->whereIn('o.class_name', ['QubitActor', 'QubitRepository'])
+            ->select(
+                'a.id',
+                'a.parent_id as parentId',
+                'i18n.authorized_form_of_name as authorizedFormOfName',
+                's.slug',
+                'o.class_name as className',
+                DB::raw("CASE WHEN o.class_name = 'QubitRepository' THEN 'repository' ELSE 'actor' END as module")
+            )
+            ->first();
+
+        return $actor;
+    }
+
+    /**
+     * Get digital object for an information object
+     */
+    public function findByInformationObjectId(int $informationObjectId): ?object
+    {
+        return DB::table('digital_object as do')
+            ->join('object as o', 'do.id', '=', 'o.id')
+            ->leftJoin('slug as s', 'do.id', '=', 's.object_id')
+            ->where('do.object_id', $informationObjectId)
+            ->where('do.usage_id', self::USAGE_MASTER)
+            ->select(
+                'do.id',
+                'do.object_id as objectId',
+                'do.usage_id as usageId',
+                'do.mime_type as mimeType',
+                'do.media_type_id as mediaTypeId',
+                'do.name',
+                'do.path',
+                'do.byte_size as byteSize',
+                's.slug'
+            )
+            ->first();
+    }
+
+    /**
+     * Get derivatives (thumbnail, reference) for a digital object
+     */
+    public function getDerivatives(int $parentId): array
+    {
+        $derivatives = DB::table('digital_object')
+            ->where('parent_id', $parentId)
+            ->select(
+                'id',
+                'usage_id as usageId',
+                'mime_type as mimeType',
+                'name',
+                'path',
+                'byte_size as byteSize'
+            )
+            ->get()
+            ->all();
+
+        $result = [
+            'thumbnail' => null,
+            'reference' => null,
+            'chapters' => null,
+            'subtitles' => null,
+        ];
+
+        foreach ($derivatives as $d) {
+            if ($d->usageId == self::USAGE_THUMBNAIL) {
+                $result['thumbnail'] = $d;
+            } elseif ($d->usageId == self::USAGE_REFERENCE) {
+                $result['reference'] = $d;
+            } elseif ($d->usageId == self::USAGE_CHAPTERS) {
+                $result['chapters'] = $d;
+            } elseif ($d->usageId == self::USAGE_SUBTITLES) {
+                $result['subtitles'] = $d;
+            }
+        }
+
+        return $result;
+    }
+
+    /**
+     * Get child digital object by usage ID
+     */
+    public function getChildByUsageId(int $parentId, int $usageId): ?object
+    {
+        return DB::table('digital_object')
+            ->where('parent_id', $parentId)
+            ->where('usage_id', $usageId)
+            ->select(
+                'id',
+                'object_id as objectId',
+                'usage_id as usageId',
+                'mime_type as mimeType',
+                'media_type_id as mediaTypeId',
+                'name',
+                'path',
+                'byte_size as byteSize',
+                'parent_id as parentId'
+            )
+            ->first();
+    }
+
+    /**
+     * Get all digital objects for an information object
+     */
+    public function findAllByInformationObjectId(int $informationObjectId): array
+    {
+        return DB::table('digital_object as do')
+            ->leftJoin('slug as s', 'do.id', '=', 's.object_id')
+            ->where('do.object_id', $informationObjectId)
+            ->orderBy('do.usage_id')
+            ->orderBy('do.sequence')
+            ->select(
+                'do.id',
+                'do.object_id as objectId',
+                'do.usage_id as usageId',
+                'do.mime_type as mimeType',
+                'do.media_type_id as mediaTypeId',
+                'do.name',
+                'do.path',
+                'do.byte_size as byteSize',
+                'do.parent_id as parentId',
+                'do.sequence',
+                's.slug'
+            )
+            ->get()
+            ->all();
+    }
+
+    /**
+     * Check if digital object exists for information object
+     */
+    public function hasDigitalObject(int $informationObjectId): bool
+    {
+        return DB::table('digital_object')
+            ->where('object_id', $informationObjectId)
+            ->exists();
+    }
+
+    /**
+     * Get usage type name
+     */
+    public function getUsageTypeName(int $usageId): string
+    {
+        $types = [
+            self::USAGE_MASTER => 'Master',
+            self::USAGE_REFERENCE => 'Reference',
+            self::USAGE_THUMBNAIL => 'Thumbnail',
+            self::USAGE_CHAPTERS => 'Chapters',
+            self::USAGE_SUBTITLES => 'Subtitles',
+        ];
+
+        return $types[$usageId] ?? 'Unknown';
+    }
+
+    /**
+     * Get media type name
+     */
+    public function getMediaTypeName(?int $mediaTypeId): string
+    {
+        if (!$mediaTypeId) {
+            return 'Unknown';
+        }
+
+        $name = DB::table('term_i18n')
+            ->where('id', $mediaTypeId)
+            ->where('culture', CultureHelper::getCulture())
+            ->value('name');
+
+        return $name ?? 'Unknown';
+    }
+
+    /**
+     * Get property value for a digital object
+     */
+    public function getPropertyValue(int $objectId, string $name): ?string
+    {
+        $property = DB::table('property as p')
+            ->leftJoin('property_i18n as pi', function ($join) {
+                $join->on('p.id', '=', 'pi.id')
+                    ->where('pi.culture', '=', CultureHelper::getCulture());
+            })
+            ->where('p.object_id', $objectId)
+            ->where('p.name', $name)
+            ->select('pi.value')
+            ->first();
+
+        return $property->value ?? null;
+    }
+
+    /**
+     * Save property for a digital object
+     */
+    public function saveProperty(int $objectId, string $name, ?string $value): void
+    {
+        $existing = DB::table('property')
+            ->where('object_id', $objectId)
+            ->where('name', $name)
+            ->first();
+
+        if ($existing) {
+            if ($value !== null && $value !== '') {
+                // Update existing
+                $existingI18n = DB::table('property_i18n')
+                    ->where('id', $existing->id)
+                    ->where('culture', CultureHelper::getCulture())
+                    ->first();
+
+                if ($existingI18n) {
+                    DB::table('property_i18n')
+                        ->where('id', $existing->id)
+                        ->where('culture', CultureHelper::getCulture())
+                        ->update(['value' => $value]);
+                } else {
+                    DB::table('property_i18n')->insert([
+                        'id' => $existing->id,
+                        'culture' => 'en',
+                        'value' => $value,
+                    ]);
+                }
+            } else {
+                // Delete if empty
+                DB::table('property_i18n')->where('id', $existing->id)->delete();
+                DB::table('property')->where('id', $existing->id)->delete();
+                DB::table('object')->where('id', $existing->id)->delete();
+            }
+        } elseif ($value !== null && $value !== '') {
+            // Create new
+            $propId = DB::table('object')->insertGetId([
+                'class_name' => 'QubitProperty',
+                'created_at' => date('Y-m-d H:i:s'),
+                'updated_at' => date('Y-m-d H:i:s'),
+            ]);
+
+            DB::table('property')->insert([
+                'id' => $propId,
+                'object_id' => $objectId,
+                'name' => $name,
+            ]);
+
+            DB::table('property_i18n')->insert([
+                'id' => $propId,
+                'culture' => 'en',
+                'value' => $value,
+            ]);
+        }
+    }
+
+    /**
+     * Create a derivative digital object
+     */
+    public function createDerivative(int $parentId, int $usageId, string $filename, string $content, ?string $language = null): int
+    {
+        // Delete existing derivative with same usage
+        $existing = $this->getChildByUsageId($parentId, $usageId);
+        if ($existing) {
+            $this->delete($existing->id);
+        }
+
+        // Create object record
+        $objectId = DB::table('object')->insertGetId([
+            'class_name' => 'QubitDigitalObject',
+            'created_at' => date('Y-m-d H:i:s'),
+            'updated_at' => date('Y-m-d H:i:s'),
+        ]);
+
+        // Determine MIME type
+        $finfo = new \finfo(FILEINFO_MIME_TYPE);
+        $mimeType = $finfo->buffer($content);
+
+        // Generate storage path
+        $path = $this->generateStoragePath($objectId);
+        $uploadDir = \sfConfig::get('sf_upload_dir');
+        $fullPath = $uploadDir . '/' . $path;
+
+        if (!is_dir($fullPath)) {
+            mkdir($fullPath, 0755, true);
+        }
+
+        $storedFilename = $objectId . '_' . preg_replace('/[^a-z0-9_\.-]/i', '_', $filename);
+        $filePath = $path . '/' . $storedFilename;
+        file_put_contents($fullPath . '/' . $storedFilename, $content);
+
+        // Create digital object record
+        DB::table('digital_object')->insert([
+            'id' => $objectId,
+            'object_id' => null,
+            'parent_id' => $parentId,
+            'usage_id' => $usageId,
+            'mime_type' => $mimeType,
+            'media_type_id' => $this->getMediaTypeFromMime($mimeType),
+            'name' => $filename,
+            'path' => $filePath,
+            'byte_size' => strlen($content),
+            'checksum' => md5($content),
+            'checksum_type' => 'md5',
+        ]);
+
+        return $objectId;
+    }
+
+    /**
+     * Delete a digital object and its derivatives
+     */
+    public function delete(int $digitalObjectId): bool
+    {
+        $do = $this->findById($digitalObjectId);
+        if (!$do) {
+            return false;
+        }
+
+        // Delete children (derivatives) first
+        $children = DB::table('digital_object')
+            ->where('parent_id', $digitalObjectId)
+            ->pluck('id');
+
+        foreach ($children as $childId) {
+            $this->deleteDigitalObjectRecord($childId);
+        }
+
+        // Delete main digital object
+        $this->deleteDigitalObjectRecord($digitalObjectId);
+
+        return true;
+    }
+
+    /**
+     * Delete a single digital object record and its files
+     */
+    protected function deleteDigitalObjectRecord(int $id): void
+    {
+        $do = DB::table('digital_object')->where('id', $id)->first();
+
+        if ($do && $do->path) {
+            $uploadDir = \sfConfig::get('sf_upload_dir');
+            $path = $do->path;
+            // Handle path that already includes /uploads/
+            if (strpos($path, '/uploads/') === 0) {
+                $path = substr($path, 9);
+            }
+            $fullPath = $uploadDir . '/' . ltrim($path, '/');
+            if (file_exists($fullPath)) {
+                @unlink($fullPath);
+            }
+        }
+
+        // Delete slug
+        DB::table('slug')->where('object_id', $id)->delete();
+
+        // Delete properties
+        $propIds = DB::table('property')->where('object_id', $id)->pluck('id');
+        if ($propIds->isNotEmpty()) {
+            DB::table('property_i18n')->whereIn('id', $propIds)->delete();
+            DB::table('property')->whereIn('id', $propIds)->delete();
+            DB::table('object')->whereIn('id', $propIds)->delete();
+        }
+
+        // Delete digital object
+        DB::table('digital_object')->where('id', $id)->delete();
+
+        // Delete base object
+        DB::table('object')->where('id', $id)->delete();
+    }
+
+    /**
+     * Generate storage path
+     */
+    protected function generateStoragePath(int $id): string
+    {
+        $parts = str_split(str_pad((string) $id, 9, '0', STR_PAD_LEFT), 3);
+        return implode('/', $parts);
+    }
+
+    /**
+     * Get media type ID from MIME type
+     */
+    protected function getMediaTypeFromMime(string $mimeType): int
+    {
+        if (strpos($mimeType, 'image/') === 0) {
+            return self::MEDIA_IMAGE;
+        }
+        if (strpos($mimeType, 'audio/') === 0) {
+            return self::MEDIA_AUDIO;
+        }
+        if (strpos($mimeType, 'video/') === 0) {
+            return self::MEDIA_VIDEO;
+        }
+        if (strpos($mimeType, 'text/') === 0 || $mimeType === 'application/pdf') {
+            return self::MEDIA_TEXT;
+        }
+        return self::MEDIA_OTHER;
+    }
+
+    /**
+     * Update digital object
+     */
+    public function update(int $digitalObjectId, array $data): bool
+    {
+        $updateData = [];
+
+        if (isset($data['mediaTypeId'])) {
+            $updateData['media_type_id'] = $data['mediaTypeId'];
+        }
+
+        if (isset($data['usageId'])) {
+            $updateData['usage_id'] = $data['usageId'];
+        }
+
+        if (isset($data['name'])) {
+            $updateData['name'] = $data['name'];
+        }
+
+        if (!empty($updateData)) {
+            DB::table('digital_object')
+                ->where('id', $digitalObjectId)
+                ->update($updateData);
+
+            DB::table('object')
+                ->where('id', $digitalObjectId)
+                ->update(['updated_at' => date('Y-m-d H:i:s')]);
+        }
+
+        return true;
+    }
+
+    /**
+     * Get usage ID constants
+     */
+    public static function getUsageIds(): array
+    {
+        return [
+            'master' => self::USAGE_MASTER,
+            'reference' => self::USAGE_REFERENCE,
+            'thumbnail' => self::USAGE_THUMBNAIL,
+            'chapters' => self::USAGE_CHAPTERS,
+            'subtitles' => self::USAGE_SUBTITLES,
+        ];
+    }
+
+    /**
+     * Get media type ID constants
+     */
+    public static function getMediaTypeIds(): array
+    {
+        return [
+            'audio' => self::MEDIA_AUDIO,
+            'image' => self::MEDIA_IMAGE,
+            'text' => self::MEDIA_TEXT,
+            'video' => self::MEDIA_VIDEO,
+            'other' => self::MEDIA_OTHER,
+        ];
+    }
+}

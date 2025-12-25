@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mirador Viewer</title>
+    <style>
+        html, body { margin: 0; padding: 0; height: 100%; }
+        #mirador { position: absolute; top: 0; left: 0; right: 0; bottom: 0; }
+        .loading { display: flex; justify-content: center; align-items: center; height: 100%; 
+                   font-family: -apple-system, sans-serif; color: #666; }
+    </style>
+</head>
+<body>
+    <div id="mirador"><div class="loading">Loading viewer...</div></div>
+    <script src="mirador.min.js"></script>
+    <script>
+        const params = new URLSearchParams(window.location.search);
+        const manifest = params.get('manifest');
+        if (manifest) {
+            Mirador.viewer({
+                id: 'mirador',
+                windows: [{ manifestId: manifest }],
+                workspace: { showZoomControls: true },
+                window: { allowClose: false, allowMaximize: false }
+            });
+        }
+    </script>
+</body>
+</html>

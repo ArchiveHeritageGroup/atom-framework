@@ -1,0 +1,771 @@
+<?php
+
+declare(strict_types=1);
+
+namespace AtomExtensions\Services;
+
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Http\UploadedFile;
+
+/**
+ * Digital Object Service
+ * 
+ * Comprehensive service for handling digital object uploads, derivatives,
+ * and metadata extraction in AtoM. This is a Laravel port of the Symfony
+ * ObjectAddDigitalObjectAction functionality.
+ *
+ * @author Johan Pieterse <johan@theahg.co.za>
+ */
+class DigitalObjectService
+{
+    // Usage type constants (matching QubitTerm IDs)
+    public const USAGE_MASTER = 169;      // QubitTerm::MASTER_ID
+    public const USAGE_REFERENCE = 170;   // QubitTerm::REFERENCE_ID
+    public const USAGE_THUMBNAIL = 171;   // QubitTerm::THUMBNAIL_ID
+    public const USAGE_EXTERNAL_URI = 172;
+    public const USAGE_EXTERNAL_FILE = 359;
+    public const USAGE_OFFLINE = 360;
+    
+    // Media type constants
+    public const MEDIA_IMAGE = 137;
+    public const MEDIA_AUDIO = 138;
+    public const MEDIA_TEXT = 139;
+    public const MEDIA_VIDEO = 140;
+    public const MEDIA_OTHER = 141;
+    
+    // Reference image max dimensions
+    protected int $referenceMaxWidth = 480;
+    protected int $referenceMaxHeight = 480;
+    
+    // Thumbnail max dimensions  
+    protected int $thumbnailMaxWidth = 100;
+    protected int $thumbnailMaxHeight = 100;
+    
+    // Upload directory
+    protected string $uploadDir;
+    
+    // Supported image formats for thumbnailing
+    protected array $thumbnailableFormats = [
+        'image/jpeg', 'image/png', 'image/gif', 'image/webp',
+        'image/tiff', 'image/bmp', 'application/pdf'
+    ];
+    
+    // Web-compatible image formats
+    protected array $webCompatibleFormats = [
+        'image/jpeg', 'image/png', 'image/gif', 'image/webp'
+    ];
+    
+    // MIME type to extension mapping
+    protected array $mimeExtensions = [
+        'image/jpeg' => 'jpg',
+        'image/png' => 'png',
+        'image/gif' => 'gif',
+        'image/webp' => 'webp',
+        'image/tiff' => 'tif',
+        'image/bmp' => 'bmp',
+        'application/pdf' => 'pdf',
+        'video/mp4' => 'mp4',
+        'video/webm' => 'webm',
+        'audio/mpeg' => 'mp3',
+        'audio/ogg' => 'ogg',
+        'text/plain' => 'txt',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document' => 'docx',
+    ];
+    
+    public function __construct()
+    {
+        $this->uploadDir = \sfConfig::get('sf_upload_dir', '/usr/share/nginx/archive/uploads');
+        
+        // Load settings
+        $refWidth = \sfConfig::get('app_reference_image_maxwidth');
+        if ($refWidth) {
+            $this->referenceMaxWidth = (int) $refWidth;
+        }
+    }
+    
+    /**
+     * Upload a digital object from a file
+     *
+     * @param int $objectId Information object ID
+     * @param UploadedFile|array $file Uploaded file (Laravel or PHP $_FILES format)
+     * @param array $options Additional options
+     * @return array Result with status and digital object info
+     */
+    public function uploadFromFile(int $objectId, $file, array $options = []): array
+    {
+        try {
+            // Validate object exists
+            $object = \QubitInformationObject::getById($objectId);
+            if (!$object) {
+                return $this->error('Information object not found');
+            }
+            
+            // Check upload limits
+            $limitCheck = $this->checkUploadLimits($object);
+            if (!$limitCheck['allowed']) {
+                return $this->error($limitCheck['message']);
+            }
+            
+            // Check if object already has a digital object
+            if ($existingDO = $object->getDigitalObject()) {
+                if (!($options['replace'] ?? false)) {
+                    return $this->error('Object already has a digital object. Use replace option to overwrite.');
+                }
+                // Delete existing
+                $existingDO->delete();
+            }
+            
+            // Handle file input (Laravel UploadedFile or PHP array)
+            if ($file instanceof UploadedFile) {
+                $filename = $file->getClientOriginalName();
+                $tempPath = $file->getPathname();
+                $mimeType = $file->getMimeType();
+            } elseif (is_array($file)) {
+                $filename = $file['name'] ?? basename($file['tmp_name']);
+                $tempPath = $file['tmp_name'];
+                $mimeType = $file['type'] ?? mime_content_type($tempPath);
+                
+                // Check for upload errors
+                if (isset($file['error']) && $file['error'] !== UPLOAD_ERR_OK) {
+                    return $this->error($this->getUploadErrorMessage($file['error']));
+                }
+            } else {
+                return $this->error('Invalid file input');
+            }
+            
+            // Validate file exists
+            if (!file_exists($tempPath)) {
+                return $this->error('Uploaded file not found');
+            }
+            
+            // Get file contents
+            $contents = file_get_contents($tempPath);
+            if ($contents === false) {
+                return $this->error('Could not read uploaded file');
+            }
+            
+            // Create digital object
+            $digitalObject = $this->createDigitalObject($object, $filename, $contents, [
+                'usageId' => self::USAGE_MASTER,
+                'mimeType' => $mimeType,
+                'createDerivatives' => $options['createDerivatives'] ?? true,
+                'extractMetadata' => $options['extractMetadata'] ?? true,
+            ]);
+            
+            return $this->success('Digital object uploaded successfully', [
+                'digital_object_id' => $digitalObject->id,
+                'filename' => $filename,
+                'mime_type' => $digitalObject->mimeType,
+                'byte_size' => $digitalObject->byteSize,
+                'checksum' => $digitalObject->checksum,
+            ]);
+            
+        } catch (\Exception $e) {
+            Log::error('DigitalObjectService::uploadFromFile failed: ' . $e->getMessage());
+            return $this->error('Upload failed: ' . $e->getMessage());
+        }
+    }
+    
+    /**
+     * Import digital object from URL
+     *
+     * @param int $objectId Information object ID
+     * @param string $url External URL
+     * @param array $options Additional options
+     * @return array Result with status
+     */
+    public function importFromUrl(int $objectId, string $url, array $options = []): array
+    {
+        try {
+            // Validate URL
+            if (!filter_var($url, FILTER_VALIDATE_URL)) {
+                return $this->error('Invalid URL format');
+            }
+            
+            // Validate object exists
+            $object = \QubitInformationObject::getById($objectId);
+            if (!$object) {
+                return $this->error('Information object not found');
+            }
+            
+            // Check upload limits
+            $limitCheck = $this->checkUploadLimits($object);
+            if (!$limitCheck['allowed']) {
+                return $this->error($limitCheck['message']);
+            }
+            
+            // Check if object already has a digital object
+            if ($existingDO = $object->getDigitalObject()) {
+                if (!($options['replace'] ?? false)) {
+                    return $this->error('Object already has a digital object');
+                }
+                $existingDO->delete();
+            }
+            
+            // Create digital object using AtoM's native import
+            $digitalObject = new \QubitDigitalObject();
+            $digitalObject->objectId = $objectId;
+            $digitalObject->createDerivatives = $options['createDerivatives'] ?? true;
+            
+            // Import from URI (this handles downloading and derivative creation)
+            $digitalObject->importFromURI($url, $options);
+            $digitalObject->save();
+            
+            // Update search index
+            \QubitSearch::getInstance()->update($object);
+            
+            return $this->success('Digital object imported from URL', [
+                'digital_object_id' => $digitalObject->id,
+                'url' => $url,
+                'mime_type' => $digitalObject->mimeType,
+            ]);
+            
+        } catch (\Exception $e) {
+            Log::error('DigitalObjectService::importFromUrl failed: ' . $e->getMessage());
+            return $this->error('Import failed: ' . $e->getMessage());
+        }
+    }
+    
+    /**
+     * Create a digital object with proper file handling
+     */
+    protected function createDigitalObject(
+        \QubitInformationObject $object,
+        string $filename,
+        string $contents,
+        array $options = []
+    ): \QubitDigitalObject {
+        
+        $digitalObject = new \QubitDigitalObject();
+        $digitalObject->objectId = $object->id;
+        $digitalObject->usageId = $options['usageId'] ?? self::USAGE_MASTER;
+        $digitalObject->createDerivatives = $options['createDerivatives'] ?? true;
+        
+        // Create asset with file contents
+        $asset = new \QubitAsset($filename, $contents);
+        $digitalObject->assets[] = $asset;
+        
+        // Save (this triggers writeToFileSystem and derivative creation)
+        $digitalObject->save();
+        
+        // Extract metadata if enabled
+        if ($options['extractMetadata'] ?? true) {
+            $this->extractMetadata($digitalObject, $object);
+        }
+        
+        // Update search index
+        \QubitSearch::getInstance()->update($object);
+        
+        return $digitalObject;
+    }
+    
+    /**
+     * Check upload limits (app-level and repository-level)
+     */
+    public function checkUploadLimits(\QubitInformationObject $object): array
+    {
+        // Check if uploads are allowed at all
+        if (!\QubitDigitalObject::isUploadAllowed()) {
+            return [
+                'allowed' => false,
+                'message' => 'Uploads are disabled',
+            ];
+        }
+        
+        // Check app-level limit
+        if (\QubitDigitalObject::reachedAppUploadLimit()) {
+            $limit = \sfConfig::get('app_upload_limit', 0);
+            return [
+                'allowed' => false,
+                'message' => "The maximum disk space of {$limit} GB for uploads has been reached",
+            ];
+        }
+        
+        // Check repository-level limit
+        $repository = $object->getRepository(['inherit' => true]);
+        if ($repository) {
+            $repoLimit = $repository->uploadLimit;
+            
+            if ($repoLimit === 0) {
+                return [
+                    'allowed' => false,
+                    'message' => "Uploads are disabled for repository: {$repository}",
+                ];
+            }
+            
+            if ($repoLimit > 0) {
+                $diskUsage = $repository->getDiskUsage() / pow(10, 9); // Convert to GB
+                if ($diskUsage >= $repoLimit) {
+                    return [
+                        'allowed' => false,
+                        'message' => "Upload limit of {$repoLimit} GB for {$repository} has been reached",
+                    ];
+                }
+            }
+        }
+        
+        return ['allowed' => true, 'message' => 'OK'];
+    }
+    
+    /**
+     * Get maximum upload size in bytes
+     */
+    public function getMaxUploadSize(): int
+    {
+        return \QubitDigitalObject::getMaxUploadSize();
+    }
+    
+    /**
+     * Get maximum post size in bytes
+     */
+    public function getMaxPostSize(): int
+    {
+        return \QubitDigitalObject::getMaxPostSize();
+    }
+    
+    /**
+     * Format bytes to human readable
+     */
+    public function formatBytes(int $bytes, int $precision = 2): string
+    {
+        $units = ['B', 'KB', 'MB', 'GB', 'TB'];
+        
+        $bytes = max($bytes, 0);
+        $pow = floor(($bytes ? log($bytes) : 0) / log(1024));
+        $pow = min($pow, count($units) - 1);
+        
+        $bytes /= pow(1024, $pow);
+        
+        return round($bytes, $precision) . ' ' . $units[$pow];
+    }
+    
+    /**
+     * Extract embedded metadata from digital object
+     */
+    protected function extractMetadata(\QubitDigitalObject $digitalObject, \QubitInformationObject $object): void
+    {
+        try {
+            $absPath = $digitalObject->getAbsolutePath();
+            if (!$absPath || !is_readable($absPath)) {
+                Log::warning('Metadata extraction: file not readable: ' . $absPath);
+                return;
+            }
+            
+            $metadata = $this->extractMetadataFromFile($absPath);
+            
+            if (empty($metadata)) {
+                Log::info('No metadata found in: ' . $absPath);
+                return;
+            }
+            
+            Log::info('Extracted metadata: ' . json_encode(array_keys($metadata)));
+            
+            $changed = false;
+            
+            // Apply title from IPTC or XMP
+            if (empty($object->getTitle()) && !empty($metadata['title'])) {
+                $object->setTitle($metadata['title']);
+                $changed = true;
+            }
+            
+            // Apply description
+            if (empty($object->getScopeAndContent()) && !empty($metadata['description'])) {
+                $object->setScopeAndContent($metadata['description']);
+                $changed = true;
+            }
+            
+            // Apply creator as event
+            if (!empty($metadata['creator'])) {
+                $this->addCreatorEvent($object, $metadata['creator']);
+            }
+            
+            // Apply date as event
+            if (!empty($metadata['date_created'])) {
+                $this->addDateEvent($object, $metadata['date_created']);
+            }
+            
+            // Apply GPS to physical characteristics
+            if (!empty($metadata['gps'])) {
+                $existing = $object->getPhysicalCharacteristics() ?? '';
+                $gpsNote = sprintf("GPS: %s, %s", $metadata['gps']['latitude'], $metadata['gps']['longitude']);
+                if (strpos($existing, 'GPS:') === false) {
+                    $object->setPhysicalCharacteristics(trim($existing . "\n" . $gpsNote));
+                    $changed = true;
+                }
+            }
+            
+            // Apply technical metadata
+            $techInfo = $this->formatTechnicalMetadata($metadata);
+            if ($techInfo) {
+                $existing = $object->getPhysicalCharacteristics() ?? '';
+                if (strpos($existing, 'Technical:') === false) {
+                    $object->setPhysicalCharacteristics(trim($existing . "\n\n--- Technical Metadata ---\n" . $techInfo));
+                    $changed = true;
+                }
+            }
+            
+            if ($changed) {
+                $object->save();
+                Log::info('Metadata applied to object: ' . $object->id);
+            }
+            
+        } catch (\Exception $e) {
+            Log::warning('Metadata extraction failed: ' . $e->getMessage());
+        }
+    }
+    
+    /**
+     * Extract metadata directly from file
+     */
+    protected function extractMetadataFromFile(string $filePath): array
+    {
+        $metadata = [];
+        $mimeType = mime_content_type($filePath);
+        
+        // Image metadata
+        if (strpos($mimeType, 'image/') === 0) {
+            // EXIF
+            if (function_exists('exif_read_data')) {
+                $exif = @exif_read_data($filePath, 'ANY_TAG', true);
+                if ($exif !== false) {
+                    // Camera
+                    if (isset($exif['IFD0']['Make'])) {
+                        $metadata['camera_make'] = $exif['IFD0']['Make'];
+                    }
+                    if (isset($exif['IFD0']['Model'])) {
+                        $metadata['camera_model'] = $exif['IFD0']['Model'];
+                    }
+                    
+                    // Date
+                    if (isset($exif['EXIF']['DateTimeOriginal'])) {
+                        $metadata['date_created'] = $exif['EXIF']['DateTimeOriginal'];
+                    } elseif (isset($exif['IFD0']['DateTime'])) {
+                        $metadata['date_created'] = $exif['IFD0']['DateTime'];
+                    }
+                    
+                    // GPS
+                    if (isset($exif['GPS']['GPSLatitude'], $exif['GPS']['GPSLongitude'])) {
+                        $lat = $this->gpsToDecimal($exif['GPS']['GPSLatitude'], $exif['GPS']['GPSLatitudeRef'] ?? 'N');
+                        $lon = $this->gpsToDecimal($exif['GPS']['GPSLongitude'], $exif['GPS']['GPSLongitudeRef'] ?? 'E');
+                        if ($lat && $lon) {
+                            $metadata['gps'] = ['latitude' => $lat, 'longitude' => $lon];
+                        }
+                    }
+                    
+                    // Dimensions
+                    if (isset($exif['COMPUTED']['Width'])) {
+                        $metadata['width'] = $exif['COMPUTED']['Width'];
+                    }
+                    if (isset($exif['COMPUTED']['Height'])) {
+                        $metadata['height'] = $exif['COMPUTED']['Height'];
+                    }
+                    
+                    // Creator
+                    if (isset($exif['IFD0']['Artist'])) {
+                        $metadata['creator'] = $exif['IFD0']['Artist'];
+                    }
+                    
+                    // Software
+                    if (isset($exif['IFD0']['Software'])) {
+                        $metadata['software'] = $exif['IFD0']['Software'];
+                    }
+                    
+                    // ISO, Exposure
+                    if (isset($exif['EXIF']['ISOSpeedRatings'])) {
+                        $metadata['iso'] = $exif['EXIF']['ISOSpeedRatings'];
+                    }
+                    if (isset($exif['EXIF']['ExposureTime'])) {
+                        $metadata['exposure'] = $exif['EXIF']['ExposureTime'];
+                    }
+                    if (isset($exif['EXIF']['FNumber'])) {
+                        $metadata['fnumber'] = $exif['EXIF']['FNumber'];
+                    }
+                }
+            }
+            
+            // IPTC
+            $size = @getimagesize($filePath, $info);
+            if (isset($info['APP13'])) {
+                $iptc = @iptcparse($info['APP13']);
+                if ($iptc) {
+                    if (isset($iptc['2#105'][0])) {
+                        $metadata['title'] = $iptc['2#105'][0];
+                    }
+                    if (isset($iptc['2#120'][0])) {
+                        $metadata['description'] = $iptc['2#120'][0];
+                    }
+                    if (isset($iptc['2#080'][0])) {
+                        $metadata['creator'] = $iptc['2#080'][0];
+                    }
+                    if (isset($iptc['2#025'])) {
+                        $metadata['keywords'] = $iptc['2#025'];
+                    }
+                }
+            }
+        }
+        
+        return $metadata;
+    }
+    
+    /**
+     * Convert GPS to decimal
+     */
+    protected function gpsToDecimal(array $coord, string $ref): ?float
+    {
+        if (count($coord) < 3) return null;
+        
+        $deg = $this->gpsPartToFloat($coord[0]);
+        $min = $this->gpsPartToFloat($coord[1]);
+        $sec = $this->gpsPartToFloat($coord[2]);
+        
+        $decimal = $deg + ($min / 60) + ($sec / 3600);
+        
+        if ($ref === 'S' || $ref === 'W') {
+            $decimal *= -1;
+        }
+        
+        return round($decimal, 6);
+    }
+    
+    /**
+     * Convert GPS part to float
+     */
+    protected function gpsPartToFloat($part): float
+    {
+        if (is_string($part) && strpos($part, '/') !== false) {
+            $parts = explode('/', $part);
+            if (count($parts) === 2 && $parts[1] != 0) {
+                return (float) $parts[0] / (float) $parts[1];
+            }
+        }
+        return (float) $part;
+    }
+    
+    /**
+     * Format technical metadata
+     */
+    protected function formatTechnicalMetadata(array $metadata): string
+    {
+        $lines = [];
+        
+        if (!empty($metadata['camera_make']) || !empty($metadata['camera_model'])) {
+            $lines[] = 'Camera: ' . trim(($metadata['camera_make'] ?? '') . ' ' . ($metadata['camera_model'] ?? ''));
+        }
+        if (!empty($metadata['width']) && !empty($metadata['height'])) {
+            $lines[] = "Dimensions: {$metadata['width']} × {$metadata['height']} px";
+        }
+        if (!empty($metadata['iso'])) {
+            $lines[] = "ISO: {$metadata['iso']}";
+        }
+        if (!empty($metadata['software'])) {
+            $lines[] = "Software: {$metadata['software']}";
+        }
+        
+        return implode("\n", $lines);
+    }
+    
+    /**
+     * Add creator event
+     */
+    protected function addCreatorEvent(\QubitInformationObject $io, string $name): void
+    {
+        // Find or create actor
+        $criteria = new \Criteria();
+        $criteria->addJoin(\QubitActorI18n::ID, \QubitActor::ID);
+        $criteria->add(\QubitActorI18n::AUTHORIZED_FORM_OF_NAME, $name);
+        $actor = \QubitActor::getOne($criteria);
+        
+        if (!$actor) {
+            $actor = new \QubitActor();
+            $actor->setAuthorizedFormOfName($name);
+            $actor->save();
+        }
+        
+        // Check if event exists
+        $criteria = new \Criteria();
+        $criteria->add(\QubitEvent::INFORMATION_OBJECT_ID, $io->id);
+        $criteria->add(\QubitEvent::ACTOR_ID, $actor->id);
+        $criteria->add(\QubitEvent::TYPE_ID, \QubitTerm::CREATION_ID);
+        
+        if (!\QubitEvent::getOne($criteria)) {
+            $event = new \QubitEvent();
+            $event->informationObjectId = $io->id;
+            $event->actorId = $actor->id;
+            $event->typeId = \QubitTerm::CREATION_ID;
+            $event->save();
+        }
+    }
+    
+    /**
+     * Add date event
+     */
+    protected function addDateEvent(\QubitInformationObject $io, string $date): void
+    {
+        $criteria = new \Criteria();
+        $criteria->add(\QubitEvent::INFORMATION_OBJECT_ID, $io->id);
+        $criteria->add(\QubitEvent::TYPE_ID, \QubitTerm::CREATION_ID);
+        $event = \QubitEvent::getOne($criteria);
+        
+        if (!$event) {
+            $event = new \QubitEvent();
+            $event->informationObjectId = $io->id;
+            $event->typeId = \QubitTerm::CREATION_ID;
+        }
+        
+        // Convert EXIF date format to standard
+        $date = str_replace(':', '-', substr($date, 0, 10)) . substr($date, 10);
+        $event->date = $date;
+        $event->save();
+    }
+    
+    /**
+     * Regenerate derivatives for a digital object
+     */
+    public function regenerateDerivatives(int $digitalObjectId): array
+    {
+        try {
+            $digitalObject = \QubitDigitalObject::getById($digitalObjectId);
+            if (!$digitalObject) {
+                return $this->error('Digital object not found');
+            }
+            
+            // Delete existing derivatives
+            $criteria = new \Criteria();
+            $criteria->add(\QubitDigitalObject::PARENT_ID, $digitalObjectId);
+            $children = \QubitDigitalObject::get($criteria);
+            
+            foreach ($children as $child) {
+                $child->delete();
+            }
+            
+            // Recreate derivatives
+            $digitalObject->createRepresentations($digitalObject->usageId);
+            
+            return $this->success('Derivatives regenerated', [
+                'digital_object_id' => $digitalObjectId,
+            ]);
+            
+        } catch (\Exception $e) {
+            Log::error('Regenerate derivatives failed: ' . $e->getMessage());
+            return $this->error('Failed to regenerate derivatives: ' . $e->getMessage());
+        }
+    }
+    
+    /**
+     * Delete a digital object
+     */
+    public function delete(int $digitalObjectId): array
+    {
+        try {
+            $digitalObject = \QubitDigitalObject::getById($digitalObjectId);
+            if (!$digitalObject) {
+                return $this->error('Digital object not found');
+            }
+            
+            $objectId = $digitalObject->objectId;
+            $digitalObject->delete();
+            
+            // Update search index
+            if ($objectId) {
+                $object = \QubitInformationObject::getById($objectId);
+                if ($object) {
+                    \QubitSearch::getInstance()->update($object);
+                }
+            }
+            
+            return $this->success('Digital object deleted');
+            
+        } catch (\Exception $e) {
+            Log::error('Delete digital object failed: ' . $e->getMessage());
+            return $this->error('Failed to delete: ' . $e->getMessage());
+        }
+    }
+    
+    /**
+     * Get digital object info
+     */
+    public function getInfo(int $digitalObjectId): ?array
+    {
+        $do = \QubitDigitalObject::getById($digitalObjectId);
+        if (!$do) {
+            return null;
+        }
+        
+        return [
+            'id' => $do->id,
+            'object_id' => $do->objectId,
+            'name' => $do->name,
+            'path' => $do->path,
+            'mime_type' => $do->mimeType,
+            'media_type_id' => $do->mediaTypeId,
+            'usage_id' => $do->usageId,
+            'byte_size' => $do->byteSize,
+            'checksum' => $do->checksum,
+            'checksum_type' => $do->checksumType,
+            'page_count' => $do->getPageCount(),
+            'is_image' => $do->isImage(),
+            'public_path' => $do->getPublicPath(),
+            'reference' => $this->getDerivativeInfo($do, self::USAGE_REFERENCE),
+            'thumbnail' => $this->getDerivativeInfo($do, self::USAGE_THUMBNAIL),
+        ];
+    }
+    
+    /**
+     * Get derivative info
+     */
+    protected function getDerivativeInfo(\QubitDigitalObject $parent, int $usageId): ?array
+    {
+        $child = $parent->getChildByUsageId($usageId);
+        if (!$child) {
+            return null;
+        }
+        
+        return [
+            'id' => $child->id,
+            'name' => $child->name,
+            'path' => $child->getPublicPath(),
+            'byte_size' => $child->byteSize,
+        ];
+    }
+    
+    /**
+     * Get upload error message
+     */
+    protected function getUploadErrorMessage(int $errorCode): string
+    {
+        $messages = [
+            UPLOAD_ERR_INI_SIZE => 'File exceeds upload_max_filesize directive in php.ini',
+            UPLOAD_ERR_FORM_SIZE => 'File exceeds MAX_FILE_SIZE directive in the HTML form',
+            UPLOAD_ERR_PARTIAL => 'File was only partially uploaded',
+            UPLOAD_ERR_NO_FILE => 'No file was uploaded',
+            UPLOAD_ERR_NO_TMP_DIR => 'Missing a temporary folder',
+            UPLOAD_ERR_CANT_WRITE => 'Failed to write file to disk',
+            UPLOAD_ERR_EXTENSION => 'A PHP extension stopped the file upload',
+        ];
+        
+        return $messages[$errorCode] ?? 'Unknown upload error';
+    }
+    
+    /**
+     * Success response helper
+     */
+    protected function success(string $message, array $data = []): array
+    {
+        return array_merge([
+            'success' => true,
+            'message' => $message,
+        ], $data);
+    }
+    
+    /**
+     * Error response helper
+     */
+    protected function error(string $message): array
+    {
+        return [
+            'success' => false,
+            'message' => $message,
+        ];
+    }
+}

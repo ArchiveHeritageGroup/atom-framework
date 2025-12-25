@@ -1,0 +1,96 @@
+<?php
+declare(strict_types=1);
+namespace AtomExtensions\Services;
+
+use AtomExtensions\Helpers\CultureHelper;
+
+use Illuminate\Database\Capsule\Manager as DB;
+use Illuminate\Support\Collection;
+use AtomExtensions\Constants\TaxonomyConstants;
+
+/**
+ * Taxonomy Service - Replaces QubitTaxonomy (235 uses)
+ */
+class TaxonomyService
+{
+    // Re-export constants
+    public const SUBJECT_ID = TaxonomyConstants::SUBJECT_ID;
+    public const PLACE_ID = TaxonomyConstants::PLACE_ID;
+    public const LEVEL_OF_DESCRIPTION_ID = TaxonomyConstants::LEVEL_OF_DESCRIPTION_ID;
+    public const PUBLICATION_STATUS_ID = TaxonomyConstants::PUBLICATION_STATUS_ID;
+    public const EVENT_TYPE_ID = TaxonomyConstants::EVENT_TYPE_ID;
+    public const ACTOR_ENTITY_TYPE_ID = TaxonomyConstants::ACTOR_ENTITY_TYPE_ID;
+    public const ACTOR_RELATION_TYPE_ID = TaxonomyConstants::ACTOR_RELATION_TYPE_ID;
+    public const RIGHT_BASIS_ID = TaxonomyConstants::RIGHT_BASIS_ID;
+    public const RIGHTS_STATUTES_ID = TaxonomyConstants::RIGHTS_STATUTES_ID;
+    public const MEDIA_TYPE_ID = TaxonomyConstants::MEDIA_TYPE_ID;
+    public const DIGITAL_OBJECT_USAGE_ID = TaxonomyConstants::DIGITAL_OBJECT_USAGE_ID;
+    public const PHYSICAL_OBJECT_TYPE_ID = TaxonomyConstants::PHYSICAL_OBJECT_TYPE_ID;
+    public const REPOSITORY_TYPE_ID = TaxonomyConstants::REPOSITORY_TYPE_ID;
+    public const THEMATIC_AREA_ID = TaxonomyConstants::THEMATIC_AREA_ID;
+    public const GEOGRAPHIC_SUBREGION_ID = TaxonomyConstants::GEOGRAPHIC_SUBREGION_ID;
+    public const DC_TYPE_ID = TaxonomyConstants::DC_TYPE_ID;
+    public const GENRE_ID = TaxonomyConstants::GENRE_ID;
+    public const RAD_NOTE_ID = TaxonomyConstants::RAD_NOTE_ID;
+    public const RAD_TITLE_NOTE_ID = TaxonomyConstants::RAD_TITLE_NOTE_ID;
+    public const NOTE_TYPE_ID = TaxonomyConstants::NOTE_TYPE_ID;
+    public const DACS_NOTE_ID = TaxonomyConstants::DACS_NOTE_ID;
+    public const ACTOR_OCCUPATION_ID = TaxonomyConstants::ACTOR_OCCUPATION_ID;
+    public const COPYRIGHT_STATUS_ID = TaxonomyConstants::COPYRIGHT_STATUS_ID;
+    public const MATERIAL_TYPE_ID = TaxonomyConstants::MATERIAL_TYPE_ID;
+    public const ACCESSION_ALTERNATIVE_IDENTIFIER_TYPE_ID = TaxonomyConstants::ACCESSION_ALTERNATIVE_IDENTIFIER_TYPE_ID;
+
+    private static string $culture = 'en';
+
+    public static function getById(int $id, ?string $culture = null): ?object
+    {
+        $culture = $culture ?? CultureHelper::getCulture();
+        return DB::table('taxonomy as t')
+            ->leftJoin('taxonomy_i18n as ti', fn($j) => $j->on('t.id', '=', 'ti.id')->where('ti.culture', $culture))
+            ->where('t.id', $id)
+            ->select('t.*', 'ti.name', 'ti.note', 'ti.culture')
+            ->first();
+    }
+
+    public static function getBySlug(string $slug): ?object
+    {
+        return DB::table('taxonomy as t')
+            ->join('slug as s', 't.id', '=', 's.object_id')
+            ->leftJoin('taxonomy_i18n as ti', fn($j) => $j->on('t.id', '=', 'ti.id')->where('ti.culture', CultureHelper::getCulture()))
+            ->where('s.slug', $slug)
+            ->select('t.*', 'ti.name', 's.slug')
+            ->first();
+    }
+
+    public static function getTermsById(int $taxonomyId, ?string $culture = null): Collection
+    {
+        $culture = $culture ?? CultureHelper::getCulture();
+        return DB::table('term as t')
+            ->leftJoin('term_i18n as ti', fn($j) => $j->on('t.id', '=', 'ti.id')->where('ti.culture', $culture))
+            ->leftJoin('slug as s', 't.id', '=', 's.object_id')
+            ->where('t.taxonomy_id', $taxonomyId)
+            ->orderBy('ti.name')
+            ->select('t.*', 'ti.name', 'ti.culture', 's.slug')
+            ->get();
+    }
+
+    public static function getTaxonomyTerms(int $taxonomyId): Collection
+    {
+        return self::getTermsById($taxonomyId);
+    }
+
+    public static function getTermsAsChoices(int $taxonomyId, ?string $culture = null): array
+    {
+        $terms = self::getTermsById($taxonomyId, $culture);
+        $choices = [];
+        foreach ($terms as $term) {
+            $choices[$term->id] = $term->name ?? '[Untitled]';
+        }
+        return $choices;
+    }
+
+    public static function setCulture(string $culture): void
+    {
+        CultureHelper::setOverrideCulture($culture);
+    }
+}

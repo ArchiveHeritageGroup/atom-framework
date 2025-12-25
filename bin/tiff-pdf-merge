@@ -1,0 +1,99 @@
+#!/usr/bin/env php
+<?php
+/**
+ * CLI tool for TIFF to PDF merge operations
+ * 
+ * Usage:
+ *   ./tiff-pdf-merge process              Process all pending jobs
+ *   ./tiff-pdf-merge process --job=123    Process specific job
+ *   ./tiff-pdf-merge cleanup              Cleanup old completed jobs
+ *   ./tiff-pdf-merge stats                Show statistics
+ */
+
+// Define paths
+define('ATOM_ROOT', '/usr/share/nginx/archive');
+define('FRAMEWORK_ROOT', ATOM_ROOT . '/atom-framework');
+
+// Bootstrap Symfony/AtoM
+require_once ATOM_ROOT . '/config/ProjectConfiguration.class.php';
+$configuration = ProjectConfiguration::getApplicationConfiguration('qubit', 'cli', false);
+sfContext::createInstance($configuration);
+
+// Bootstrap Laravel Database
+require_once FRAMEWORK_ROOT . '/bootstrap.php';
+
+// Manually require the needed classes
+require_once FRAMEWORK_ROOT . '/src/Repositories/TiffPdfMergeRepository.php';
+require_once FRAMEWORK_ROOT . '/src/Services/TiffPdfMergeService.php';
+require_once FRAMEWORK_ROOT . '/src/Commands/TiffPdfProcessCommand.php';
+
+use AtomFramework\Commands\TiffPdfProcessCommand;
+
+// Parse arguments
+$args = array_slice($argv, 1);
+$action = $args[0] ?? 'help';
+
+// Parse options
+$options = [];
+foreach ($args as $arg) {
+    if (strpos($arg, '--') === 0) {
+        $parts = explode('=', substr($arg, 2), 2);
+        $options[$parts[0]] = $parts[1] ?? true;
+    }
+}
+
+try {
+    $command = new TiffPdfProcessCommand();
+
+    switch ($action) {
+        case 'process':
+            if (isset($options['job'])) {
+                $command->processJob((int) $options['job']);
+            } else {
+                $limit = (int) ($options['limit'] ?? 10);
+                $command->processPending($limit);
+            }
+            break;
+
+        case 'cleanup':
+            $hours = (int) ($options['hours'] ?? 24);
+            $command->cleanup($hours);
+            break;
+
+        case 'stats':
+            $command->stats();
+            break;
+
+        case 'help':
+        default:
+            echo <<<HELP
+TIFF to PDF Merge CLI Tool
+
+Usage:
+  tiff-pdf-merge <command> [options]
+
+Commands:
+  process              Process all pending merge jobs
+    --job=<id>         Process a specific job by ID
+    --limit=<n>        Limit number of jobs to process (default: 10)
+  
+  cleanup              Remove old completed/failed jobs
+    --hours=<n>        Hours threshold for old jobs (default: 24)
+  
+  stats                Show merge job statistics
+  
+  help                 Show this help message
+
+Examples:
+  tiff-pdf-merge process
+  tiff-pdf-merge process --job=42
+  tiff-pdf-merge cleanup --hours=48
+  tiff-pdf-merge stats
+
+HELP;
+            break;
+    }
+} catch (Exception $e) {
+    echo "Error: " . $e->getMessage() . "\n";
+    exit(1);
+}

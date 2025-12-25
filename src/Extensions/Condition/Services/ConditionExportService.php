@@ -1,0 +1,542 @@
+<?php
+
+declare(strict_types=1);
+
+namespace AtoM\Framework\Extensions\Condition\Services;
+
+use AtomExtensions\Helpers\CultureHelper;
+
+use Illuminate\Database\Capsule\Manager as DB;
+use Monolog\Handler\RotatingFileHandler;
+use Monolog\Logger;
+
+/**
+ * Condition Export Service
+ * 
+ * Exports condition annotations and photos in various formats including
+ * IIIF Web Annotation format and preservation-ready packages.
+ * 
+ * @author Johan Pieterse <johan@theahg.co.za>
+ */
+class ConditionExportService
+{
+    private static ?Logger $logger = null;
+
+    private static function getLogger(): Logger
+    {
+        if (null === self::$logger) {
+            self::$logger = new Logger('condition_export');
+            $logPath = '/var/log/atom/condition_export.log';
+            $logDir = dirname($logPath);
+            if (!is_dir($logDir)) {
+                @mkdir($logDir, 0755, true);
+            }
+            if (is_writable($logDir)) {
+                self::$logger->pushHandler(new RotatingFileHandler($logPath, 30, Logger::DEBUG));
+            }
+        }
+        return self::$logger;
+    }
+
+    /**
+     * Export annotations as IIIF Web Annotation format
+     * Follows W3C Web Annotation Data Model
+     */
+    public static function exportAsIiifAnnotation(
+        int $photoId,
+        string $baseUrl = ''
+    ): array {
+        $photo = DB::table('spectrum_condition_photo as p')
+            ->join('spectrum_condition_check as c', 'p.condition_check_id', '=', 'c.id')
+            ->leftJoin('information_object as io', 'c.object_id', '=', 'io.id')
+            ->leftJoin('information_object_i18n as ioi', function ($join) {
+                $join->on('io.id', '=', 'ioi.id')
+                    ->where('ioi.culture', '=', CultureHelper::getCulture());
+            })
+            ->leftJoin('slug as s', 's.object_id', '=', 'io.id')
+            ->where('p.id', $photoId)
+            ->select([
+                'p.*',
+                'c.object_id',
+                'c.check_date',
+                'io.identifier',
+                'ioi.title as object_title',
+                's.slug',
+            ])
+            ->first();
+
+        if (!$photo) {
+            return ['error' => 'Photo not found'];
+        }
+
+        $annotations = json_decode($photo->annotation_data ?? '[]', true);
+
+        if (empty($annotations)) {
+            return ['error' => 'No annotations found'];
+        }
+
+        $imageUrl = $baseUrl . '/uploads/condition_photos/' . $photo->filename;
+        $canvasId = $baseUrl . '/iiif/condition/' . $photoId . '/canvas';
+
+        // IIIF Annotation Page
+        $annotationPage = [
+            '@context' => 'http://iiif.io/api/presentation/3/context.json',
+            'id' => $baseUrl . '/iiif/condition/' . $photoId . '/annotations',
+            'type' => 'AnnotationPage',
+            'items' => [],
+        ];
+
+        foreach ($annotations as $index => $ann) {
+            $annotationId = $baseUrl . '/iiif/condition/' . $photoId . '/annotation/' . ($ann['id'] ?? $index);
+
+            // Convert coordinates to IIIF format (xywh=x,y,w,h)
+            $x = round($ann['left'] ?? 0);
+            $y = round($ann['top'] ?? 0);
+            $w = round($ann['width'] ?? 50);
+            $h = round($ann['height'] ?? 50);
+
+            $annotationPage['items'][] = [
+                '@context' => 'http://www.w3.org/ns/anno.jsonld',
+                'id' => $annotationId,
+                'type' => 'Annotation',
+                'motivation' => 'commenting',
+                'body' => [
+                    'type' => 'TextualBody',
+                    'value' => self::buildAnnotationBody($ann),
+                    'format' => 'text/html',
+                    'language' => 'en',
+                ],
+                'target' => [
+                    'source' => $imageUrl,
+                    'selector' => [
+                        'type' => 'FragmentSelector',
+                        'conformsTo' => 'http://www.w3.org/TR/media-frags/',
+                        'value' => "xywh={$x},{$y},{$w},{$h}",
+                    ],
+                ],
+                'created' => $ann['created_at'] ?? date('c'),
+                'creator' => [
+                    'type' => 'Person',
+                    'name' => $ann['created_by_name'] ?? 'Unknown',
+                ],
+                'dcterms:subject' => [
+                    'type' => $ann['type'] ?? 'damage',
+                    'category' => $ann['category'] ?? null,
+                    'severity' => $ann['severity'] ?? null,
+                ],
+            ];
+        }
+
+        return $annotationPage;
+    }
+
+    /**
+     * Export condition check as complete IIIF manifest with annotations
+     */
+    public static function exportAsIiifManifest(
+        int $checkId,
+        string $baseUrl = ''
+    ): array {
+        $check = DB::table('spectrum_condition_check as c')
+            ->leftJoin('information_object as io', 'c.object_id', '=', 'io.id')
+            ->leftJoin('information_object_i18n as ioi', function ($join) {
+                $join->on('io.id', '=', 'ioi.id')
+                    ->where('ioi.culture', '=', CultureHelper::getCulture());
+            })
+            ->leftJoin('slug as s', 's.object_id', '=', 'io.id')
+            ->leftJoin('user as u', 'c.assessed_by', '=', 'u.id')
+            ->where('c.id', $checkId)
+            ->select([
+                'c.*',
+                'io.identifier',
+                'ioi.title as object_title',
+                's.slug',
+                'u.username as assessor_name',
+            ])
+            ->first();
+
+        if (!$check) {
+            return ['error' => 'Condition check not found'];
+        }
+
+        $photos = DB::table('spectrum_condition_photo')
+            ->where('condition_check_id', $checkId)
+            ->orderBy('sort_order')
+            ->get();
+
+        $manifestId = $baseUrl . '/iiif/condition-report/' . $checkId . '/manifest';
+
+        $manifest = [
+            '@context' => 'http://iiif.io/api/presentation/3/context.json',
+            'id' => $manifestId,
+            'type' => 'Manifest',
+            'label' => [
+                'en' => ['Condition Report: ' . ($check->object_title ?? 'Unknown Object')],
+            ],
+            'metadata' => [
+                [
+                    'label' => ['en' => ['Object Identifier']],
+                    'value' => ['en' => [$check->identifier ?? 'N/A']],
+                ],
+                [
+                    'label' => ['en' => ['Assessment Date']],
+                    'value' => ['en' => [$check->check_date ?? 'N/A']],
+                ],
+                [
+                    'label' => ['en' => ['Assessor']],
+                    'value' => ['en' => [$check->assessor_name ?? 'Unknown']],
+                ],
+                [
+                    'label' => ['en' => ['Overall Condition']],
+                    'value' => ['en' => [ucfirst($check->overall_condition ?? 'Unknown')]],
+                ],
+            ],
+            'summary' => [
+                'en' => [$check->condition_notes ?? 'Condition report photographs with annotations'],
+            ],
+            'requiredStatement' => [
+                'label' => ['en' => ['Attribution']],
+                'value' => ['en' => ['Created with AtoM Condition Annotation System']],
+            ],
+            'items' => [],
+        ];
+
+        foreach ($photos as $index => $photo) {
+            $canvasId = $baseUrl . '/iiif/condition/' . $photo->id . '/canvas';
+            $imageUrl = $baseUrl . '/uploads/condition_photos/' . $photo->filename;
+
+            // Get image dimensions if available
+            $imagePath = sfConfig::get('sf_upload_dir', '/uploads') . '/condition_photos/' . $photo->filename;
+            $imageInfo = @getimagesize($imagePath);
+            $width = $imageInfo[0] ?? 1000;
+            $height = $imageInfo[1] ?? 1000;
+
+            $canvas = [
+                'id' => $canvasId,
+                'type' => 'Canvas',
+                'label' => ['en' => [$photo->caption ?? 'Photo ' . ($index + 1)]],
+                'width' => $width,
+                'height' => $height,
+                'items' => [
+                    [
+                        'id' => $canvasId . '/page',
+                        'type' => 'AnnotationPage',
+                        'items' => [
+                            [
+                                'id' => $canvasId . '/image',
+                                'type' => 'Annotation',
+                                'motivation' => 'painting',
+                                'body' => [
+                                    'id' => $imageUrl,
+                                    'type' => 'Image',
+                                    'format' => $photo->mime_type ?? 'image/jpeg',
+                                    'width' => $width,
+                                    'height' => $height,
+                                ],
+                                'target' => $canvasId,
+                            ],
+                        ],
+                    ],
+                ],
+            ];
+
+            // Add condition annotations
+            $annotations = json_decode($photo->annotation_data ?? '[]', true);
+            if (!empty($annotations)) {
+                $canvas['annotations'] = [
+                    self::exportAsIiifAnnotation($photo->id, $baseUrl),
+                ];
+            }
+
+            $manifest['items'][] = $canvas;
+        }
+
+        return $manifest;
+    }
+
+    /**
+     * Export as JSON overlay package (for preservation)
+     */
+    public static function exportAsJsonPackage(int $checkId): array
+    {
+        $check = DB::table('spectrum_condition_check as c')
+            ->leftJoin('information_object as io', 'c.object_id', '=', 'io.id')
+            ->leftJoin('information_object_i18n as ioi', function ($join) {
+                $join->on('io.id', '=', 'ioi.id')
+                    ->where('ioi.culture', '=', CultureHelper::getCulture());
+            })
+            ->leftJoin('user as u', 'c.assessed_by', '=', 'u.id')
+            ->where('c.id', $checkId)
+            ->select([
+                'c.*',
+                'io.identifier',
+                'ioi.title as object_title',
+                'u.username as assessor_name',
+            ])
+            ->first();
+
+        if (!$check) {
+            return ['error' => 'Condition check not found'];
+        }
+
+        $photos = DB::table('spectrum_condition_photo')
+            ->where('condition_check_id', $checkId)
+            ->orderBy('sort_order')
+            ->get();
+
+        $package = [
+            'format' => 'AtoM Condition Report Package',
+            'version' => '1.0',
+            'export_date' => date('c'),
+            'condition_check' => [
+                'id' => $check->id,
+                'object_id' => $check->object_id,
+                'object_identifier' => $check->identifier,
+                'object_title' => $check->object_title,
+                'check_date' => $check->check_date,
+                'check_type' => $check->check_type,
+                'assessor' => $check->assessor_name,
+                'overall_condition' => $check->overall_condition,
+                'notes' => $check->condition_notes,
+            ],
+            'photos' => [],
+            'vocabulary' => ConditionVocabularyService::getVocabularyForJs(),
+        ];
+
+        foreach ($photos as $photo) {
+            $annotations = json_decode($photo->annotation_data ?? '[]', true);
+
+            $package['photos'][] = [
+                'id' => $photo->id,
+                'filename' => $photo->filename,
+                'original_name' => $photo->original_name,
+                'mime_type' => $photo->mime_type,
+                'caption' => $photo->caption,
+                'photo_type' => $photo->photo_type,
+                'annotations' => $annotations,
+                'annotation_count' => count($annotations),
+                'overlay' => self::generateSvgOverlay($annotations, $photo->id),
+            ];
+        }
+
+        // Add condition events if any
+        $events = ConditionEventService::getEventsForCheck($checkId);
+        if (!empty($events)) {
+            $package['condition_events'] = $events;
+        }
+
+        return $package;
+    }
+
+    /**
+     * Generate SVG overlay for annotations
+     */
+    public static function generateSvgOverlay(array $annotations, int $photoId): string
+    {
+        if (empty($annotations)) {
+            return '';
+        }
+
+        $svg = '<?xml version="1.0" encoding="UTF-8"?>' . "\n";
+        $svg .= '<svg xmlns="http://www.w3.org/2000/svg" id="condition-overlay-' . $photoId . '">' . "\n";
+
+        foreach ($annotations as $ann) {
+            $shape = $ann['shape'] ?? 'rect';
+            $id = $ann['id'] ?? uniqid();
+            $stroke = $ann['stroke'] ?? '#FF0000';
+            $strokeWidth = $ann['strokeWidth'] ?? 2;
+
+            switch ($shape) {
+                case 'rect':
+                    $x = $ann['left'] ?? 0;
+                    $y = $ann['top'] ?? 0;
+                    $width = $ann['width'] ?? 50;
+                    $height = $ann['height'] ?? 50;
+                    $svg .= sprintf(
+                        '  <rect id="%s" x="%d" y="%d" width="%d" height="%d" stroke="%s" stroke-width="%d" fill="none" data-type="%s" data-category="%s"/>' . "\n",
+                        htmlspecialchars($id),
+                        $x,
+                        $y,
+                        $width,
+                        $height,
+                        htmlspecialchars($stroke),
+                        $strokeWidth,
+                        htmlspecialchars($ann['type'] ?? ''),
+                        htmlspecialchars($ann['category'] ?? '')
+                    );
+                    break;
+
+                case 'ellipse':
+                    $cx = ($ann['left'] ?? 0) + (($ann['width'] ?? 50) / 2);
+                    $cy = ($ann['top'] ?? 0) + (($ann['height'] ?? 50) / 2);
+                    $rx = ($ann['width'] ?? 50) / 2;
+                    $ry = ($ann['height'] ?? 50) / 2;
+                    $svg .= sprintf(
+                        '  <ellipse id="%s" cx="%d" cy="%d" rx="%d" ry="%d" stroke="%s" stroke-width="%d" fill="none" data-type="%s"/>' . "\n",
+                        htmlspecialchars($id),
+                        $cx,
+                        $cy,
+                        $rx,
+                        $ry,
+                        htmlspecialchars($stroke),
+                        $strokeWidth,
+                        htmlspecialchars($ann['type'] ?? '')
+                    );
+                    break;
+
+                case 'polygon':
+                    if (!empty($ann['points'])) {
+                        $points = is_array($ann['points']) ? implode(' ', $ann['points']) : $ann['points'];
+                        $svg .= sprintf(
+                            '  <polygon id="%s" points="%s" stroke="%s" stroke-width="%d" fill="none" data-type="%s"/>' . "\n",
+                            htmlspecialchars($id),
+                            htmlspecialchars($points),
+                            htmlspecialchars($stroke),
+                            $strokeWidth,
+                            htmlspecialchars($ann['type'] ?? '')
+                        );
+                    }
+                    break;
+            }
+        }
+
+        $svg .= '</svg>';
+
+        return $svg;
+    }
+
+    /**
+     * Build annotation body text for IIIF
+     */
+    private static function buildAnnotationBody(array $ann): string
+    {
+        $body = '';
+
+        if (!empty($ann['label'])) {
+            $body .= '<strong>' . htmlspecialchars($ann['label']) . '</strong><br>';
+        }
+
+        if (!empty($ann['category'])) {
+            $body .= '<em>Type:</em> ' . htmlspecialchars(ucfirst($ann['category'])) . '<br>';
+        }
+
+        if (!empty($ann['severity'])) {
+            $body .= '<em>Severity:</em> ' . htmlspecialchars(ucfirst($ann['severity'])) . '<br>';
+        }
+
+        if (!empty($ann['notes'])) {
+            $body .= '<p>' . nl2br(htmlspecialchars($ann['notes'])) . '</p>';
+        }
+
+        return $body ?: 'Condition annotation';
+    }
+
+    /**
+     * Create preservation package with images and metadata
+     */
+    public static function createPreservationPackage(int $checkId, string $outputDir): ?string
+    {
+        try {
+            $check = DB::table('spectrum_condition_check')
+                ->where('id', $checkId)
+                ->first();
+
+            if (!$check) {
+                return null;
+            }
+
+            // Create package directory
+            $packageId = 'condition-' . $checkId . '-' . date('Ymd-His');
+            $packageDir = $outputDir . '/' . $packageId;
+
+            if (!is_dir($packageDir)) {
+                mkdir($packageDir, 0755, true);
+            }
+
+            // Create subdirectories
+            mkdir($packageDir . '/images', 0755, true);
+            mkdir($packageDir . '/overlays', 0755, true);
+            mkdir($packageDir . '/metadata', 0755, true);
+
+            // Export JSON metadata
+            $package = self::exportAsJsonPackage($checkId);
+            file_put_contents(
+                $packageDir . '/metadata/condition-report.json',
+                json_encode($package, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES)
+            );
+
+            // Export IIIF manifest
+            $manifest = self::exportAsIiifManifest($checkId);
+            file_put_contents(
+                $packageDir . '/metadata/iiif-manifest.json',
+                json_encode($manifest, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES)
+            );
+
+            // Copy images and create overlays
+            $photos = DB::table('spectrum_condition_photo')
+                ->where('condition_check_id', $checkId)
+                ->get();
+
+            $uploadDir = sfConfig::get('sf_upload_dir', '/uploads') . '/condition_photos';
+
+            foreach ($photos as $photo) {
+                // Copy original image
+                $sourcePath = $uploadDir . '/' . $photo->filename;
+                if (file_exists($sourcePath)) {
+                    copy($sourcePath, $packageDir . '/images/' . $photo->filename);
+                }
+
+                // Generate SVG overlay
+                $annotations = json_decode($photo->annotation_data ?? '[]', true);
+                if (!empty($annotations)) {
+                    $svg = self::generateSvgOverlay($annotations, $photo->id);
+                    $svgFilename = pathinfo($photo->filename, PATHINFO_FILENAME) . '.svg';
+                    file_put_contents($packageDir . '/overlays/' . $svgFilename, $svg);
+                }
+            }
+
+            // Create manifest file
+            $manifestContent = [
+                'package_id' => $packageId,
+                'created' => date('c'),
+                'checksum' => hash_file('sha256', $packageDir . '/metadata/condition-report.json'),
+                'files' => [],
+            ];
+
+            // List all files in package
+            $iterator = new \RecursiveIteratorIterator(
+                new \RecursiveDirectoryIterator($packageDir)
+            );
+
+            foreach ($iterator as $file) {
+                if ($file->isFile()) {
+                    $relativePath = str_replace($packageDir . '/', '', $file->getPathname());
+                    $manifestContent['files'][] = [
+                        'path' => $relativePath,
+                        'size' => $file->getSize(),
+                        'checksum' => hash_file('sha256', $file->getPathname()),
+                    ];
+                }
+            }
+
+            file_put_contents(
+                $packageDir . '/manifest.json',
+                json_encode($manifestContent, JSON_PRETTY_PRINT)
+            );
+
+            self::getLogger()->info('Preservation package created', [
+                'check_id' => $checkId,
+                'package_id' => $packageId,
+            ]);
+
+            return $packageDir;
+
+        } catch (\Exception $e) {
+            self::getLogger()->error('Failed to create preservation package', [
+                'check_id' => $checkId,
+                'error' => $e->getMessage(),
+            ]);
+            return null;
+        }
+    }
+}

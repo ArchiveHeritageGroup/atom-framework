@@ -1,0 +1,59 @@
+<?php
+
+// Dont define if were in Symfony context - let core handle it
+if (defined('SF_ROOT_DIR')) {
+    return;
+}
+
+use Illuminate\Database\Capsule\Manager as DB;
+
+/**
+ * QubitTerm Compatibility Layer
+ */
+if (!class_exists('QubitTerm', false)) {
+    class QubitTerm
+    {
+        const CREATION_ID = 111;
+        const ACCUMULATION_ID = 113;
+        const PUBLICATION_STATUS_DRAFT_ID = 159;
+        const PUBLICATION_STATUS_PUBLISHED_ID = 160;
+        const THUMBNAIL_ID = 137;
+        const REFERENCE_ID = 138;
+        const MASTER_ID = 139;
+        const DONOR_ID = 225;
+        const ACCESSION_ID = 174;
+        
+        public static function getById(int $id): ?object
+        {
+            $culture = 'en';
+            if (class_exists('sfContext') && \sfContext::hasInstance()) {
+                $culture = \sfContext::getInstance()->getUser()->getCulture();
+            }
+            
+            return DB::table('term as t')
+                ->leftJoin('term_i18n as ti', function($j) use ($culture) {
+                    $j->on('t.id', '=', 'ti.id')->where('ti.culture', '=', $culture);
+                })
+                ->where('t.id', $id)
+                ->select('t.*', 'ti.name')
+                ->first();
+        }
+        
+        public static function getLevelsOfDescription(): \Illuminate\Support\Collection
+        {
+            $culture = 'en';
+            if (class_exists('sfContext') && \sfContext::hasInstance()) {
+                $culture = \sfContext::getInstance()->getUser()->getCulture();
+            }
+            
+            return DB::table('term as t')
+                ->leftJoin('term_i18n as ti', function($j) use ($culture) {
+                    $j->on('t.id', '=', 'ti.id')->where('ti.culture', '=', $culture);
+                })
+                ->where('t.taxonomy_id', 34)
+                ->orderBy('ti.name')
+                ->select('t.id', 'ti.name')
+                ->get();
+        }
+    }
+}

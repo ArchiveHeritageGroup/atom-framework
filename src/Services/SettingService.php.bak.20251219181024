@@ -1,0 +1,142 @@
+<?php
+declare(strict_types=1);
+namespace AtomExtensions\Services;
+
+use AtomExtensions\Helpers\CultureHelper;
+
+use Illuminate\Database\Capsule\Manager as DB;
+use Illuminate\Support\Collection;
+
+/**
+ * Setting Service - Replaces QubitSetting (316 uses)
+ */
+class SettingService
+{
+    private static ?array $cache = null;
+    private static string $culture = CultureHelper::getCulture();
+
+    public static function getByName(string $name, ?string $culture = null): ?object
+    {
+        $culture = $culture ?? self::$culture;
+        $setting = DB::table('setting as s')
+            ->leftJoin('setting_i18n as si', fn($j) => $j->on('s.id', '=', 'si.id')->where('si.culture', $culture))
+            ->where('s.name', $name)
+            ->select('s.*', 'si.value', 'si.culture')
+            ->first();
+        
+        if ($setting) {
+            $setting->_value = $setting->value;
+        }
+        return $setting;
+    }
+
+    public static function getByNameAndScope(string $name, string $scope, ?string $culture = null): ?object
+    {
+        $culture = $culture ?? self::$culture;
+        return DB::table('setting as s')
+            ->leftJoin('setting_i18n as si', fn($j) => $j->on('s.id', '=', 'si.id')->where('si.culture', $culture))
+            ->where('s.name', $name)
+            ->where('s.scope', $scope)
+            ->select('s.*', 'si.value', 'si.culture')
+            ->first();
+    }
+
+    public static function getByScope(string $scope, ?string $culture = null): Collection
+    {
+        $culture = $culture ?? self::$culture;
+        return DB::table('setting as s')
+            ->leftJoin('setting_i18n as si', fn($j) => $j->on('s.id', '=', 'si.id')->where('si.culture', $culture))
+            ->where('s.scope', $scope)
+            ->select('s.*', 'si.value', 'si.culture')
+            ->get();
+    }
+
+    public static function getById(int $id, ?string $culture = null): ?object
+    {
+        $culture = $culture ?? self::$culture;
+        return DB::table('setting as s')
+            ->leftJoin('setting_i18n as si', fn($j) => $j->on('s.id', '=', 'si.id')->where('si.culture', $culture))
+            ->where('s.id', $id)
+            ->select('s.*', 'si.value', 'si.culture')
+            ->first();
+    }
+
+    public static function getValue(string $name, array $options = []): ?string
+    {
+        $culture = $options['culture'] ?? self::$culture;
+        $sourceCulture = $options['sourceCulture'] ?? false;
+        
+        $query = DB::table('setting as s')
+            ->leftJoin('setting_i18n as si', 's.id', '=', 'si.id')
+            ->where('s.name', $name);
+        
+        if ($sourceCulture) {
+            $query->whereRaw('si.culture = s.source_culture');
+        } else {
+            $query->where('si.culture', $culture);
+        }
+        
+        $result = $query->select('si.value')->first();
+        return $result?->value;
+    }
+
+    public static function findAndSave(string $name, ?string $value, array $options = []): object
+    {
+        $scope = $options['scope'] ?? null;
+        $culture = $options['culture'] ?? self::$culture;
+        
+        $existing = $scope ? self::getByNameAndScope($name, $scope, $culture) : self::getByName($name, $culture);
+        
+        if ($existing) {
+            DB::table('setting_i18n')->updateOrInsert(
+                ['id' => $existing->id, 'culture' => $culture],
+                ['value' => $value]
+            );
+            self::clearCache();
+            return (object) array_merge((array) $existing, ['value' => $value]);
+        }
+        
+        return self::createNewSetting($name, $value, array_merge($options, ['scope' => $scope]));
+    }
+
+    public static function createNewSetting(string $name, ?string $value, array $options = []): object
+    {
+        $culture = $options['culture'] ?? self::$culture;
+        
+        $objectId = DB::table('object')->insertGetId([
+            'class_name' => 'QubitSetting',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+        
+        DB::table('setting')->insert([
+            'id' => $objectId,
+            'name' => $name,
+            'scope' => $options['scope'] ?? null,
+            'editable' => ($options['editable'] ?? true) ? 1 : 0,
+            'deleteable' => ($options['deleteable'] ?? true) ? 1 : 0,
+            'source_culture' => $culture,
+        ]);
+        
+        if ($value !== null) {
+            DB::table('setting_i18n')->insert([
+                'id' => $objectId,
+                'culture' => $culture,
+                'value' => $value,
+            ]);
+        }
+        
+        self::clearCache();
+        return (object) ['id' => $objectId, 'name' => $name, 'value' => $value];
+    }
+
+    public static function clearCache(): void
+    {
+        self::$cache = null;
+    }
+
+    public static function setCulture(string $culture): void
+    {
+        self::$culture = $culture;
+    }
+}

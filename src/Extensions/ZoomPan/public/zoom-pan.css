@@ -1,0 +1,177 @@
+.zoom-pan-container {
+    width: 100% !important;
+    height: 600px !important;
+    max-height: 600px !important;
+    position: relative !important;
+    overflow: hidden !important;
+    background: #000 !important;
+    border-radius: 6px;
+}
+
+/* Stage */
+.zoom-pan-stage {
+    width: 100% !important;
+    height: 100% !important;
+    overflow: auto !important;
+    background: #111 !important;
+    position: relative !important;
+}
+
+/* Fit-to-frame image for initial load */
+.zoom-pan-stage img {
+    max-width: 100% !important;
+    max-height: 100% !important;
+    object-fit: contain !important;
+
+    display: block !important;
+    margin: auto !important;
+}
+
+/* Toolbar */
+.zoom-pan-toolbar {
+    position: absolute !important;
+    top: 10px !important;
+    left: 10px !important; 
+    z-index: 9999 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 6px !important;
+}
+
+.zoom-pan-toolbar button {
+    width: 38px;
+    height: 38px;
+    border-radius: 6px;
+    border: 1px solid #444;
+    background: rgba(0,0,0,0.6);
+    color: #fff;
+    font-size: 18px;
+    cursor: pointer;
+}
+
+.zoom-pan-toolbar button:hover {
+    background: rgba(255,255,255,0.15);
+}
+
+/* UNIVERSAL button style */
+/* ===============================
+   UNIVERSAL BUTTON STYLING
+   =============================== */
+.zp-btn {
+    width: 40px !important;
+    height: 40px !important;
+
+    background-size: 36px 36px !important;
+    background-repeat: no-repeat !important;
+    background-position: center !important;
+
+    background-color: transparent !important;
+    border: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+
+    cursor: pointer;
+    display: inline-block !important;
+}
+
+/* ===============================
+   ZOOM IN
+   =============================== */
+.zoom-in {
+    background-image: url('/atom-framework/src/Extensions/ZoomPan/public/icons/zoomin_rest.png') !important;
+}
+.zoom-in:hover {
+    background-image: url('/atom-framework/src/Extensions/ZoomPan/public/icons/zoomin_hover.png') !important;
+}
+.zoom-in:active {
+    background-image: url('/atom-framework/src/Extensions/ZoomPan/public/icons/zoomin_pressed.png') !important;
+}
+
+/* ===============================
+   ZOOM OUT
+   =============================== */
+.zoom-out {
+    background-image: url('/atom-framework/src/Extensions/ZoomPan/public/icons/zoomout_rest.png') !important;
+}
+.zoom-out:hover {
+    background-image: url('/atom-framework/src/Extensions/ZoomPan/public/icons/zoomout_hover.png') !important;
+}
+.zoom-out:active {
+    background-image: url('/atom-framework/src/Extensions/ZoomPan/public/icons/zoomout_pressed.png') !important;
+}
+
+/* ===============================
+   ROTATE LEFT
+   =============================== */
+.rotate-left {
+    background-image: url('/atom-framework/src/Extensions/ZoomPan/public/icons/rotateleft_rest.png') !important;
+}
+.rotate-left:hover {
+    background-image: url('/atom-framework/src/Extensions/ZoomPan/public/icons/rotateleft_hover.png') !important;
+}
+.rotate-left:active {
+    background-image: url('/atom-framework/src/Extensions/ZoomPan/public/icons/rotateleft_pressed.png') !important;
+}
+
+/* ===============================
+   ROTATE RIGHT
+   =============================== */
+.rotate-right {
+    background-image: url('/atom-framework/src/Extensions/ZoomPan/public/icons/rotateright_rest.png') !important;
+}
+.rotate-right:hover {
+    background-image: url('/atom-framework/src/Extensions/ZoomPan/public/icons/rotateright_hover.png') !important;
+}
+.rotate-right:active {
+    background-image: url('/atom-framework/src/Extensions/ZoomPan/public/icons/rotateright_pressed.png') !important;
+}
+
+/* ===============================
+   RESET (HOME)
+   =============================== */
+.reset-btn {
+    background-image: url('/atom-framework/src/Extensions/ZoomPan/public/icons/home_rest.png') !important;
+}
+.reset-btn:hover {
+    background-image: url('/atom-framework/src/Extensions/ZoomPan/public/icons/home_hover.png') !important;
+}
+.reset-btn:active {
+    background-image: url('/atom-framework/src/Extensions/ZoomPan/public/icons/home_pressed.png') !important;
+}
+
+/* ===============================
+   FULLSCREEN
+   =============================== */
+.fullscreen-btn {
+    background-image: url('/atom-framework/src/Extensions/ZoomPan/public/icons/fullpage_rest.png') !important;
+}
+.fullscreen-btn:hover {
+    background-image: url('/atom-framework/src/Extensions/ZoomPan/public/icons/fullpage_hover.png') !important;
+}
+.fullscreen-btn:active {
+    background-image: url('/atom-framework/src/Extensions/ZoomPan/public/icons/fullpage_pressed.png') !important;
+}
+
+/* ===============================
+   TOOLBAR POSITION
+   =============================== */
+.zoom-pan-toolbar {
+    position: absolute !important;
+    top: 10px !important;
+    left: 10px !important; /* ✔ Move to left */
+    z-index: 9999 !important;
+
+    display: flex !important;
+    flex-direction: row !important; /* ✔ Horizontal row */
+    gap: 6px !important;
+}
+
+/* Fade in on hover like IIIF */
+.zoom-pan-toolbar {
+    opacity: 0;
+    transition: opacity 0.25s ease;
+}
+
+.zoom-pan-container:hover .zoom-pan-toolbar {
+    opacity: 1;
+}

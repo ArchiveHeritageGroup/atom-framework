@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Image Viewer</title>
+    <style>
+        html, body { margin: 0; padding: 0; height: 100%; background: #1a1a1a; }
+        #viewer { position: absolute; top: 0; left: 0; right: 0; bottom: 0; }
+    </style>
+</head>
+<body>
+    <div id="viewer"></div>
+    <script src="openseadragon.min.js"></script>
+    <script>
+        const params = new URLSearchParams(window.location.search);
+        const iiif = params.get('iiif');
+        if (iiif) {
+            OpenSeadragon({
+                id: 'viewer',
+                prefixUrl: 'https://cdnjs.cloudflare.com/ajax/libs/openseadragon/4.1.0/images/',
+                tileSources: [iiif + '/info.json'],
+                showNavigator: true,
+                navigatorPosition: 'BOTTOM_RIGHT'
+            });
+        }
+    </script>
+</body>
+</html>

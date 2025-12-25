@@ -1,0 +1,886 @@
+<?php
+
+declare(strict_types=1);
+
+namespace AtomExtensions\Services;
+
+use AtomExtensions\Helpers\CultureHelper;
+
+use Illuminate\Database\Capsule\Manager as DB;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Http\UploadedFile;
+use AtomExtensions\Config\DigitalObjectConfig;
+use AtomExtensions\Extensions\MetadataExtraction\Handlers\MetadataExtractionHandler;
+
+/**
+ * Digital Object Service
+ *
+ * Comprehensive service for handling digital object uploads, derivatives,
+ * and metadata extraction. Uses Laravel Query Builder for all database operations.
+ *
+ * @author Johan Pieterse <johan@theahg.co.za>
+ */
+class DigitalObjectService
+{
+    protected int $referenceMaxWidth;
+    protected int $referenceMaxHeight;
+    protected int $thumbnailMaxWidth;
+    protected int $thumbnailMaxHeight;
+    protected string $uploadDir;
+    protected array $thumbnailableFormats;
+    protected array $webCompatibleFormats;
+    protected array $mimeExtensions;
+    protected int $jpegQuality;
+
+    public function __construct()
+    {
+        $this->uploadDir = DigitalObjectConfig::uploadDirectory();
+        $this->referenceMaxWidth = DigitalObjectConfig::referenceMaxWidth();
+        $this->referenceMaxHeight = DigitalObjectConfig::referenceMaxHeight();
+        $this->thumbnailMaxWidth = DigitalObjectConfig::thumbnailMaxWidth();
+        $this->thumbnailMaxHeight = DigitalObjectConfig::thumbnailMaxHeight();
+        $this->thumbnailableFormats = DigitalObjectConfig::thumbnailableFormats();
+        $this->webCompatibleFormats = DigitalObjectConfig::webCompatibleFormats();
+        $this->mimeExtensions = DigitalObjectConfig::mimeExtensions();
+        $this->jpegQuality = DigitalObjectConfig::jpegQuality();
+
+        // Override from sfConfig if available (backward compatibility)
+        if (class_exists('sfConfig')) {
+            $refWidth = \sfConfig::get('app_reference_image_maxwidth');
+            if ($refWidth) {
+                $this->referenceMaxWidth = (int) $refWidth;
+            }
+
+            $uploadDir = \sfConfig::get('sf_upload_dir');
+            if ($uploadDir) {
+                $this->uploadDir = $uploadDir;
+            }
+        }
+    }
+
+    /**
+     * Upload a digital object from a file
+     */
+    public function uploadFromFile(int $objectId, $file, array $options = []): array
+    {
+        try {
+            $object = $this->getInformationObjectById($objectId);
+            if (!$object) {
+                return $this->error('Information object not found');
+            }
+
+            $limitCheck = $this->checkUploadLimits($object);
+            if (!$limitCheck['allowed']) {
+                return $this->error($limitCheck['message']);
+            }
+
+            $existingDO = $this->getDigitalObjectByObjectId($objectId);
+            if ($existingDO) {
+                if (!($options['replace'] ?? false)) {
+                    return $this->error('Object already has a digital object. Use replace option to overwrite.');
+                }
+                $this->deleteDigitalObject($existingDO->id);
+            }
+
+            if ($file instanceof UploadedFile) {
+                $filename = $file->getClientOriginalName();
+                $tempPath = $file->getPathname();
+                $mimeType = $file->getMimeType();
+            } elseif (is_array($file)) {
+                $filename = $file['name'] ?? basename($file['tmp_name']);
+                $tempPath = $file['tmp_name'];
+                $mimeType = $file['type'] ?? mime_content_type($tempPath);
+
+                if (isset($file['error']) && $file['error'] !== UPLOAD_ERR_OK) {
+                    return $this->error($this->getUploadErrorMessage($file['error']));
+                }
+            } else {
+                return $this->error('Invalid file input');
+            }
+
+            if (!file_exists($tempPath)) {
+                return $this->error('Uploaded file not found');
+            }
+
+            $contents = file_get_contents($tempPath);
+            if ($contents === false) {
+                return $this->error('Could not read uploaded file');
+            }
+
+            $digitalObject = $this->createDigitalObject($object, $filename, $contents, [
+                'usageId' => DigitalObjectConfig::usageMaster(),
+                'mimeType' => $mimeType,
+                'createDerivatives' => $options['createDerivatives'] ?? true,
+                'extractMetadata' => $options['extractMetadata'] ?? DigitalObjectConfig::extractMetadataOnUpload(),
+            ]);
+
+            return $this->success('Digital object uploaded successfully', [
+                'digital_object_id' => $digitalObject->id,
+                'filename' => $filename,
+                'mime_type' => $digitalObject->mime_type,
+                'byte_size' => $digitalObject->byte_size,
+                'checksum' => $digitalObject->checksum,
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('DigitalObjectService::uploadFromFile failed: ' . $e->getMessage());
+            return $this->error('Upload failed: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Import digital object from URL
+     */
+    public function importFromUrl(int $objectId, string $url, array $options = []): array
+    {
+        try {
+            if (!filter_var($url, FILTER_VALIDATE_URL)) {
+                return $this->error('Invalid URL format');
+            }
+
+            $object = $this->getInformationObjectById($objectId);
+            if (!$object) {
+                return $this->error('Information object not found');
+            }
+
+            $limitCheck = $this->checkUploadLimits($object);
+            if (!$limitCheck['allowed']) {
+                return $this->error($limitCheck['message']);
+            }
+
+            $existingDO = $this->getDigitalObjectByObjectId($objectId);
+            if ($existingDO) {
+                if (!($options['replace'] ?? false)) {
+                    return $this->error('Object already has a digital object');
+                }
+                $this->deleteDigitalObject($existingDO->id);
+            }
+
+            $tempFile = tempnam(sys_get_temp_dir(), 'atom_import_');
+            $contents = @file_get_contents($url);
+            if ($contents === false) {
+                return $this->error('Could not download file from URL');
+            }
+            file_put_contents($tempFile, $contents);
+
+            $filename = basename(parse_url($url, PHP_URL_PATH)) ?: 'imported_file';
+            $mimeType = mime_content_type($tempFile);
+
+            $digitalObjectId = $this->insertDigitalObject([
+                'object_id' => $objectId,
+                'usage_id' => DigitalObjectConfig::usageMaster(),
+                'mime_type' => $mimeType,
+                'byte_size' => strlen($contents),
+                'checksum' => md5($contents),
+                'checksum_type' => 'md5',
+                'name' => $filename,
+                'media_type_id' => $this->determineMediaType($mimeType),
+            ]);
+
+            $this->storeDigitalObjectFile($digitalObjectId, $filename, $contents);
+
+            if ($options['createDerivatives'] ?? true) {
+                $this->createDerivatives($digitalObjectId, $tempFile, $mimeType);
+            }
+
+            $this->updateSearchIndex($objectId);
+
+            @unlink($tempFile);
+
+            return $this->success('Digital object imported from URL', [
+                'digital_object_id' => $digitalObjectId,
+                'url' => $url,
+                'mime_type' => $mimeType,
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('DigitalObjectService::importFromUrl failed: ' . $e->getMessage());
+            return $this->error('Import failed: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Create a digital object with proper file handling
+     */
+    protected function createDigitalObject(
+        object $object,
+        string $filename,
+        string $contents,
+        array $options = []
+    ): object {
+        $mimeType = $options['mimeType'] ?? mime_content_type('data://text/plain;base64,' . base64_encode($contents));
+        $byteSize = strlen($contents);
+        $checksum = md5($contents);
+
+        $digitalObjectId = $this->insertDigitalObject([
+            'object_id' => $object->id,
+            'usage_id' => $options['usageId'] ?? DigitalObjectConfig::usageMaster(),
+            'mime_type' => $mimeType,
+            'byte_size' => $byteSize,
+            'checksum' => $checksum,
+            'checksum_type' => 'md5',
+            'name' => $filename,
+            'media_type_id' => $this->determineMediaType($mimeType),
+        ]);
+
+        $this->storeDigitalObjectFile($digitalObjectId, $filename, $contents);
+
+        if ($options['createDerivatives'] ?? true) {
+            $tempFile = tempnam(sys_get_temp_dir(), 'atom_');
+            file_put_contents($tempFile, $contents);
+            $this->createDerivatives($digitalObjectId, $tempFile, $mimeType);
+            @unlink($tempFile);
+        }
+
+        if ($options['extractMetadata'] ?? true) {
+            $this->extractMetadataForObject($digitalObjectId, $object->id);
+        }
+
+        $this->updateSearchIndex($object->id);
+
+        return $this->getDigitalObjectById($digitalObjectId);
+    }
+
+    /**
+     * Insert digital object record
+     */
+    protected function insertDigitalObject(array $data): int
+    {
+        $objectId = DB::table('object')->insertGetId([
+            'class_name' => DigitalObjectConfig::classDigitalObject(),
+            'created_at' => date('Y-m-d H:i:s'),
+            'updated_at' => date('Y-m-d H:i:s'),
+        ]);
+
+        DB::table('digital_object')->insert([
+            'id' => $objectId,
+            'object_id' => $data['object_id'],
+            'usage_id' => $data['usage_id'] ?? DigitalObjectConfig::usageMaster(),
+            'mime_type' => $data['mime_type'] ?? null,
+            'media_type_id' => $data['media_type_id'] ?? null,
+            'name' => $data['name'] ?? '',
+            'path' => $data['path'] ?? '',
+            'byte_size' => $data['byte_size'] ?? null,
+            'checksum' => $data['checksum'] ?? null,
+            'checksum_type' => $data['checksum_type'] ?? null,
+            'sequence' => $data['sequence'] ?? null,
+        ]);
+
+        return $objectId;
+    }
+
+    /**
+     * Store digital object file to filesystem
+     */
+    protected function storeDigitalObjectFile(int $digitalObjectId, string $filename, string $contents): string
+    {
+        $path = $this->generateStoragePath($digitalObjectId);
+        $fullPath = $this->uploadDir . '/' . $path;
+
+        if (!is_dir($fullPath)) {
+            mkdir($fullPath, 0755, true);
+        }
+
+        $storedFilename = $digitalObjectId . '_' . $this->sanitizeFilename($filename);
+        $fullFilePath = $fullPath . '/' . $storedFilename;
+        file_put_contents($fullFilePath, $contents);
+        chmod($fullFilePath, 0644);
+
+        DB::table('digital_object')
+            ->where('id', $digitalObjectId)
+            ->update(['path' => $path . '/' . $storedFilename]);
+
+        return $fullFilePath;
+    }
+
+    /**
+     * Generate storage path for digital object
+     */
+    protected function generateStoragePath(int $id): string
+    {
+        $parts = str_split(str_pad((string)$id, 9, '0', STR_PAD_LEFT), 3);
+        return implode('/', $parts);
+    }
+
+    /**
+     * Sanitize filename
+     */
+    protected function sanitizeFilename(string $filename): string
+    {
+        return preg_replace('/[^a-z0-9_\.-]/i', '_', $filename);
+    }
+
+    /**
+     * Determine media type from MIME type
+     */
+    protected function determineMediaType(string $mimeType): int
+    {
+        if (strpos($mimeType, 'image/') === 0) {
+            return DigitalObjectConfig::mediaImage();
+        }
+        if (strpos($mimeType, 'audio/') === 0) {
+            return DigitalObjectConfig::mediaAudio();
+        }
+        if (strpos($mimeType, 'video/') === 0) {
+            return DigitalObjectConfig::mediaVideo();
+        }
+        if (strpos($mimeType, 'text/') === 0 || $mimeType === 'application/pdf') {
+            return DigitalObjectConfig::mediaText();
+        }
+        return DigitalObjectConfig::mediaOther();
+    }
+
+    /**
+     * Create derivatives (reference and thumbnail)
+     */
+    protected function createDerivatives(int $parentId, string $sourcePath, string $mimeType): void
+    {
+        if (!in_array($mimeType, $this->thumbnailableFormats)) {
+            return;
+        }
+
+        try {
+            $this->createDerivative(
+                $parentId,
+                $sourcePath,
+                DigitalObjectConfig::usageReference(),
+                $this->referenceMaxWidth,
+                $this->referenceMaxHeight
+            );
+
+            $this->createDerivative(
+                $parentId,
+                $sourcePath,
+                DigitalObjectConfig::usageThumbnail(),
+                $this->thumbnailMaxWidth,
+                $this->thumbnailMaxHeight
+            );
+
+        } catch (\Exception $e) {
+            Log::warning('Failed to create derivatives: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Create a single derivative
+     */
+    protected function createDerivative(int $parentId, string $sourcePath, int $usageId, int $maxWidth, int $maxHeight): void
+    {
+        $imageInfo = @getimagesize($sourcePath);
+        if (!$imageInfo) {
+            return;
+        }
+
+        $srcWidth = $imageInfo[0];
+        $srcHeight = $imageInfo[1];
+
+        $ratio = min($maxWidth / $srcWidth, $maxHeight / $srcHeight);
+        if ($ratio >= 1) {
+            $ratio = 1;
+        }
+        $newWidth = (int)($srcWidth * $ratio);
+        $newHeight = (int)($srcHeight * $ratio);
+
+        $srcImage = $this->createImageFromFile($sourcePath, $imageInfo['mime']);
+        if (!$srcImage) {
+            return;
+        }
+
+        $dstImage = imagecreatetruecolor($newWidth, $newHeight);
+
+        if ($imageInfo['mime'] === 'image/png') {
+            imagealphablending($dstImage, false);
+            imagesavealpha($dstImage, true);
+        }
+
+        imagecopyresampled($dstImage, $srcImage, 0, 0, 0, 0, $newWidth, $newHeight, $srcWidth, $srcHeight);
+
+        $tempFile = tempnam(sys_get_temp_dir(), 'derivative_');
+        imagejpeg($dstImage, $tempFile, $this->jpegQuality);
+
+        $contents = file_get_contents($tempFile);
+
+        $derivativeName = ($usageId === DigitalObjectConfig::usageReference() ? 'reference' : 'thumbnail') . '.jpg';
+
+        $derivativeId = $this->insertDigitalObject([
+            'object_id' => null,
+            'usage_id' => $usageId,
+            'mime_type' => 'image/jpeg',
+            'byte_size' => strlen($contents),
+            'checksum' => md5($contents),
+            'checksum_type' => 'md5',
+            'name' => $derivativeName,
+            'media_type_id' => DigitalObjectConfig::mediaImage(),
+        ]);
+
+        DB::table('digital_object')
+            ->where('id', $derivativeId)
+            ->update(['parent_id' => $parentId]);
+
+        $this->storeDigitalObjectFile($derivativeId, $derivativeName, $contents);
+
+        imagedestroy($srcImage);
+        imagedestroy($dstImage);
+        @unlink($tempFile);
+    }
+
+    /**
+     * Create image resource from file
+     */
+    protected function createImageFromFile(string $path, string $mimeType)
+    {
+        switch ($mimeType) {
+            case 'image/jpeg':
+                return @imagecreatefromjpeg($path);
+            case 'image/png':
+                return @imagecreatefrompng($path);
+            case 'image/gif':
+                return @imagecreatefromgif($path);
+            case 'image/webp':
+                return @imagecreatefromwebp($path);
+            default:
+                return false;
+        }
+    }
+
+    /**
+     * Check upload limits
+     */
+    public function checkUploadLimits(object $object): array
+    {
+        if (!$this->isUploadAllowed()) {
+            return [
+                'allowed' => false,
+                'message' => 'Uploads are disabled',
+            ];
+        }
+
+        if ($this->reachedAppUploadLimit()) {
+            $limit = class_exists('sfConfig') ? \sfConfig::get('app_upload_limit', 0) : 0;
+            return [
+                'allowed' => false,
+                'message' => "The maximum disk space of {$limit} GB for uploads has been reached",
+            ];
+        }
+
+        $repositoryId = $this->getRepositoryIdForObject($object->id);
+        if ($repositoryId) {
+            $repository = DB::table('repository')
+                ->where('id', $repositoryId)
+                ->first();
+
+            if ($repository) {
+                $repoLimit = $repository->upload_limit ?? -1;
+
+                if ($repoLimit === 0) {
+                    $repoName = $this->getRepositoryName($repositoryId);
+                    return [
+                        'allowed' => false,
+                        'message' => "Uploads are disabled for repository: {$repoName}",
+                    ];
+                }
+
+                if ($repoLimit > 0) {
+                    $diskUsage = $this->getRepositoryDiskUsage($repositoryId) / pow(10, 9);
+                    if ($diskUsage >= $repoLimit) {
+                        $repoName = $this->getRepositoryName($repositoryId);
+                        return [
+                            'allowed' => false,
+                            'message' => "Upload limit of {$repoLimit} GB for {$repoName} has been reached",
+                        ];
+                    }
+                }
+            }
+        }
+
+        return ['allowed' => true, 'message' => 'OK'];
+    }
+
+    /**
+     * Check if uploads are allowed globally
+     */
+    protected function isUploadAllowed(): bool
+    {
+        if (class_exists('sfConfig')) {
+            return 0 !== \sfConfig::get('app_upload_limit', 0);
+        }
+        return true;
+    }
+
+    /**
+     * Check if app upload limit reached
+     */
+    protected function reachedAppUploadLimit(): bool
+    {
+        $limit = class_exists('sfConfig') ? \sfConfig::get('app_upload_limit', 0) : 0;
+        if ($limit <= 0) {
+            return false;
+        }
+
+        $totalSize = DB::table('digital_object')->sum('byte_size') ?? 0;
+        $totalSizeGb = $totalSize / pow(10, 9);
+
+        return $totalSizeGb >= $limit;
+    }
+
+    /**
+     * Get repository ID for an information object (with inheritance)
+     */
+    protected function getRepositoryIdForObject(int $objectId): ?int
+    {
+        $result = DB::table('information_object')
+            ->where('id', $objectId)
+            ->first();
+
+        if (!$result) {
+            return null;
+        }
+
+        if ($result->repository_id) {
+            return $result->repository_id;
+        }
+
+        if ($result->parent_id) {
+            return $this->getRepositoryIdForObject($result->parent_id);
+        }
+
+        return null;
+    }
+
+    /**
+     * Get repository name
+     */
+    protected function getRepositoryName(int $repositoryId): string
+    {
+        $name = DB::table('actor_i18n')
+            ->where('id', $repositoryId)
+            ->where('culture', CultureHelper::getCulture())
+            ->value('authorized_form_of_name');
+
+        return $name ?? 'Unknown Repository';
+    }
+
+    /**
+     * Get repository disk usage
+     */
+    protected function getRepositoryDiskUsage(int $repositoryId): int
+    {
+        $objectIds = DB::table('information_object')
+            ->where('repository_id', $repositoryId)
+            ->pluck('id')
+            ->all();
+
+        if (empty($objectIds)) {
+            return 0;
+        }
+
+        return (int) DB::table('digital_object')
+            ->whereIn('object_id', $objectIds)
+            ->sum('byte_size');
+    }
+
+    /**
+     * Get maximum upload size in bytes
+     */
+    public function getMaxUploadSize(): int
+    {
+        $uploadMax = $this->parseSize(ini_get('upload_max_filesize'));
+        $postMax = $this->parseSize(ini_get('post_max_size'));
+
+        return min($uploadMax, $postMax);
+    }
+
+    /**
+     * Get maximum post size in bytes
+     */
+    public function getMaxPostSize(): int
+    {
+        return $this->parseSize(ini_get('post_max_size'));
+    }
+
+    /**
+     * Parse PHP size string to bytes
+     */
+    protected function parseSize(string $size): int
+    {
+        $unit = strtoupper(substr($size, -1));
+        $value = (int) $size;
+
+        switch ($unit) {
+            case 'G':
+                $value *= 1024 * 1024 * 1024;
+                break;
+            case 'M':
+                $value *= 1024 * 1024;
+                break;
+            case 'K':
+                $value *= 1024;
+                break;
+        }
+
+        return $value;
+    }
+
+    /**
+     * Format bytes to human readable
+     */
+    public function formatBytes(int $bytes, int $precision = 2): string
+    {
+        $units = ['B', 'KB', 'MB', 'GB', 'TB'];
+
+        $bytes = max($bytes, 0);
+        $pow = floor(($bytes ? log($bytes) : 0) / log(1024));
+        $pow = min($pow, count($units) - 1);
+
+        $bytes /= pow(1024, $pow);
+
+        return round($bytes, $precision) . ' ' . $units[$pow];
+    }
+
+    /**
+     * Get information object by ID
+     */
+    public function getInformationObjectById(int $id): ?object
+    {
+        return DB::table('information_object as io')
+            ->join('object as o', 'io.id', '=', 'o.id')
+            ->leftJoin('information_object_i18n as i18n', function ($join) {
+                $join->on('io.id', '=', 'i18n.id')
+                    ->where('i18n.culture', '=', CultureHelper::getCulture());
+            })
+            ->where('io.id', $id)
+            ->where('o.class_name', DigitalObjectConfig::classInformationObject())
+            ->select(
+                'io.id',
+                'io.identifier',
+                'io.parent_id as parentId',
+                'io.repository_id as repositoryId',
+                'io.level_of_description_id as levelOfDescriptionId',
+                'io.publication_status_id as publicationStatusId',
+                'i18n.title',
+                'i18n.scope_and_content as scopeAndContent',
+                'i18n.physical_characteristics as physicalCharacteristics'
+            )
+            ->first();
+    }
+
+    /**
+     * Get digital object by ID
+     */
+    public function getDigitalObjectById(int $id): ?object
+    {
+        return DB::table('digital_object')
+            ->where('id', $id)
+            ->select(
+                'id',
+                'object_id',
+                'usage_id',
+                'mime_type',
+                'media_type_id',
+                'name',
+                'path',
+                'byte_size',
+                'checksum',
+                'checksum_type',
+                'parent_id'
+            )
+            ->first();
+    }
+
+    /**
+     * Get digital object by object ID (information object)
+     */
+    public function getDigitalObjectByObjectId(int $objectId): ?object
+    {
+        return DB::table('digital_object')
+            ->where('object_id', $objectId)
+            ->first();
+    }
+
+    /**
+     * Extract metadata for object using the handler
+     */
+    protected function extractMetadataForObject(int $digitalObjectId, int $objectId): void
+    {
+        try {
+            // Use the dedicated metadata extraction handler
+            $handler = new MetadataExtractionHandler();
+            
+            if ($handler->isEnabled()) {
+                $result = $handler->extractAndApply($digitalObjectId, $objectId);
+                
+                if ($result) {
+                    Log::info('Metadata extraction completed via handler for DO: ' . $digitalObjectId);
+                    return;
+                }
+            }
+            
+            // Fallback to basic extraction if handler fails or is disabled
+            $this->extractMetadataBasic($digitalObjectId, $objectId);
+            
+        } catch (\Exception $e) {
+            Log::warning('Metadata extraction failed: ' . $e->getMessage());
+            // Try basic extraction as fallback
+            $this->extractMetadataBasic($digitalObjectId, $objectId);
+        }
+    }
+
+/**
+     * Basic metadata extraction (fallback when handler unavailable)
+     */
+    protected function extractMetadataBasic(int $digitalObjectId, int $objectId): void
+    {
+        try {
+            $digitalObject = $this->getDigitalObjectById($digitalObjectId);
+            if (!$digitalObject || !$digitalObject->path) {
+                return;
+            }
+
+            $absPath = $this->uploadDir . '/' . $digitalObject->path;
+            if (!is_readable($absPath)) {
+                Log::warning('Metadata extraction: file not readable: ' . $absPath);
+                return;
+            }
+
+            $metadata = $this->extractMetadataFromFile($absPath);
+
+            if (empty($metadata)) {
+                Log::info('No metadata found in: ' . $absPath);
+                return;
+            }
+
+            Log::info('Extracted metadata (basic): ' . json_encode(array_keys($metadata)));
+
+            $this->applyMetadataToObject($metadata, $objectId);
+
+        } catch (\Exception $e) {
+            Log::warning('Basic metadata extraction failed: ' . $e->getMessage());
+        }
+    }
+	
+    /**
+     * Apply extracted metadata to information object
+     */
+    protected function applyMetadataToObject(array $metadata, int $objectId): void
+    {
+        $ioI18n = DB::table('information_object_i18n')
+            ->where('id', $objectId)
+            ->where('culture', CultureHelper::getCulture())
+            ->first();
+
+        $updates = [];
+
+        if (DigitalObjectConfig::applyMetadataToTitle()) {
+            if (empty($ioI18n->title ?? null) && !empty($metadata['title'])) {
+                $updates['title'] = $metadata['title'];
+            }
+        }
+
+        if (DigitalObjectConfig::get('metadata.apply_to_description')) {
+            if (empty($ioI18n->scope_and_content ?? null) && !empty($metadata['description'])) {
+                $updates['scope_and_content'] = $metadata['description'];
+            }
+        }
+
+        if (DigitalObjectConfig::get('metadata.apply_gps') && !empty($metadata['gps'])) {
+            $existing = $ioI18n->physical_characteristics ?? '';
+            $gpsNote = sprintf("GPS: %s, %s", $metadata['gps']['latitude'], $metadata['gps']['longitude']);
+            if (strpos($existing, 'GPS:') === false) {
+                $updates['physical_characteristics'] = trim($existing . "\n" . $gpsNote);
+            }
+        }
+
+        $techInfo = $this->formatTechnicalMetadata($metadata);
+        if ($techInfo) {
+            $existing = $ioI18n->physical_characteristics ?? $updates['physical_characteristics'] ?? '';
+            if (strpos($existing, 'Technical:') === false) {
+                $updates['physical_characteristics'] = trim($existing . "\n\n--- Technical Metadata ---\n" . $techInfo);
+            }
+        }
+
+        if (!empty($updates)) {
+            DB::table('information_object_i18n')
+                ->where('id', $objectId)
+                ->where('culture', CultureHelper::getCulture())
+                ->update($updates);
+            Log::info('Metadata applied to object: ' . $objectId);
+        }
+
+        if (DigitalObjectConfig::get('metadata.apply_creator') && !empty($metadata['creator'])) {
+            $this->addCreatorEvent($objectId, $metadata['creator']);
+        }
+
+        if (DigitalObjectConfig::get('metadata.apply_date') && !empty($metadata['date_created'])) {
+            $this->addDateEvent($objectId, $metadata['date_created']);
+        }
+    }
+
+    /**
+     * Extract metadata directly from file
+     */
+    protected function extractMetadataFromFile(string $filePath): array
+    {
+        $metadata = [];
+        $mimeType = mime_content_type($filePath);
+
+        if (strpos($mimeType, 'image/') === 0) {
+            if (function_exists('exif_read_data')) {
+                $exif = @exif_read_data($filePath, 'ANY_TAG', true);
+                if ($exif !== false) {
+                    if (isset($exif['IFD0']['Make'])) {
+                        $metadata['camera_make'] = $exif['IFD0']['Make'];
+                    }
+                    if (isset($exif['IFD0']['Model'])) {
+                        $metadata['camera_model'] = $exif['IFD0']['Model'];
+                    }
+
+                    if (isset($exif['EXIF']['DateTimeOriginal'])) {
+                        $metadata['date_created'] = $exif['EXIF']['DateTimeOriginal'];
+                    } elseif (isset($exif['IFD0']['DateTime'])) {
+                        $metadata['date_created'] = $exif['IFD0']['DateTime'];
+                    }
+
+                    if (isset($exif['GPS']['GPSLatitude'], $exif['GPS']['GPSLongitude'])) {
+                        $lat = $this->gpsToDecimal($exif['GPS']['GPSLatitude'], $exif['GPS']['GPSLatitudeRef'] ?? 'N');
+                        $lon = $this->gpsToDecimal($exif['GPS']['GPSLongitude'], $exif['GPS']['GPSLongitudeRef'] ?? 'E');
+                        if ($lat && $lon) {
+                            $metadata['gps'] = ['latitude' => $lat, 'longitude' => $lon];
+                        }
+                    }
+
+                    if (isset($exif['COMPUTED']['Width'])) {
+                        $metadata['width'] = $exif['COMPUTED']['Width'];
+                    }
+                    if (isset($exif['COMPUTED']['Height'])) {
+                        $metadata['height'] = $exif['COMPUTED']['Height'];
+                    }
+
+                    if (isset($exif['IFD0']['Artist'])) {
+                        $metadata['creator'] = $exif['IFD0']['Artist'];
+                    }
+                    if (isset($exif['IFD0']['Software'])) {
+                        $metadata['software'] = $exif['IFD0']['Software'];
+                    }
+                    if (isset($exif['EXIF']['ISOSpeedRatings'])) {
+                        $metadata['iso'] = $exif['EXIF']['ISOSpeedRatings'];
+                    }
+                    if (isset($exif['EXIF']['ExposureTime'])) {
+                        $metadata['exposure'] = $exif['EXIF']['ExposureTime'];
+                    }
+                    if (isset($exif['EXIF']['FNumber'])) {
+                        $metadata['fnumber'] = $exif['EXIF']['FNumber'];
+                    }
+                }
+            }
+
+            $size = @getimagesize($filePath, $info);
+            if (isset($info['APP13'])) {
+                $iptc = @iptcparse($info['APP13']);
+                if ($iptc) {
+                    if (isset($iptc['2#105'][0])) {
+                        $metadata['title'] = $iptc['2#105'][0];
+                    }
+                    if (isset($iptc['2#120'][0])) {
+                        $metadata['description'] = $iptc['2#120'][0];
+                    }
+                    if (isset($ip

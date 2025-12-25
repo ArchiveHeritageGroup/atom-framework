@@ -1,0 +1,95 @@
+
+    // Replace the stub methods with real implementations:
+    
+    public function getSnippets(int $id): void
+    {
+        $snippets = DB::table('media_snippets')
+            ->where('digital_object_id', $id)
+            ->orderBy('start_time')
+            ->get();
+
+        $this->jsonResponse($snippets->toArray());
+    }
+
+    public function createSnippet(): void
+    {
+        $input = json_decode(file_get_contents('php://input'), true);
+        
+        if (empty($input['digital_object_id']) || !isset($input['start_time']) || !isset($input['end_time'])) {
+            $this->jsonResponse(['error' => 'Missing required fields'], 400);
+            return;
+        }
+
+        $id = DB::table('media_snippets')->insertGetId([
+            'digital_object_id' => $input['digital_object_id'],
+            'object_id' => $input['object_id'] ?? 0,
+            'title' => $input['title'] ?? 'Untitled Snippet',
+            'description' => $input['description'] ?? null,
+            'start_time' => $input['start_time'],
+            'end_time' => $input['end_time'],
+            'duration' => $input['end_time'] - $input['start_time'],
+            'created_at' => date('Y-m-d H:i:s'),
+            'updated_at' => date('Y-m-d H:i:s')
+        ]);
+
+        $this->jsonResponse(['success' => true, 'id' => $id]);
+    }
+
+    public function deleteSnippet(int $id): void
+    {
+        DB::table('media_snippets')->where('id', $id)->delete();
+        $this->jsonResponse(['success' => true]);
+    }
+
+    public function exportSnippet(int $id): void
+    {
+        $snippet = DB::table('media_snippets')->where('id', $id)->first();
+        
+        if (!$snippet) {
+            $this->jsonResponse(['error' => 'Snippet not found'], 404);
+            return;
+        }
+
+        $do = DB::table('digital_object')->where('id', $snippet->digital_object_id)->first();
+        
+        if (!$do) {
+            $this->jsonResponse(['error' => 'Digital object not found'], 404);
+            return;
+        }
+
+        $uploadDir = dirname(__DIR__, 5);
+        $inputFile = $uploadDir . '/' . ltrim($do->path, '/') . $do->name;
+        
+        // Create output directory
+        $outputDir = $uploadDir . '/uploads/snippets/' . $snippet->digital_object_id;
+        @mkdir($outputDir, 0755, true);
+        
+        $outputFile = $outputDir . '/snippet_' . $id . '.mp4';
+        
+        // Use ffmpeg to extract snippet
+        $cmd = sprintf(
+            'ffmpeg -y -i %s -ss %s -to %s -c:v libx264 -c:a aac -preset fast %s 2>&1',
+            escapeshellarg($inputFile),
+            escapeshellarg($snippet->start_time),
+            escapeshellarg($snippet->end_time),
+            escapeshellarg($outputFile)
+        );
+        
+        $output = shell_exec($cmd);
+        
+        if (file_exists($outputFile)) {
+            // Update snippet with export path
+            DB::table('media_snippets')->where('id', $id)->update([
+                'export_path' => '/uploads/snippets/' . $snippet->digital_object_id . '/snippet_' . $id . '.mp4',
+                'updated_at' => date('Y-m-d H:i:s')
+            ]);
+            
+            $this->jsonResponse([
+                'success' => true,
+                'url' => '/uploads/snippets/' . $snippet->digital_object_id . '/snippet_' . $id . '.mp4',
+                'filename' => 'snippet_' . $id . '.mp4'
+            ]);
+        } else {
+            $this->jsonResponse(['error' => 'Export failed: ' . $output], 500);
+        }
+    }
