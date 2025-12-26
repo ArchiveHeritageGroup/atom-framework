@@ -24,7 +24,7 @@ if (file_exists($composerAutoloader)) {
 // PSR-4 Autoloader for framework classes
 spl_autoload_register(function ($class) {
     $prefixes = [
-        'AtomFramework\\' => ATOM_FRAMEWORK_PATH . '/src/',
+        'AtomExtensions\\' => ATOM_FRAMEWORK_PATH . '/src/',
     ];
 
     foreach ($prefixes as $prefix => $baseDir) {
