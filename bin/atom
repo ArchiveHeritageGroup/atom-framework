@@ -2,36 +2,30 @@
 <?php
 /**
  * AtoM CLI - Extension Manager
- *
- * Usage: php bin/atom extension:list
- *        php bin/atom extension:install <name>
- *        php bin/atom extension:enable <name>
  */
-
-// Define paths
 define('ATOM_ROOT', dirname(__DIR__, 2));
 define('FRAMEWORK_ROOT', dirname(__DIR__));
 
-// Parse command (extension:list -> extension list)
-$args = $argv;
-$script = array_shift($args);
+// Bootstrap the framework
+$bootstrap = FRAMEWORK_ROOT . '/bootstrap.php';
+if (!file_exists($bootstrap)) {
+    echo "\033[31mError: bootstrap.php not found\033[0m\n";
+    exit(1);
+}
+require_once $bootstrap;
 
+// Auto-install tables if needed
+autoInstallTables();
+
+// Parse command
+$args = $argv;
+array_shift($args);
 if (isset($args[0]) && strpos($args[0], ':') !== false) {
     $parts = explode(':', $args[0], 2);
     $args[0] = $parts[0];
     array_splice($args, 1, 0, $parts[1]);
 }
 
-// Bootstrap the framework
-$bootstrap = FRAMEWORK_ROOT . '/bootstrap.php';
-if (!file_exists($bootstrap)) {
-    echo "\033[31mError: bootstrap.php not found at {$bootstrap}\033[0m\n";
-    exit(1);
-}
-
-require_once $bootstrap;
-
-// Route to appropriate command
 $module = $args[0] ?? 'help';
 $command = $args[1] ?? 'help';
 $remaining = array_slice($args, 2);
@@ -41,31 +35,90 @@ switch ($module) {
         require_once FRAMEWORK_ROOT . '/src/Console/ExtensionCommand.php';
         $cmd = new \AtomFramework\Console\ExtensionCommand(array_merge(['atom', $command], $remaining));
         exit($cmd->run());
-        
     case 'help':
     case '--help':
     case '-h':
-        echo <<<HELP
+        showHelp();
+        exit(0);
+    default:
+        echo "\033[31mUnknown command: {$module}\033[0m\n";
+        exit(1);
+}
+
+function autoInstallTables(): void
+{
+    try {
+        $db = \Illuminate\Database\Capsule\Manager::connection();
+        
+        // Check if core tables exist
+        $tables = ['atom_plugin', 'atom_extension', 'atom_extension_setting'];
+        $missing = [];
+        
+        foreach ($tables as $table) {
+            try {
+                $db->select("SELECT 1 FROM {$table} LIMIT 1");
+            } catch (\Exception $e) {
+                $missing[] = $table;
+            }
+        }
+        
+        if (!empty($missing)) {
+            echo "\033[33m→ Installing framework tables...\033[0m\n";
+            $sqlFile = FRAMEWORK_ROOT . '/database/install.sql';
+            
+            if (file_exists($sqlFile)) {
+                $configFile = ATOM_ROOT . '/config/config.php';
+                $config = require $configFile;
+                $params = $config['all']['propel']['param'];
+                
+                preg_match('/dbname=([^;]+)/', $params['dsn'] ?? '', $m);
+                $dbname = $m[1] ?? 'atom';
+                
+                $cmd = sprintf('mysql -u%s -p%s %s < %s 2>&1',
+                    escapeshellarg($params['username']),
+                    escapeshellarg($params['password']),
+                    escapeshellarg($dbname),
+                    escapeshellarg($sqlFile)
+                );
+                
+                exec($cmd, $output, $return);
+                
+                if ($return === 0) {
+                    echo "\033[32m✓ Framework tables installed\033[0m\n\n";
+                } else {
+                    echo "\033[31m✗ Table install failed: " . implode("\n", $output) . "\033[0m\n";
+                }
+            } else {
+                echo "\033[31m✗ install.sql not found\033[0m\n";
+            }
+        }
+    } catch (\Exception $e) {
+        // Silently continue - bootstrap might not be complete
+    }
+}
+
+function showHelp(): void
+{
+    echo <<<HELP
 AtoM Framework CLI v1.0.0
 
-Usage: php bin/atom <module>:<command> [arguments] [options]
+Usage: php bin/atom <module>:<command> [arguments]
 
-Available modules:
-  extension     Manage extensions (list, install, enable, disable, etc.)
+Modules:
+  extension     Manage AHG extensions
+
+Extension Commands:
+  discover      Discover available extensions
+  list          List installed extensions
+  install       Install an extension
+  uninstall     Uninstall an extension
+  enable        Enable an extension
+  disable       Disable an extension
 
 Examples:
-  php bin/atom extension:list
   php bin/atom extension:discover
-  php bin/atom extension:install arSecurityClearancePlugin
-  php bin/atom extension:enable arSecurityClearancePlugin
-
-Run 'php bin/atom extension:help' for extension-specific commands.
+  php bin/atom extension:install arDisplayPlugin
+  php bin/atom extension:list
 
 HELP;
-        exit(0);
-        
-    default:
-        echo "\033[31mUnknown module: {$module}\033[0m\n";
-        echo "Run 'php bin/atom help' for available commands.\n";
-        exit(1);
 }
