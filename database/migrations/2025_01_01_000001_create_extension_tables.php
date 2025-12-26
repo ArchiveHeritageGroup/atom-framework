@@ -222,6 +222,29 @@ class CreateExtensionTables
             (NULL, 'backup_path', '/usr/share/nginx/atom/data/backups/extensions', 'string', 'Path for extension backups', 1)
         ");
 
+	// IIIF Viewer settings
+        $pdo->exec("
+            CREATE TABLE IF NOT EXISTS iiif_viewer_settings (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                setting_key VARCHAR(100) NOT NULL,
+                setting_value TEXT,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                UNIQUE KEY (setting_key)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+        ");
+
+        $pdo->exec("
+            INSERT IGNORE INTO iiif_viewer_settings (setting_key, setting_value) VALUES
+            ('homepage_collection_id', ''),
+            ('homepage_collection_enabled', '0'),
+            ('homepage_carousel_height', '400'),
+            ('homepage_carousel_autoplay', '1'),
+            ('homepage_carousel_interval', '5000'),
+            ('homepage_show_captions', '1'),
+            ('homepage_max_items', '10')
+        ");
+
 	// Seed default plugins
         $pdo->exec("
             INSERT IGNORE INTO atom_plugin (name, class_name, is_enabled, is_core, load_order, category) VALUES
