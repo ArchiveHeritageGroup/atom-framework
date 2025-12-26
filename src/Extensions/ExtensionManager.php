@@ -19,7 +19,7 @@ class ExtensionManager implements ExtensionManagerContract
     {
         $this->repository = new ExtensionRepository();
         $this->dataHandler = new ExtensionDataHandler();
-        $this->pluginsPath = $this->repository->getSetting('extensions_path', null, '/usr/share/nginx/archive/plugins');
+        $this->pluginsPath = $this->repository->getSetting('extensions_path', null, defined('ATOM_ROOT') ? ATOM_ROOT . '/plugins' : '/usr/share/nginx/atom/plugins');
     }
 
     /**
