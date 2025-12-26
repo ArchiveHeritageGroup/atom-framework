@@ -98,7 +98,7 @@ class ExtensionCommand
         }
 
         $this->line('');
-        $this->line('Commands: php atom extension:discover | extension:install <name>');
+        $this->line('Commands: php bin/atom extension:discover | extension:install <name>');
         $this->line('');
 
         return 0;
@@ -109,7 +109,7 @@ class ExtensionCommand
         $name = $args[0] ?? null;
         
         if (!$name) {
-            $this->error('Usage: php atom extension:info <machine_name>');
+            $this->error('Usage: php bin/atom extension:info <machine_name>');
             return 1;
         }
 
@@ -169,7 +169,7 @@ class ExtensionCommand
         $noEnable = in_array('--no-enable', $args);
         
         if (!$name) {
-            $this->error('Usage: php atom extension:install <machine_name> [--with-tables|-t] [--skip-tables|-s] [--no-enable]');
+            $this->error('Usage: php bin/atom extension:install <machine_name> [--with-tables|-t] [--skip-tables|-s] [--no-enable]');
             return 1;
         }
 
@@ -186,7 +186,7 @@ class ExtensionCommand
                 $this->success("Downloaded {$name}");
             } else {
                 $this->error("Plugin '{$name}' not found in AHG repository.");
-                $this->line("  Run 'php atom extension:discover' to see available plugins.");
+                $this->line("  Run 'php bin/atom extension:discover' to see available plugins.");
                 return 1;
             }
         }
@@ -284,7 +284,7 @@ class ExtensionCommand
             $this->success("Extension '{$name}' installed and enabled.");
         } else {
             $this->success("Extension '{$name}' installed.");
-            $this->line("Run 'php atom extension:enable {$name}' to enable it.");
+            $this->line("Run 'php bin/atom extension:enable {$name}' to enable it.");
         }
         
         $this->line('');
@@ -299,7 +299,7 @@ class ExtensionCommand
         $dropTables = in_array('--drop-tables', $args);
         
         if (!$name) {
-            $this->error('Usage: php atom extension:uninstall <machine_name> [--no-backup] [--drop-tables]');
+            $this->error('Usage: php bin/atom extension:uninstall <machine_name> [--no-backup] [--drop-tables]');
             return 1;
         }
 
@@ -348,7 +348,7 @@ class ExtensionCommand
             $this->line("Database tables were preserved.");
         }
         
-        $this->line("Run 'php atom extension:restore {$name}' to undo if needed.");
+        $this->line("Run 'php bin/atom extension:restore {$name}' to undo if needed.");
         $this->line('');
 
         return 0;
@@ -359,7 +359,7 @@ class ExtensionCommand
         $name = $args[0] ?? null;
         
         if (!$name) {
-            $this->error('Usage: php atom extension:enable <machine_name>');
+            $this->error('Usage: php bin/atom extension:enable <machine_name>');
             return 1;
         }
 
@@ -377,7 +377,7 @@ class ExtensionCommand
         $name = $args[0] ?? null;
         
         if (!$name) {
-            $this->error('Usage: php atom extension:disable <machine_name>');
+            $this->error('Usage: php bin/atom extension:disable <machine_name>');
             return 1;
         }
 
@@ -395,7 +395,7 @@ class ExtensionCommand
         $name = $args[0] ?? null;
         
         if (!$name) {
-            $this->error('Usage: php atom extension:restore <machine_name>');
+            $this->error('Usage: php bin/atom extension:restore <machine_name>');
             return 1;
         }
 
@@ -488,7 +488,7 @@ class ExtensionCommand
         }
         
         $this->line('');
-        $this->line('  Install: php atom extension:install <machine_name>');
+        $this->line('  Install: php bin/atom extension:install <machine_name>');
         $this->line('');
 
         return 0;
@@ -542,7 +542,7 @@ class ExtensionCommand
         }
 
         $this->line('');
-        $this->info("  Install: php atom extension:install {$manifest['machine_name']}");
+        $this->info("  Install: php bin/atom extension:install {$manifest['machine_name']}");
         $this->line('');
 
         return 0;
@@ -553,7 +553,7 @@ class ExtensionCommand
         $this->line('');
         $this->info('AHG Extension Manager v1.0.0');
         $this->line('');
-        $this->line('Usage: php atom extension:<command> [arguments] [options]');
+        $this->line('Usage: php bin/atom extension:<command> [arguments] [options]');
         $this->line('');
         $this->line('Commands:');
         
@@ -573,10 +573,10 @@ class ExtensionCommand
         $this->line('  --drop-tables        Drop database tables');
         $this->line('');
         $this->line('Examples:');
-        $this->line('  php atom extension:discover');
-        $this->line('  php atom extension:install arSecurityClearancePlugin');
-        $this->line('  php atom extension:disable arSecurityClearancePlugin');
-        $this->line('  php atom extension:enable arSecurityClearancePlugin');
+        $this->line('  php bin/atom extension:discover');
+        $this->line('  php bin/atom extension:install arSecurityClearancePlugin');
+        $this->line('  php bin/atom extension:disable arSecurityClearancePlugin');
+        $this->line('  php bin/atom extension:enable arSecurityClearancePlugin');
         $this->line('');
 
         return 0;
@@ -585,7 +585,7 @@ class ExtensionCommand
     protected function unknownCommand(string $command): int
     {
         $this->error("Unknown command: {$command}");
-        $this->line("Run 'php atom extension:help' for available commands.");
+        $this->line("Run 'php bin/atom extension:help' for available commands.");
         return 1;
     }
 
