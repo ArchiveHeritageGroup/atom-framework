@@ -224,6 +224,23 @@ class ExtensionManager implements ExtensionManagerContract
 
         $this->repository->logAction($machineName, 'enabled', $extension->id);
 
+	// Register in atom_plugin for Symfony plugin loading
+        try {
+            DB::table('atom_plugin')->updateOrInsert(
+                ['name' => $machineName],
+                [
+                    'class_name' => $machineName . 'Configuration',
+                    'is_enabled' => 1,
+                    'is_core' => 0,
+                    'load_order' => 100,
+                    'category' => 'ahg',
+                    'updated_at' => date('Y-m-d H:i:s'),
+                ]
+            );
+        } catch (\Exception $e) {
+            // Silently continue if atom_plugin table doesn't exist
+        }
+
         return true;
     }
 
