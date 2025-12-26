@@ -16,7 +16,7 @@ define('ATOM_ROOT_PATH', dirname(__DIR__));
 // Load Composer autoloader and register namespaces via PSR-4
 $loader = require __DIR__ . '/vendor/autoload.php';
 
-// Register both namespaces (AtomExtensions for services, AtomFramework for CLI)
+// Register both namespaces
 $loader->addPsr4('AtomExtensions\\', __DIR__ . '/src/');
 $loader->addPsr4('AtomFramework\\', __DIR__ . '/src/');
 
