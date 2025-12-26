@@ -1,49 +1,16 @@
 <?php
 /**
  * AtoM Framework Bootstrap
+ * 
+ * To customize: copy bootstrap.php.dist to bootstrap.local.php and modify
+ * This file will load bootstrap.local.php if it exists, otherwise bootstrap.php.dist
  */
 
-// Prevent multiple initialization
-if (defined('ATOM_FRAMEWORK_LOADED')) {
-    return;
-}
-define('ATOM_FRAMEWORK_LOADED', true);
+$localBootstrap = __DIR__ . '/bootstrap.local.php';
+$distBootstrap = __DIR__ . '/bootstrap.php.dist';
 
-// Framework paths
-define('ATOM_FRAMEWORK_PATH', __DIR__);
-define('ATOM_ROOT_PATH', dirname(__DIR__));
-
-// Load Composer autoloader and register namespaces via PSR-4
-$loader = require __DIR__ . '/vendor/autoload.php';
-
-// Register both namespaces
-$loader->addPsr4('AtomExtensions\\', __DIR__ . '/src/');
-$loader->addPsr4('AtomFramework\\', __DIR__ . '/src/');
-
-// Initialize Laravel Database (Capsule)
-use Illuminate\Database\Capsule\Manager as Capsule;
-
-$configFile = ATOM_ROOT_PATH . '/config/config.php';
-
-if (file_exists($configFile)) {
-    $config = require $configFile;
-    
-    if (isset($config['all']['propel']['param'])) {
-        $dbConfig = $config['all']['propel']['param'];
-        
-        $capsule = new Capsule;
-        $capsule->addConnection([
-            'driver' => 'mysql',
-            'host' => $dbConfig['host'] ?? 'localhost',
-            'database' => $dbConfig['database'] ?? 'atom',
-            'username' => $dbConfig['username'] ?? 'atom',
-            'password' => $dbConfig['password'] ?? '',
-            'charset' => 'utf8mb4',
-            'collation' => 'utf8mb4_unicode_ci',
-            'prefix' => '',
-        ]);
-        
-        $capsule->setAsGlobal();
-        $capsule->bootEloquent();
-    }
+if (file_exists($localBootstrap)) {
+    require_once $localBootstrap;
+} elseif (file_exists($distBootstrap)) {
+    require_once $distBootstrap;
 }

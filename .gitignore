@@ -35,3 +35,4 @@ backups/
 tmp/
 temp/
 *.tmp
+bootstrap.local.php
