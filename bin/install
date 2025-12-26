@@ -18,6 +18,7 @@ ATOM_ROOT="$(dirname "$FRAMEWORK_PATH")"
 PLUGINS_PATH="${ATOM_ROOT}/plugins"
 AHG_PLUGINS_PATH="${ATOM_ROOT}/atom-ahg-plugins"
 CONFIG_FILE="${ATOM_ROOT}/config/config.php"
+PROJECT_CONFIG="${ATOM_ROOT}/config/ProjectConfiguration.class.php"
 
 CORE_PLUGINS=(
     "arAHGThemeB5Plugin"
@@ -37,7 +38,6 @@ echo -e "${NC}"
 # Check prerequisites
 if [ ! -f "$CONFIG_FILE" ]; then
     echo -e "${RED}✗ AtoM config not found at ${CONFIG_FILE}${NC}"
-    echo "  Run this from an AtoM installation directory"
     exit 1
 fi
 
@@ -149,6 +149,59 @@ fi
 
 echo ""
 
+# Patch ProjectConfiguration.class.php
+echo -e "${YELLOW}→ Patching ProjectConfiguration...${NC}"
+
+if [ ! -f "$PROJECT_CONFIG" ]; then
+    echo -e "${RED}✗ ProjectConfiguration.class.php not found${NC}"
+    exit 1
+fi
+
+# Check if already patched
+if grep -q "atom-framework/bootstrap.php" "$PROJECT_CONFIG"; then
+    echo -e "${GREEN}✓ Already patched${NC}"
+else
+    # Backup original
+    cp "$PROJECT_CONFIG" "${PROJECT_CONFIG}.bak.$(date +%Y%m%d%H%M%S)"
+    
+    # Add framework bootstrap loading before the closing brace of setup()
+    # Find the line with dispatcher->connect and add after the closing of that block
+    
+    # Create patch file
+    cat > /tmp/ahg_patch.php << 'PATCHEOF'
+
+        // Load AtoM AHG Framework
+        $frameworkPath = sfConfig::get('sf_root_dir').'/atom-framework/bootstrap.php';
+        if (file_exists($frameworkPath)) {
+            require_once $frameworkPath;
+        }
+PATCHEOF
+
+    # Find line number of last dispatcher->connect block end and insert after
+    LINE=$(grep -n "dispatcher->connect" "$PROJECT_CONFIG" | tail -1 | cut -d: -f1)
+    if [ -n "$LINE" ]; then
+        # Find closing of that block (next );)
+        ENDLINE=$(tail -n +$LINE "$PROJECT_CONFIG" | grep -n ");" | head -1 | cut -d: -f1)
+        INSERTLINE=$((LINE + ENDLINE))
+        
+        # Insert the patch
+        head -n $INSERTLINE "$PROJECT_CONFIG" > /tmp/project_config_new.php
+        cat /tmp/ahg_patch.php >> /tmp/project_config_new.php
+        tail -n +$((INSERTLINE + 1)) "$PROJECT_CONFIG" >> /tmp/project_config_new.php
+        mv /tmp/project_config_new.php "$PROJECT_CONFIG"
+        
+        echo -e "${GREEN}✓ Framework bootstrap added${NC}"
+    else
+        echo -e "${YELLOW}⚠ Could not auto-patch. Add manually:${NC}"
+        echo '    $frameworkPath = sfConfig::get('\''sf_root_dir'\'').'\''/atom-framework/bootstrap.php'\'';'
+        echo '    if (file_exists($frameworkPath)) { require_once $frameworkPath; }'
+    fi
+    
+    rm -f /tmp/ahg_patch.php
+fi
+
+echo ""
+
 # Clear cache
 echo -e "${YELLOW}→ Clearing cache...${NC}"
 rm -rf "${ATOM_ROOT}/cache/"* 2>/dev/null || true
@@ -160,8 +213,7 @@ echo -e "  Installation Complete!"
 echo -e "==============================================${NC}"
 echo ""
 echo "Next steps:"
-echo "  1. Enable AHG theme: Admin > Themes > arAHGThemeB5Plugin"
-echo "  2. Restart PHP: sudo systemctl restart php8.3-fpm"
+echo "  1. Restart PHP: sudo systemctl restart php8.3-fpm"
 echo ""
 
 if ! $AUTO_DB; then
