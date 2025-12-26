@@ -1,0 +1,112 @@
+-- =============================================================================
+-- AtoM Framework Install SQL
+-- Core tables required for framework operation
+-- Run this first before any plugin installs
+-- =============================================================================
+
+SET FOREIGN_KEY_CHECKS=0;
+
+-- Plugin Registry
+CREATE TABLE IF NOT EXISTS `atom_plugin` (
+  `id` int unsigned NOT NULL AUTO_INCREMENT,
+  `name` varchar(100) NOT NULL,
+  `is_enabled` tinyint(1) DEFAULT 1,
+  `load_order` int DEFAULT 100,
+  `version` varchar(20) DEFAULT '1.0.0',
+  `created_at` datetime DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `name` (`name`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Plugin Audit Log
+CREATE TABLE IF NOT EXISTS `atom_plugin_audit` (
+  `id` int unsigned NOT NULL AUTO_INCREMENT,
+  `plugin_name` varchar(100) NOT NULL,
+  `action` varchar(50) NOT NULL,
+  `user_id` int unsigned DEFAULT NULL,
+  `details` json DEFAULT NULL,
+  `created_at` datetime DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_plugin` (`plugin_name`),
+  KEY `idx_action` (`action`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- AHG Settings
+CREATE TABLE IF NOT EXISTS `ahg_settings` (
+  `id` int unsigned NOT NULL AUTO_INCREMENT,
+  `setting_key` varchar(100) NOT NULL,
+  `setting_value` text,
+  `setting_type` varchar(20) DEFAULT 'string',
+  `description` varchar(255) DEFAULT NULL,
+  `created_at` datetime DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `setting_key` (`setting_key`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Default Plugins (Core AtoM plugins)
+INSERT IGNORE INTO atom_plugin (name, is_enabled, load_order) VALUES
+('arDominionB5Plugin', 1, 10),
+('arOaiPlugin', 1, 20),
+('arRestApiPlugin', 1, 30),
+('sfIsadPlugin', 1, 40),
+('sfIsdfPlugin', 1, 50),
+('sfIsaarPlugin', 1, 60),
+('sfIsdiahPlugin', 1, 70),
+('sfEacPlugin', 1, 80),
+('sfEadPlugin', 1, 90),
+('sfDcPlugin', 1, 100),
+('sfModsPlugin', 1, 110),
+('sfRadPlugin', 1, 120),
+('sfSkosPlugin', 1, 130),
+('arDacsPlugin', 1, 140),
+('sfWebBrowserPlugin', 1, 150);
+
+SET FOREIGN_KEY_CHECKS=1;
+
+-- Extension Settings
+CREATE TABLE IF NOT EXISTS `atom_extension_setting` (
+  `id` int unsigned NOT NULL AUTO_INCREMENT,
+  `extension_id` int unsigned DEFAULT NULL,
+  `setting_key` varchar(100) NOT NULL,
+  `setting_value` text,
+  `setting_type` varchar(20) DEFAULT 'string',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_ext_key` (`extension_id`, `setting_key`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Extension Registry (for Extension System)
+CREATE TABLE IF NOT EXISTS `atom_extension` (
+  `id` int unsigned NOT NULL AUTO_INCREMENT,
+  `machine_name` varchar(100) NOT NULL,
+  `display_name` varchar(255) NOT NULL,
+  `version` varchar(20) DEFAULT '1.0.0',
+  `description` text,
+  `author` varchar(255) DEFAULT NULL,
+  `license` varchar(50) DEFAULT 'GPL-3.0',
+  `status` enum('installed','enabled','disabled','pending_removal') DEFAULT 'installed',
+  `theme_support` json DEFAULT NULL,
+  `requires_framework` varchar(20) DEFAULT NULL,
+  `dependencies` json DEFAULT NULL,
+  `tables_created` json DEFAULT NULL,
+  `shared_tables` json DEFAULT NULL,
+  `installed_at` datetime DEFAULT NULL,
+  `enabled_at` datetime DEFAULT NULL,
+  `created_at` datetime DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `machine_name` (`machine_name`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Pending Deletions
+CREATE TABLE IF NOT EXISTS `atom_extension_pending_deletion` (
+  `id` int unsigned NOT NULL AUTO_INCREMENT,
+  `extension_name` varchar(100) NOT NULL,
+  `table_name` varchar(100) NOT NULL,
+  `backup_path` varchar(500) DEFAULT NULL,
+  `delete_after` datetime NOT NULL,
+  `status` enum('pending','deleted','restored','cancelled') DEFAULT 'pending',
+  `created_at` datetime DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

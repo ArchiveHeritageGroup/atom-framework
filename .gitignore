@@ -27,7 +27,7 @@ cache/
 .env.*.local
 
 # Backups
-*.sql
+# *.sql - allow database/*.sql
 *.bak
 backups/
 
@@ -36,3 +36,4 @@ tmp/
 temp/
 *.tmp
 bootstrap.local.php
+!database/*.sql
