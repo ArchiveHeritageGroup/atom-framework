@@ -6,6 +6,7 @@ use AtomFramework\Extensions\Contracts\ExtensionManagerContract;
 use AtomFramework\Extensions\Handlers\ExtensionDataHandler;
 use AtomFramework\Repositories\ExtensionRepository;
 use Illuminate\Support\Collection;
+use Illuminate\Database\Capsule\Manager as DB;
 
 class ExtensionManager implements ExtensionManagerContract
 {
