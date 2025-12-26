@@ -3,7 +3,6 @@
 /**
  * AtoM Framework Upgrade
  */
-
 echo "\n";
 echo "╔══════════════════════════════════════════════════════════╗\n";
 echo "║          AtoM Framework Upgrade                          ║\n";
@@ -11,6 +10,7 @@ echo "╚═══════════════════════�
 echo "\n";
 
 $frameworkPath = dirname(__DIR__);
+$atomRoot = dirname($frameworkPath);
 
 // Check for uncommitted changes
 chdir($frameworkPath);
@@ -32,7 +32,6 @@ if (!empty($changes)) {
 echo "→ Pulling latest from GitHub...\n";
 exec('git pull origin main 2>&1', $output, $code);
 echo implode("\n", $output) . "\n";
-
 if ($code !== 0) {
     echo "✗ Git pull failed.\n";
     exit(1);
@@ -40,11 +39,12 @@ if ($code !== 0) {
 
 // Update composer
 echo "\n→ Updating dependencies...\n";
-exec('composer install 2>&1', $output);
+exec('composer install --no-interaction 2>&1', $output);
 
 // Run migrations (safe - uses IF NOT EXISTS)
 echo "\n→ Checking database...\n";
 require_once __DIR__ . '/../bootstrap.php';
+
 $migrationFile = __DIR__ . '/../database/migrations/2025_01_01_000001_create_extension_tables.php';
 if (file_exists($migrationFile)) {
     require_once $migrationFile;
@@ -55,6 +55,37 @@ if (file_exists($migrationFile)) {
     } catch (Exception $e) {
         echo "✓ Database already current.\n";
     }
+}
+
+// Patch ProjectConfiguration.class.php to load framework
+echo "\n→ Checking ProjectConfiguration...\n";
+$projectConfig = $atomRoot . '/config/ProjectConfiguration.class.php';
+
+if (file_exists($projectConfig)) {
+    $content = file_get_contents($projectConfig);
+    
+    // Check if framework loading already exists
+    if (strpos($content, 'atom-framework/bootstrap.php') === false) {
+        echo "  Adding framework bootstrap loader...\n";
+        
+        // Find the position after dispatcher->connect block
+        $pattern = "/(\['arWebDebugPanel',\s*'listenToLoadDebugWebPanelEvent'\]\s*\);)/";
+        $replacement = "$1\n\n        // Load AtoM extensions framework\n        \$frameworkPath = sfConfig::get('sf_root_dir').'/atom-framework/bootstrap.php';\n        if (file_exists(\$frameworkPath)) {\n            require_once \$frameworkPath;\n        }";
+        
+        $newContent = preg_replace($pattern, $replacement, $content, 1, $count);
+        
+        if ($count > 0) {
+            file_put_contents($projectConfig, $newContent);
+            echo "✓ ProjectConfiguration patched.\n";
+        } else {
+            echo "⚠ Could not auto-patch. Please add manually:\n";
+            echo "  require_once sfConfig::get('sf_root_dir').'/atom-framework/bootstrap.php';\n";
+        }
+    } else {
+        echo "✓ Framework already configured.\n";
+    }
+} else {
+    echo "⚠ ProjectConfiguration.class.php not found at {$projectConfig}\n";
 }
 
 echo "\n";

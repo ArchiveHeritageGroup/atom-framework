@@ -222,6 +222,26 @@ class CreateExtensionTables
             (NULL, 'backup_path', '/usr/share/nginx/atom/data/backups/extensions', 'string', 'Path for extension backups', 1)
         ");
 
+	// Seed default plugins
+        $pdo->exec("
+            INSERT IGNORE INTO atom_plugin (name, class_name, is_enabled, is_core, load_order, category) VALUES
+            ('arDominionB5Plugin', 'arDominionB5PluginConfiguration', 1, 1, 1, 'theme'),
+            ('arOaiPlugin', 'arOaiPluginConfiguration', 1, 1, 10, 'core'),
+            ('arRestApiPlugin', 'arRestApiPluginConfiguration', 1, 1, 11, 'core'),
+            ('sfIsadPlugin', 'sfIsadPluginConfiguration', 1, 1, 20, 'metadata'),
+            ('sfIsdfPlugin', 'sfIsdfPluginConfiguration', 1, 1, 21, 'metadata'),
+            ('sfIsaarPlugin', 'sfIsaarPluginConfiguration', 1, 1, 22, 'metadata'),
+            ('sfIsdiahPlugin', 'sfIsdiahPluginConfiguration', 1, 1, 23, 'metadata'),
+            ('sfEacPlugin', 'sfEacPluginConfiguration', 1, 1, 24, 'metadata'),
+            ('sfEadPlugin', 'sfEadPluginConfiguration', 1, 1, 25, 'metadata'),
+            ('sfDcPlugin', 'sfDcPluginConfiguration', 1, 1, 26, 'metadata'),
+            ('sfModsPlugin', 'sfModsPluginConfiguration', 1, 1, 27, 'metadata'),
+            ('sfRadPlugin', 'sfRadPluginConfiguration', 1, 1, 28, 'metadata'),
+            ('sfSkosPlugin', 'sfSkosPluginConfiguration', 1, 1, 29, 'metadata'),
+            ('arDacsPlugin', 'arDacsPluginConfiguration', 1, 1, 30, 'metadata'),
+            ('sfWebBrowserPlugin', 'sfWebBrowserPluginConfiguration', 1, 1, 40, 'core')
+        ");
+
         // Log installation
         $pdo->exec("
             INSERT INTO atom_extension_audit (extension_name, action, details) VALUES
