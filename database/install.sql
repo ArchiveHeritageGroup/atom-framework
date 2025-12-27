@@ -191,3 +191,23 @@ CREATE TABLE IF NOT EXISTS `iiif_collection_item` (
   KEY `idx_object` (`object_id`),
   CONSTRAINT `iiif_collection_item_ibfk_1` FOREIGN KEY (`collection_id`) REFERENCES `iiif_collection` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Contact Information Extended
+CREATE TABLE IF NOT EXISTS `contact_information_extended` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `contact_information_id` int NOT NULL,
+  `title` varchar(100) DEFAULT NULL COMMENT 'Mr, Mrs, Dr, Prof, etc.',
+  `role` varchar(255) DEFAULT NULL COMMENT 'Job title/position',
+  `department` varchar(255) DEFAULT NULL COMMENT 'Department/Division',
+  `cell` varchar(255) DEFAULT NULL COMMENT 'Mobile/Cell phone',
+  `id_number` varchar(50) DEFAULT NULL COMMENT 'ID/Passport number',
+  `alternative_email` varchar(255) DEFAULT NULL COMMENT 'Secondary email',
+  `alternative_phone` varchar(255) DEFAULT NULL COMMENT 'Secondary phone',
+  `preferred_contact_method` enum('email','phone','cell','fax','mail') DEFAULT NULL,
+  `language_preference` varchar(16) DEFAULT NULL COMMENT 'Preferred communication language',
+  `notes` text COMMENT 'Additional notes',
+  `created_at` datetime DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_contact_id` (`contact_information_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
