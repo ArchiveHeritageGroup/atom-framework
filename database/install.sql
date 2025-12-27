@@ -34,15 +34,19 @@ CREATE TABLE IF NOT EXISTS `atom_plugin_audit` (
 
 -- AHG Settings
 CREATE TABLE IF NOT EXISTS `ahg_settings` (
-  `id` int unsigned NOT NULL AUTO_INCREMENT,
+  `id` int NOT NULL AUTO_INCREMENT,
   `setting_key` varchar(100) NOT NULL,
   `setting_value` text,
-  `setting_type` varchar(20) DEFAULT 'string',
-  `description` varchar(255) DEFAULT NULL,
-  `created_at` datetime DEFAULT CURRENT_TIMESTAMP,
+  `setting_type` enum('string','integer','boolean','json','float') DEFAULT 'string',
+  `setting_group` varchar(50) NOT NULL DEFAULT 'general',
+  `description` varchar(500) DEFAULT NULL,
+  `is_sensitive` tinyint(1) DEFAULT 0,
+  `updated_by` int DEFAULT NULL,
   `updated_at` datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `created_at` datetime DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
-  UNIQUE KEY `setting_key` (`setting_key`)
+  UNIQUE KEY `setting_key` (`setting_key`),
+  KEY `idx_setting_group` (`setting_group`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- Default Plugins (Core AtoM plugins)
