@@ -1,16 +1,60 @@
 <?php
 /**
  * AtoM Framework Bootstrap
- * 
- * To customize: copy bootstrap.php.dist to bootstrap.local.php and modify
- * This file will load bootstrap.local.php if it exists, otherwise bootstrap.php.dist
  */
+if (defined('ATOM_FRAMEWORK_LOADED')) {
+    return;
+}
+define('ATOM_FRAMEWORK_LOADED', true);
 
-$localBootstrap = __DIR__ . '/bootstrap.local.php';
-$distBootstrap = __DIR__ . '/bootstrap.php.dist';
+define('ATOM_FRAMEWORK_PATH', __DIR__);
+define('ATOM_ROOT_PATH', dirname(__DIR__));
 
-if (file_exists($localBootstrap)) {
-    require_once $localBootstrap;
-} elseif (file_exists($distBootstrap)) {
-    require_once $distBootstrap;
+$loader = require __DIR__ . '/vendor/autoload.php';
+
+$loader->addPsr4('AtomExtensions\\', __DIR__ . '/src/');
+$loader->addPsr4('AtomFramework\\', __DIR__ . '/src/');
+
+use Illuminate\Database\Capsule\Manager as Capsule;
+
+$configFile = ATOM_ROOT_PATH . '/config/config.php';
+if (file_exists($configFile)) {
+    $config = require $configFile;
+    if (isset($config['all']['propel']['param'])) {
+        $dbConfig = $config['all']['propel']['param'];
+        
+        // Parse database name from DSN
+        $dsn = $dbConfig['dsn'] ?? '';
+        $database = 'atom';
+        if (preg_match('/dbname=([^;]+)/', $dsn, $matches)) {
+            $database = $matches[1];
+        }
+        
+        // Parse host from DSN
+        $host = 'localhost';
+        if (preg_match('/host=([^;]+)/', $dsn, $matches)) {
+            $host = $matches[1];
+        }
+        
+        // Parse port from DSN
+        $port = 3306;
+        if (preg_match('/port=([^;]+)/', $dsn, $matches)) {
+            $port = (int)$matches[1];
+        }
+
+        $capsule = new Capsule;
+        $capsule->addConnection([
+            'driver' => 'mysql',
+            'host' => $host,
+            'port' => $port,
+            'database' => $database,
+            'username' => $dbConfig['username'] ?? 'atom',
+            'password' => $dbConfig['password'] ?? '',
+            'charset' => 'utf8mb4',
+            'collation' => 'utf8mb4_unicode_ci',
+            'prefix' => '',
+        ]);
+        $capsule->setAsGlobal();
+        $capsule->bootEloquent();
+    }
 }
