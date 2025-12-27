@@ -22,7 +22,6 @@ PROJECT_CONFIG="${ATOM_ROOT}/config/ProjectConfiguration.class.php"
 PROJECT_CONFIG_TEMPLATE="${FRAMEWORK_PATH}/config/ProjectConfiguration.class.php.template"
 
 CORE_PLUGINS=(
-    "arAHGThemeB5Plugin"
     "arSecurityClearancePlugin"
     "arAccessRequestPlugin"
     "arDisplayPlugin"
@@ -128,7 +127,6 @@ if $AUTO_DB; then
     echo -e "${YELLOW}→ Registering plugins...${NC}"
     mysql -u"$DB_USER" -p"$DB_PASS" "$DB_NAME" << EOSQL
 INSERT INTO atom_plugin (name, is_enabled, load_order, version) VALUES
-    ('arAHGThemeB5Plugin', 1, 5, '1.0.0'),
     ('arSecurityClearancePlugin', 1, 160, '1.0.0'),
     ('arAccessRequestPlugin', 1, 170, '1.0.0'),
     ('arDisplayPlugin', 1, 180, '1.0.0'),
@@ -137,7 +135,6 @@ INSERT INTO atom_plugin (name, is_enabled, load_order, version) VALUES
 ON DUPLICATE KEY UPDATE is_enabled = 1, updated_at = NOW();
 
 INSERT INTO atom_extension (machine_name, display_name, version, status, installed_at, enabled_at) VALUES
-    ('arAHGThemeB5Plugin', 'AHG Theme Bootstrap 5', '1.0.0', 'enabled', NOW(), NOW()),
     ('arSecurityClearancePlugin', 'Security Clearance', '1.0.0', 'enabled', NOW(), NOW()),
     ('arAccessRequestPlugin', 'Access Request', '1.0.0', 'enabled', NOW(), NOW()),
     ('arDisplayPlugin', 'Display Plugin', '1.0.0', 'enabled', NOW(), NOW()),
