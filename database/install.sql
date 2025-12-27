@@ -110,3 +110,84 @@ CREATE TABLE IF NOT EXISTS `atom_extension_pending_deletion` (
   `created_at` datetime DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- =============================================================================
+-- IIIF Tables (Homepage Carousel Support)
+-- =============================================================================
+
+-- IIIF Viewer Settings
+CREATE TABLE IF NOT EXISTS `iiif_viewer_settings` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `setting_key` varchar(100) NOT NULL,
+  `setting_value` text,
+  `description` varchar(255) DEFAULT NULL,
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `setting_key` (`setting_key`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Default IIIF settings
+INSERT IGNORE INTO `iiif_viewer_settings` (`setting_key`, `setting_value`, `description`) VALUES
+('homepage_collection_id', '', 'Collection ID to feature on homepage'),
+('homepage_collection_enabled', '0', 'Enable featured collection on homepage'),
+('homepage_carousel_height', '400', 'Homepage carousel height'),
+('homepage_carousel_autoplay', '1', 'Auto-rotate homepage carousel'),
+('homepage_carousel_interval', '5000', 'Homepage carousel interval (ms)'),
+('homepage_show_captions', '1', 'Show captions on homepage carousel'),
+('homepage_max_items', '10', 'Max items on homepage carousel');
+
+-- IIIF Collections
+CREATE TABLE IF NOT EXISTS `iiif_collection` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `name` varchar(255) NOT NULL,
+  `slug` varchar(255) NOT NULL,
+  `description` text,
+  `attribution` varchar(500) DEFAULT NULL,
+  `logo_url` varchar(500) DEFAULT NULL,
+  `thumbnail_url` varchar(500) DEFAULT NULL,
+  `viewing_hint` enum('individuals','paged','continuous','multi-part','top') DEFAULT 'individuals',
+  `nav_date` date DEFAULT NULL,
+  `parent_id` int DEFAULT NULL,
+  `sort_order` int DEFAULT '0',
+  `is_public` tinyint(1) DEFAULT '1',
+  `created_by` int DEFAULT NULL,
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `slug` (`slug`),
+  KEY `idx_slug` (`slug`),
+  KEY `idx_parent` (`parent_id`),
+  KEY `idx_public` (`is_public`),
+  CONSTRAINT `iiif_collection_ibfk_1` FOREIGN KEY (`parent_id`) REFERENCES `iiif_collection` (`id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- IIIF Collection Translations
+CREATE TABLE IF NOT EXISTS `iiif_collection_i18n` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `collection_id` int NOT NULL,
+  `culture` varchar(10) NOT NULL DEFAULT 'en',
+  `name` varchar(255) DEFAULT NULL,
+  `description` text,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `unique_collection_culture` (`collection_id`,`culture`),
+  CONSTRAINT `iiif_collection_i18n_ibfk_1` FOREIGN KEY (`collection_id`) REFERENCES `iiif_collection` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- IIIF Collection Items
+CREATE TABLE IF NOT EXISTS `iiif_collection_item` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `collection_id` int NOT NULL,
+  `object_id` int DEFAULT NULL,
+  `manifest_uri` varchar(1000) DEFAULT NULL,
+  `item_type` enum('manifest','collection') DEFAULT 'manifest',
+  `label` varchar(500) DEFAULT NULL,
+  `description` text,
+  `thumbnail_url` varchar(500) DEFAULT NULL,
+  `sort_order` int DEFAULT '0',
+  `added_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_collection` (`collection_id`),
+  KEY `idx_object` (`object_id`),
+  CONSTRAINT `iiif_collection_item_ibfk_1` FOREIGN KEY (`collection_id`) REFERENCES `iiif_collection` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
