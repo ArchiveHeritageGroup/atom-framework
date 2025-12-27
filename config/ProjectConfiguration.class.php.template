@@ -1,0 +1,144 @@
+<?php
+
+/**
+ * AtoM Project Configuration
+ *
+ * Core Symfony setup only - all AHG customizations are in the theme plugin.
+ * Plugin management is database-driven via atom_plugin table.
+ */
+
+require_once dirname(__FILE__).'/../vendor/symfony/lib/autoload/sfCoreAutoload.class.php';
+sfCoreAutoload::register();
+
+require_once __DIR__.'/../vendor/symfony2/src/Symfony/Component/ClassLoader/UniversalClassLoader.php';
+require_once __DIR__.'/../lib/QubitApcUniversalClassLoader.php';
+require_once __DIR__.'/../vendor/autoload.php';
+
+class ProjectConfiguration extends sfProjectConfiguration
+{
+    public function setup()
+    {
+        $this->namespacesClassLoader();
+
+        // Core plugins required for AtoM to function
+        // Additional plugins are loaded from database via atom_plugin table
+        $corePlugins = [
+            'qbAclPlugin',
+            'qtAccessionPlugin',
+            'sfDrupalPlugin',
+            'sfHistoryPlugin',
+            'arElasticSearchPlugin',
+            'sfPropelPlugin',
+            'sfThumbnailPlugin',
+            'sfTranslatePlugin',
+            'sfWebBrowserPlugin',
+            'sfPluginAdminPlugin',
+        ];
+
+        // Load additional plugins from database
+        $plugins = $this->loadPluginsFromDatabase($corePlugins);
+
+        // Check for OIDC plugin activation
+        $filePath = 'activate-oidc-plugin';
+        if (file_exists($filePath) && 0 === filesize($filePath)) {
+            $plugins[] = 'arOidcPlugin';
+        }
+
+        $this->enablePlugins($plugins);
+
+        // Web debug panel (dev only)
+        $this->dispatcher->connect(
+            'debug.web.load_panels',
+            ['arWebDebugPanel', 'listenToLoadDebugWebPanelEvent']
+        );
+
+        // Load AtoM extensions framework for web requests
+        $frameworkPath = sfConfig::get('sf_root_dir').'/atom-framework/bootstrap.php';
+        if (file_exists($frameworkPath)) {
+            require_once $frameworkPath;
+        }
+    }
+
+    /**
+     * Load enabled plugins from database, with fallback to core plugins.
+     */
+    private function loadPluginsFromDatabase(array $corePlugins): array
+    {
+        try {
+            $configPath = sfConfig::get('sf_root_dir') . '/config/config.php';
+            if (!file_exists($configPath)) {
+                return $corePlugins;
+            }
+
+            $config = require $configPath;
+            if (!isset($config['all']['propel']['param'])) {
+                return $corePlugins;
+            }
+
+            $params = $config['all']['propel']['param'];
+            $dsn = $params['dsn'] ?? '';
+            $dsnParts = [];
+
+            if (!empty($dsn)) {
+                $dsnWithoutDriver = preg_replace('/^[a-z]+:/', '', $dsn);
+                foreach (explode(';', $dsnWithoutDriver) as $part) {
+                    $part = trim($part);
+                    if (strpos($part, '=') !== false) {
+                        list($key, $value) = explode('=', $part, 2);
+                        $dsnParts[trim($key)] = trim($value);
+                    }
+                }
+            }
+
+            $pdo = new PDO(
+                sprintf('mysql:host=%s;port=%d;dbname=%s;charset=utf8mb4',
+                    $dsnParts['host'] ?? 'localhost',
+                    $dsnParts['port'] ?? 3306,
+                    $dsnParts['dbname'] ?? 'atom'
+                ),
+                $params['username'] ?? 'root',
+                $params['password'] ?? '',
+                [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
+            );
+
+            $stmt = $pdo->prepare('SELECT name FROM atom_plugin WHERE is_enabled = 1 ORDER BY load_order ASC');
+            $stmt->execute();
+            $dbPlugins = $stmt->fetchAll(PDO::FETCH_COLUMN);
+
+            if (!empty($dbPlugins)) {
+                // Merge core plugins with database plugins, core first
+                return array_values(array_unique(array_merge($corePlugins, $dbPlugins)));
+            }
+
+            return $corePlugins;
+
+        } catch (Exception $e) {
+            error_log('ProjectConfiguration: Failed to load plugins from database - ' . $e->getMessage());
+            return $corePlugins;
+        }
+    }
+
+    public function isPluginEnabled($pluginName)
+    {
+        return false !== array_search($pluginName, $this->plugins);
+    }
+
+    protected function namespacesClassLoader()
+    {
+        $rootDir = sfConfig::get('sf_root_dir');
+
+        if (extension_loaded('apcu') || extension_loaded('apc')) {
+            $prefix = sprintf('atom:%s:', md5($rootDir));
+            $loader = new QubitApcUniversalClassLoader($prefix);
+        } else {
+            $loader = new UniversalClassLoader();
+        }
+
+        $loader->registerNamespaces([
+            'Psr' => $rootDir.DIRECTORY_SEPARATOR.'vendor',
+            'AccessToMemory' => $rootDir.DIRECTORY_SEPARATOR.'lib',
+        ]);
+
+        $loader->register();
+    }
+}
