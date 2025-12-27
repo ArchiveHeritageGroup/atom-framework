@@ -1,215 +1,147 @@
 #!/bin/bash
 # =============================================================================
-# AtoM AHG Framework - Installation
+# AtoM Framework Installer
+# Creates database tables only - does NOT modify ProjectConfiguration
 # =============================================================================
 
 set -e
 
+# Colors
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
-CYAN='\033[0;36m'
 NC='\033[0m'
 
+echo -e "${GREEN}"
+echo "=============================================="
+echo "  AtoM Framework Installer"
+echo "=============================================="
+echo -e "${NC}"
+
+# Detect paths
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FRAMEWORK_PATH="$(dirname "$SCRIPT_DIR")"
 ATOM_ROOT="$(dirname "$FRAMEWORK_PATH")"
 
-PLUGINS_PATH="${ATOM_ROOT}/plugins"
-AHG_PLUGINS_PATH="${ATOM_ROOT}/atom-ahg-plugins"
+echo -e "${YELLOW}Paths detected:${NC}"
+echo "  Framework: $FRAMEWORK_PATH"
+echo "  AtoM Root: $ATOM_ROOT"
+
+# Get database credentials from config.php
 CONFIG_FILE="${ATOM_ROOT}/config/config.php"
-PROJECT_CONFIG="${ATOM_ROOT}/config/ProjectConfiguration.class.php"
-PROJECT_CONFIG_TEMPLATE="${FRAMEWORK_PATH}/config/ProjectConfiguration.class.php.template"
-
-CORE_PLUGINS=(
-    "arSecurityClearancePlugin"
-    "arAccessRequestPlugin"
-    "arDisplayPlugin"
-    "arPluginManagerPlugin"
-    "arResearchPlugin"
-)
-
-echo -e "${CYAN}"
-echo "=============================================="
-echo "  AtoM AHG Framework - Installation"
-echo "=============================================="
-echo -e "${NC}"
-
-# Check prerequisites
 if [ ! -f "$CONFIG_FILE" ]; then
-    echo -e "${RED}✗ AtoM config not found at ${CONFIG_FILE}${NC}"
+    echo -e "${RED}Error: config.php not found at $CONFIG_FILE${NC}"
     exit 1
 fi
 
-if [ ! -d "$AHG_PLUGINS_PATH" ]; then
-    echo -e "${RED}✗ atom-ahg-plugins not found${NC}"
-    echo "  Run: git clone https://github.com/ArchiveHeritageGroup/atom-ahg-plugins.git"
-    exit 1
-fi
-
-if [ ! -d "$FRAMEWORK_PATH/vendor" ]; then
-    echo -e "${RED}✗ Composer dependencies not installed${NC}"
-    echo "  Run: composer install"
-    exit 1
-fi
-
-echo -e "${GREEN}✓ Prerequisites OK${NC}"
-echo ""
-
-# Get DB credentials
+DB_HOST=$(php -r "\$c=require('${CONFIG_FILE}'); preg_match('/host=([^;]+)/', \$c['all']['propel']['param']['dsn'] ?? '', \$m); echo \$m[1] ?? 'localhost';")
 DB_USER=$(php -r "\$c=require('${CONFIG_FILE}'); echo \$c['all']['propel']['param']['username'] ?? 'atom';")
 DB_PASS=$(php -r "\$c=require('${CONFIG_FILE}'); echo \$c['all']['propel']['param']['password'] ?? '';")
 DB_NAME=$(php -r "\$c=require('${CONFIG_FILE}'); preg_match('/dbname=([^;]+)/', \$c['all']['propel']['param']['dsn'] ?? '', \$m); echo \$m[1] ?? 'atom';")
 
-echo -e "Database: ${CYAN}${DB_NAME}${NC}"
+echo -e "${YELLOW}Database:${NC} $DB_NAME @ $DB_HOST"
+
+# =============================================================================
+# Create database tables
+# =============================================================================
 echo ""
+echo -e "${YELLOW}Creating database tables...${NC}"
 
-# Ask about database install
-echo -e "${YELLOW}Database tables need to be created.${NC}"
-echo ""
-echo "  [A] Auto - Install tables automatically"
-echo "  [M] Manual - I will run SQL files myself"
-echo ""
-read -p "  Select option [A/m]: " DB_CHOICE
-DB_CHOICE=${DB_CHOICE:-A}
+mysql -h "$DB_HOST" -u "$DB_USER" -p"$DB_PASS" "$DB_NAME" << 'EOSQL'
 
-AUTO_DB=true
-if [[ "$DB_CHOICE" =~ ^[Mm]$ ]]; then
-    AUTO_DB=false
-fi
+-- atom_plugin: Plugin registry
+CREATE TABLE IF NOT EXISTS atom_plugin (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(100) NOT NULL UNIQUE,
+    display_name VARCHAR(255),
+    description TEXT,
+    version VARCHAR(20) DEFAULT '1.0.0',
+    category VARCHAR(50) DEFAULT 'extension',
+    is_enabled TINYINT(1) DEFAULT 0,
+    is_core TINYINT(1) DEFAULT 0,
+    load_order INT DEFAULT 100,
+    dependencies JSON,
+    settings JSON,
+    installed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
 
-echo ""
+-- atom_plugin_audit: Audit log
+CREATE TABLE IF NOT EXISTS atom_plugin_audit (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    plugin_name VARCHAR(100) NOT NULL,
+    action VARCHAR(50) NOT NULL,
+    user_id INT,
+    details JSON,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
 
-# Install framework tables
-if $AUTO_DB; then
-    echo -e "${YELLOW}→ Installing framework tables...${NC}"
-    mysql -u"$DB_USER" -p"$DB_PASS" "$DB_NAME" < "${FRAMEWORK_PATH}/database/install.sql" 2>&1 | grep -v "Warning" || true
-    echo -e "${GREEN}✓ Framework tables installed${NC}"
-else
-    echo -e "${YELLOW}Manual: Run this SQL file:${NC}"
-    echo "  mysql -u $DB_USER -p $DB_NAME < ${FRAMEWORK_PATH}/database/install.sql"
-fi
+-- ahg_settings: Theme/framework settings
+CREATE TABLE IF NOT EXISTS ahg_settings (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    setting_key VARCHAR(100) NOT NULL,
+    setting_value TEXT,
+    setting_group VARCHAR(50) DEFAULT 'general',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY (setting_key, setting_group)
+);
 
-echo ""
+-- Insert default settings
+INSERT IGNORE INTO ahg_settings (setting_key, setting_value, setting_group) VALUES
+('ahg_primary_color', '#005837', 'general'),
+('ahg_secondary_color', '#37A07F', 'general'),
+('ahg_card_header_bg', '#005837', 'general'),
+('ahg_card_header_text', '#ffffff', 'general');
 
-# Copy plugins
-echo -e "${YELLOW}→ Installing core plugins...${NC}"
-
-for plugin in "${CORE_PLUGINS[@]}"; do
-    SOURCE="${AHG_PLUGINS_PATH}/${plugin}"
-    DEST="${PLUGINS_PATH}/${plugin}"
-    
-    if [ ! -d "$SOURCE" ]; then
-        echo -e "  ${YELLOW}⚠ ${plugin} not found in repo${NC}"
-        continue
-    fi
-    
-    [ -d "$DEST" ] && rm -rf "$DEST"
-    cp -r "$SOURCE" "$DEST"
-    echo -e "  ${GREEN}✓ ${plugin}${NC}"
-    
-    # Run plugin SQL
-    if $AUTO_DB; then
-        for sql in "${DEST}/data/install.sql" "${DEST}/lib/install.sql"; do
-            if [ -f "$sql" ]; then
-                mysql -u"$DB_USER" -p"$DB_PASS" "$DB_NAME" < "$sql" 2>&1 | grep -v "Warning" || true
-                echo -e "    ${GREEN}✓ SQL executed${NC}"
-                break
-            fi
-        done
-    fi
-done
-
-echo ""
-
-# Register plugins
-if $AUTO_DB; then
-    echo -e "${YELLOW}→ Registering plugins...${NC}"
-    mysql -u"$DB_USER" -p"$DB_PASS" "$DB_NAME" << EOSQL
-INSERT INTO atom_plugin (name, is_enabled, load_order, version) VALUES
-    ('arSecurityClearancePlugin', 1, 160, '1.0.0'),
-    ('arAccessRequestPlugin', 1, 170, '1.0.0'),
-    ('arDisplayPlugin', 1, 180, '1.0.0'),
-    ('arPluginManagerPlugin', 1, 190, '1.0.0'),
-    ('arResearchPlugin', 1, 200, '1.0.0')
-ON DUPLICATE KEY UPDATE updated_at = NOW();
-
-INSERT INTO atom_extension (machine_name, display_name, version, status, installed_at, enabled_at) VALUES
-    ('arSecurityClearancePlugin', 'Security Clearance', '1.0.0', 'enabled', NOW(), NOW()),
-    ('arAccessRequestPlugin', 'Access Request', '1.0.0', 'enabled', NOW(), NOW()),
-    ('arDisplayPlugin', 'Display Plugin', '1.0.0', 'enabled', NOW(), NOW()),
-    ('arPluginManagerPlugin', 'Plugin Manager', '1.0.0', 'enabled', NOW(), NOW()),
-    ('arResearchPlugin', 'Researcher Portal', '1.0.0', 'enabled', NOW(), NOW())
-ON DUPLICATE KEY UPDATE status = 'enabled', enabled_at = NOW();
 EOSQL
-    echo -e "${GREEN}✓ Plugins registered${NC}"
-fi
 
+echo -e "${GREEN}✓ Database tables created${NC}"
+
+# =============================================================================
+# Create plugin symlinks
+# =============================================================================
 echo ""
+echo -e "${YELLOW}Creating plugin symlinks...${NC}"
 
-# =============================================================================
-# Replace ProjectConfiguration.class.php
-# =============================================================================
-echo -e "${YELLOW}→ Configuring ProjectConfiguration...${NC}"
+AHG_PLUGINS="${ATOM_ROOT}/atom-ahg-plugins"
+PLUGINS_DIR="${ATOM_ROOT}/plugins"
 
-if [ ! -f "$PROJECT_CONFIG" ]; then
-    echo -e "${RED}✗ ProjectConfiguration.class.php not found${NC}"
-    exit 1
-fi
-
-if [ ! -f "$PROJECT_CONFIG_TEMPLATE" ]; then
-    echo -e "${RED}✗ Template not found at ${PROJECT_CONFIG_TEMPLATE}${NC}"
-    exit 1
-fi
-
-# Check if already AHG version
-if grep -q "loadPluginsFromDatabase" "$PROJECT_CONFIG"; then
-    echo -e "  ${GREEN}✓ Already configured for AHG${NC}"
+if [ -d "$AHG_PLUGINS" ]; then
+    for plugin in arAHGThemeB5Plugin arDisplayPlugin arAccessRequestPlugin arResearchPlugin arSecurityClearancePlugin; do
+        if [ -d "${AHG_PLUGINS}/${plugin}" ]; then
+            if [ ! -L "${PLUGINS_DIR}/${plugin}" ]; then
+                ln -sf "${AHG_PLUGINS}/${plugin}" "${PLUGINS_DIR}/${plugin}"
+                echo -e "  ${GREEN}✓${NC} Linked $plugin"
+            else
+                echo -e "  ${YELLOW}→${NC} $plugin already linked"
+            fi
+        fi
+    done
 else
-    # Backup original
-    cp "$PROJECT_CONFIG" "${PROJECT_CONFIG}.bak.$(date +%Y%m%d%H%M%S)"
-    echo -e "  ${GREEN}✓ Backup created${NC}"
-    
-    # Copy template
-    cp "$PROJECT_CONFIG_TEMPLATE" "$PROJECT_CONFIG"
-    echo -e "  ${GREEN}✓ ProjectConfiguration replaced with AHG version${NC}"
+    echo -e "${YELLOW}⚠ atom-ahg-plugins not found, skipping symlinks${NC}"
 fi
 
+# =============================================================================
+# Instructions
+# =============================================================================
 echo ""
-
-# Clear cache
-echo -e "${YELLOW}→ Clearing cache...${NC}"
-rm -rf "${ATOM_ROOT}/cache/"* 2>/dev/null || true
-echo -e "${GREEN}✓ Cache cleared${NC}"
-
-echo ""
-echo -e "${CYAN}=============================================="
-echo -e "  Installation Complete!"
-echo -e "==============================================${NC}"
+echo -e "${GREEN}=============================================="
+echo "  Installation Complete"
+echo "==============================================${NC}"
 echo ""
 echo "Next steps:"
-echo "  1. Restart PHP: sudo systemctl restart php8.3-fpm"
+echo "  1. Add framework loading to ProjectConfiguration.class.php:"
 echo ""
-
-if ! $AUTO_DB; then
-    echo -e "${YELLOW}Manual SQL files to run:${NC}"
-    echo "  ${FRAMEWORK_PATH}/database/install.sql"
-    for plugin in "${CORE_PLUGINS[@]}"; do
-        for sql in "${PLUGINS_PATH}/${plugin}/data/install.sql" "${PLUGINS_PATH}/${plugin}/lib/install.sql"; do
-            [ -f "$sql" ] && echo "  $sql"
-        done
-    done
-    echo ""
-fi
-
-# =============================================================================
-# Copy AHG Theme dist files
-# =============================================================================
-echo -e "${YELLOW}→ Installing AHG theme assets...${NC}"
-if [ -d "${AHG_PLUGINS_PATH}/arAHGThemeB5Plugin/dist" ]; then
-    cp -r ${AHG_PLUGINS_PATH}/arAHGThemeB5Plugin/dist/css/* ${ATOM_ROOT}/dist/css/ 2>/dev/null || true
-    cp -r ${AHG_PLUGINS_PATH}/arAHGThemeB5Plugin/dist/js/* ${ATOM_ROOT}/dist/js/ 2>/dev/null || true
-    echo -e "${GREEN}✓ AHG theme assets installed${NC}"
-else
-    echo -e "${YELLOW}⚠ AHG theme dist files not found${NC}"
-fi
+echo "     // Add AFTER \$this->enablePlugins(\$plugins);"
+echo "     \$frameworkPath = sfConfig::get('sf_root_dir').'/atom-framework/bootstrap.php';"
+echo "     if (file_exists(\$frameworkPath)) {"
+echo "         require_once \$frameworkPath;"
+echo "     }"
+echo ""
+echo "  2. Add plugins to setting_i18n (Admin → Themes to activate theme)"
+echo ""
+echo "  3. Clear cache:"
+echo "     rm -rf ${ATOM_ROOT}/cache/*"
+echo "     sudo systemctl restart php8.3-fpm"
+echo ""
