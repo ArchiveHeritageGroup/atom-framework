@@ -203,3 +203,15 @@ if ! $AUTO_DB; then
     done
     echo ""
 fi
+
+# =============================================================================
+# Copy AHG Theme dist files
+# =============================================================================
+echo -e "${YELLOW}→ Installing AHG theme assets...${NC}"
+if [ -d "${AHG_PLUGINS_PATH}/arAHGThemeB5Plugin/dist" ]; then
+    cp -r ${AHG_PLUGINS_PATH}/arAHGThemeB5Plugin/dist/css/* ${ATOM_PATH}/dist/css/ 2>/dev/null || true
+    cp -r ${AHG_PLUGINS_PATH}/arAHGThemeB5Plugin/dist/js/* ${ATOM_PATH}/dist/js/ 2>/dev/null || true
+    echo -e "${GREEN}✓ AHG theme assets installed${NC}"
+else
+    echo -e "${YELLOW}⚠ AHG theme dist files not found${NC}"
+fi
