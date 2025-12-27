@@ -131,8 +131,10 @@ INSERT INTO atom_plugin (name, is_enabled, load_order, version) VALUES
     ('arAccessRequestPlugin', 1, 170, '1.0.0'),
     ('arDisplayPlugin', 1, 180, '1.0.0'),
     ('arPluginManagerPlugin', 1, 190, '1.0.0'),
-    ('arResearchPlugin', 1, 200, '1.0.0')
-ON DUPLICATE KEY UPDATE is_enabled = 1, updated_at = NOW();
+    ('arResearchPlugin', 1, 200, '1.0.0'),
+    ('arDominionB5Plugin', 0, 10, '1.0.0'),
+    ('arAHGThemeB5Plugin', 0, 50, '1.0.0')
+ON DUPLICATE KEY UPDATE updated_at = NOW();
 
 INSERT INTO atom_extension (machine_name, display_name, version, status, installed_at, enabled_at) VALUES
     ('arSecurityClearancePlugin', 'Security Clearance', '1.0.0', 'enabled', NOW(), NOW()),
