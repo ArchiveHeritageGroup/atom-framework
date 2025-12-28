@@ -22,6 +22,7 @@ class ModuleDiscoveryService
         'default',
         'aclGroup',
         'extensions',
+        'settings',
     ];
 
     /**
@@ -29,7 +30,7 @@ class ModuleDiscoveryService
      */
     public static function discoverModules(): array
     {
-        if (null !== self::$cachedModules) {
+        if (false && null !== self::$cachedModules) {
             return self::$cachedModules;
         }
 
@@ -168,7 +169,9 @@ class ModuleDiscoveryService
         $modules = self::discoverModules();
 
         // Set modules directly - no merge with settings.yml needed
-        \sfConfig::set('sf_enabled_modules', $modules);
+        // Merge with existing modules, don't replace
+        $existing = \sfConfig::get('sf_enabled_modules', []);
+        \sfConfig::set('sf_enabled_modules', array_values(array_unique(array_merge($existing, $modules))));
     }
 
     /**
