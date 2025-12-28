@@ -14,12 +14,10 @@ if (!file_exists($bootstrap)) {
 }
 require_once $bootstrap;
 
-// Auto-install tables if needed
-autoInstallTables();
-
 // Parse command
 $args = $argv;
 array_shift($args);
+
 if (isset($args[0]) && strpos($args[0], ':') !== false) {
     $parts = explode(':', $args[0], 2);
     $args[0] = $parts[0];
@@ -35,90 +33,117 @@ switch ($module) {
         require_once FRAMEWORK_ROOT . '/src/Console/ExtensionCommand.php';
         $cmd = new \AtomFramework\Console\ExtensionCommand(array_merge(['atom', $command], $remaining));
         exit($cmd->run());
+    
+    case 'migrate':
+        require_once FRAMEWORK_ROOT . '/src/Database/MigrationRunner.php';
+        require_once FRAMEWORK_ROOT . '/src/Console/MigrateCommand.php';
+        $cmd = new \AtomFramework\Console\MigrateCommand();
+        exit($cmd->run(array_merge([$command], $remaining)));
+    
+    case 'framework':
+        if ($command === 'install') {
+            runFrameworkInstall();
+            exit(0);
+        }
+        echo "\033[31mUnknown framework command: {$command}\033[0m\n";
+        exit(1);
+    
     case 'help':
     case '--help':
     case '-h':
         showHelp();
         exit(0);
+    
     default:
         echo "\033[31mUnknown command: {$module}\033[0m\n";
+        showHelp();
         exit(1);
 }
 
-function autoInstallTables(): void
+function runFrameworkInstall(): void
 {
-    try {
-        $db = \Illuminate\Database\Capsule\Manager::connection();
-        
-        // Check if core tables exist
-        $tables = ['atom_plugin', 'atom_extension', 'atom_extension_setting'];
-        $missing = [];
-        
-        foreach ($tables as $table) {
-            try {
-                $db->select("SELECT 1 FROM {$table} LIMIT 1");
-            } catch (\Exception $e) {
-                $missing[] = $table;
+    echo "Installing AtoM Framework...\n";
+    echo str_repeat('═', 60) . "\n";
+    
+    // Run migrations
+    require_once FRAMEWORK_ROOT . '/src/Database/MigrationRunner.php';
+    $runner = new \AtomFramework\Database\MigrationRunner();
+    
+    echo "→ Running database migrations...\n";
+    $results = $runner->migrate();
+    
+    if (empty($results)) {
+        echo "  ✓ Database already up to date.\n";
+    } else {
+        foreach ($results as $result) {
+            $status = $result['status'] === 'success' ? '✓' : '✗';
+            echo "  {$status} {$result['migration']}";
+            if (isset($result['error'])) {
+                echo " - {$result['error']}";
             }
+            echo "\n";
         }
-        
-        if (!empty($missing)) {
-            echo "\033[33m→ Installing framework tables...\033[0m\n";
-            $sqlFile = FRAMEWORK_ROOT . '/database/install.sql';
-            
-            if (file_exists($sqlFile)) {
-                $configFile = ATOM_ROOT . '/config/config.php';
-                $config = require $configFile;
-                $params = $config['all']['propel']['param'];
-                
-                preg_match('/dbname=([^;]+)/', $params['dsn'] ?? '', $m);
-                $dbname = $m[1] ?? 'atom';
-                
-                $cmd = sprintf('mysql -u%s -p%s %s < %s 2>&1',
-                    escapeshellarg($params['username']),
-                    escapeshellarg($params['password']),
-                    escapeshellarg($dbname),
-                    escapeshellarg($sqlFile)
-                );
-                
-                exec($cmd, $output, $return);
-                
-                if ($return === 0) {
-                    echo "\033[32m✓ Framework tables installed\033[0m\n\n";
-                } else {
-                    echo "\033[31m✗ Table install failed: " . implode("\n", $output) . "\033[0m\n";
-                }
-            } else {
-                echo "\033[31m✗ install.sql not found\033[0m\n";
-            }
+    }
+    
+    // Insert default settings if needed
+    echo "→ Checking default settings...\n";
+    insertDefaultSettings();
+    echo "  ✓ Settings configured.\n";
+    
+    echo str_repeat('═', 60) . "\n";
+    echo "  ✓ Framework installation complete!\n\n";
+    echo "Next steps:\n";
+    echo "  php bin/atom extension:discover    # Find available extensions\n";
+    echo "  php bin/atom extension:list        # List installed extensions\n";
+}
+
+function insertDefaultSettings(): void
+{
+    $defaults = [
+        ['setting_key' => 'uninstall_grace_period_days', 'setting_value' => '30', 'setting_type' => 'integer', 'setting_group' => 'extensions'],
+        ['setting_key' => 'require_backup_on_uninstall', 'setting_value' => 'ask', 'setting_type' => 'string', 'setting_group' => 'extensions'],
+        ['setting_key' => 'preserve_shared_table_data', 'setting_value' => '1', 'setting_type' => 'boolean', 'setting_group' => 'extensions'],
+        ['setting_key' => 'backup_directory', 'setting_value' => '/usr/share/nginx/atom/data/extension-backups', 'setting_type' => 'string', 'setting_group' => 'extensions'],
+    ];
+    
+    foreach ($defaults as $setting) {
+        try {
+            \Illuminate\Database\Capsule\Manager::table('atom_extension_setting')
+                ->insertOrIgnore($setting);
+        } catch (\Exception $e) {
+            // Ignore if table doesn't exist yet
         }
-    } catch (\Exception $e) {
-        // Silently continue - bootstrap might not be complete
     }
 }
 
 function showHelp(): void
 {
     echo <<<HELP
-AtoM Framework CLI v1.0.0
+\033[1mAtoM Framework CLI\033[0m
 
-Usage: php bin/atom <module>:<command> [arguments]
+Usage: php bin/atom <command> [options]
 
-Modules:
-  extension     Manage AHG extensions
+\033[33mCommands:\033[0m
+  framework:install     Install/upgrade framework tables
+  migrate run           Run pending database migrations
+  migrate status        Show migration status
+  
+  extension:list        List all extensions
+  extension:discover    Discover available extensions
+  extension:install     Install an extension
+  extension:uninstall   Uninstall an extension
+  extension:enable      Enable an extension
+  extension:disable     Disable an extension
+  extension:restore     Restore pending deletion
+  extension:cleanup     Process pending deletions
+  extension:audit       Show audit log
 
-Extension Commands:
-  discover      Discover available extensions
-  list          List installed extensions
-  install       Install an extension
-  uninstall     Uninstall an extension
-  enable        Enable an extension
-  disable       Disable an extension
-
-Examples:
+\033[33mExamples:\033[0m
+  php bin/atom framework:install
+  php bin/atom migrate status
   php bin/atom extension:discover
-  php bin/atom extension:install arDisplayPlugin
-  php bin/atom extension:list
+  php bin/atom extension:install arAHGThemeB5Plugin
+  php bin/atom extension:enable arAHGThemeB5Plugin
 
 HELP;
 }
