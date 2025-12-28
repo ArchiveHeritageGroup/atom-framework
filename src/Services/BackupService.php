@@ -532,7 +532,285 @@ class BackupService
         }
     }
 
-    private function restoreFuseki(string $backupDir): void
+    
+    /**
+     * Restore from a specific path (for uploaded backups)
+     */
+    public function restoreFromPath(string $backupDir, array $options = []): array
+    {
+        if (!is_dir($backupDir)) {
+            throw new \Exception("Backup directory not found: {$backupDir}");
+        }
+
+        $this->log("Starting restore from path: {$backupDir}");
+        $results = [];
+
+        // Restore database
+        if ($options['restore_database'] ?? true) {
+            $dbDir = $backupDir . '/database';
+            $dbFiles = glob($dbDir . '/*.sql.gz');
+            
+            // Also check for uncompressed SQL
+            if (empty($dbFiles)) {
+                $dbFiles = glob($dbDir . '/*.sql');
+            }
+            
+            // Check root of backup dir too
+            if (empty($dbFiles)) {
+                $dbFiles = glob($backupDir . '/*.sql.gz');
+            }
+            if (empty($dbFiles)) {
+                $dbFiles = glob($backupDir . '/*.sql');
+            }
+
+            if (!empty($dbFiles)) {
+                $this->restoreDatabaseFile($dbFiles[0]);
+                $results['database'] = ['status' => 'success', 'file' => basename($dbFiles[0])];
+                $this->log("Database restored from: " . basename($dbFiles[0]));
+            } else {
+                $results['database'] = ['status' => 'skipped', 'reason' => 'no database file found'];
+            }
+        }
+
+        // Restore uploads
+        if ($options['restore_uploads'] ?? false) {
+            $result = $this->restoreUploads($backupDir);
+            $results['uploads'] = $result;
+        }
+
+        // Restore plugins
+        if ($options['restore_plugins'] ?? false) {
+            $result = $this->restorePlugins($backupDir);
+            $results['plugins'] = $result;
+        }
+
+        // Restore framework
+        if ($options['restore_framework'] ?? false) {
+            $result = $this->restoreFramework($backupDir);
+            $results['framework'] = $result;
+        }
+
+        $this->log("Restore from path completed");
+        return $results;
+    }
+
+    /**
+     * Restore database from file (supports .sql and .sql.gz)
+     */
+    private function restoreDatabaseFile(string $sqlFile): void
+    {
+        $dbConfig = $this->settings->getDbConfigFromFile();
+        
+        $host = $dbConfig['db_host'] ?? 'localhost';
+        $database = $dbConfig['db_name'] ?? 'archive';
+        $username = $dbConfig['db_user'] ?? 'root';
+        $password = $dbConfig['db_password'] ?? '';
+        $port = $dbConfig['db_port'] ?? 3306;
+
+        $passwordArg = '';
+        if (!empty($password)) {
+            $passwordArg = "-p'" . addslashes($password) . "'";
+        }
+
+        // Check if gzipped
+        $isGzipped = preg_match('/\.gz$/i', $sqlFile);
+
+        if ($isGzipped) {
+            $cmd = sprintf(
+                "gunzip -c %s | mysql -h %s -P %s -u %s %s %s 2>&1",
+                escapeshellarg($sqlFile),
+                escapeshellarg($host),
+                escapeshellarg($port),
+                escapeshellarg($username),
+                $passwordArg,
+                escapeshellarg($database)
+            );
+        } else {
+            $cmd = sprintf(
+                "mysql -h %s -P %s -u %s %s %s < %s 2>&1",
+                escapeshellarg($host),
+                escapeshellarg($port),
+                escapeshellarg($username),
+                $passwordArg,
+                escapeshellarg($database),
+                escapeshellarg($sqlFile)
+            );
+        }
+
+        exec($cmd, $output, $returnCode);
+
+        if ($returnCode !== 0) {
+            throw new \Exception("Database restore failed: " . implode("\n", $output));
+        }
+    }
+
+    /**
+     * Restore uploads directory
+     */
+    private function restoreUploads(string $backupDir): array
+    {
+        $uploadsArchive = $backupDir . '/uploads.tar.gz';
+        $atomRoot = $this->getAtomRoot();
+        $uploadsDir = $atomRoot . '/uploads';
+
+        if (!file_exists($uploadsArchive)) {
+            return ['status' => 'skipped', 'reason' => 'no uploads archive found'];
+        }
+
+        // Backup current uploads first
+        $backupCurrent = $uploadsDir . '_pre_restore_' . date('YmdHis');
+        if (is_dir($uploadsDir)) {
+            rename($uploadsDir, $backupCurrent);
+        }
+
+        // Create fresh uploads directory
+        mkdir($uploadsDir, 0755, true);
+
+        // Extract
+        $cmd = sprintf(
+            "tar -xzf %s -C %s 2>&1",
+            escapeshellarg($uploadsArchive),
+            escapeshellarg($atomRoot)
+        );
+
+        exec($cmd, $output, $returnCode);
+
+        if ($returnCode !== 0) {
+            // Restore original on failure
+            if (is_dir($backupCurrent)) {
+                if (is_dir($uploadsDir)) {
+                    exec("rm -rf " . escapeshellarg($uploadsDir));
+                }
+                rename($backupCurrent, $uploadsDir);
+            }
+            return ['status' => 'error', 'message' => implode("\n", $output)];
+        }
+
+        // Set permissions
+        exec("chown -R www-data:www-data " . escapeshellarg($uploadsDir));
+
+        $this->log("Uploads restored successfully");
+        return ['status' => 'success', 'backup_of_original' => basename($backupCurrent)];
+    }
+
+    /**
+     * Restore plugins directory
+     */
+    private function restorePlugins(string $backupDir): array
+    {
+        $pluginsArchive = $backupDir . '/plugins.tar.gz';
+        $atomRoot = $this->getAtomRoot();
+        $pluginsDir = $atomRoot . '/plugins';
+
+        if (!file_exists($pluginsArchive)) {
+            return ['status' => 'skipped', 'reason' => 'no plugins archive found'];
+        }
+
+        // Extract to temp first to see what plugins are included
+        $tempDir = sys_get_temp_dir() . '/atom_plugins_restore_' . uniqid();
+        mkdir($tempDir, 0755, true);
+
+        $cmd = sprintf(
+            "tar -xzf %s -C %s 2>&1",
+            escapeshellarg($pluginsArchive),
+            escapeshellarg($tempDir)
+        );
+
+        exec($cmd, $output, $returnCode);
+
+        if ($returnCode !== 0) {
+            exec("rm -rf " . escapeshellarg($tempDir));
+            return ['status' => 'error', 'message' => implode("\n", $output)];
+        }
+
+        // Copy each plugin, backing up existing
+        $restored = [];
+        $plugins = glob($tempDir . '/*', GLOB_ONLYDIR);
+        
+        foreach ($plugins as $plugin) {
+            $pluginName = basename($plugin);
+            $targetDir = $pluginsDir . '/' . $pluginName;
+            
+            // Backup existing
+            if (is_dir($targetDir)) {
+                $backupName = $targetDir . '_pre_restore_' . date('YmdHis');
+                rename($targetDir, $backupName);
+            }
+            
+            // Copy new
+            exec("cp -r " . escapeshellarg($plugin) . " " . escapeshellarg($targetDir));
+            exec("chown -R www-data:www-data " . escapeshellarg($targetDir));
+            
+            $restored[] = $pluginName;
+        }
+
+        // Cleanup temp
+        exec("rm -rf " . escapeshellarg($tempDir));
+
+        $this->log("Plugins restored: " . implode(', ', $restored));
+        return ['status' => 'success', 'plugins' => $restored];
+    }
+
+    /**
+     * Restore framework directory
+     */
+    private function restoreFramework(string $backupDir): array
+    {
+        $frameworkArchive = $backupDir . '/framework.tar.gz';
+        $atomRoot = $this->getAtomRoot();
+        $frameworkDir = $atomRoot . '/atom-framework';
+
+        if (!file_exists($frameworkArchive)) {
+            return ['status' => 'skipped', 'reason' => 'no framework archive found'];
+        }
+
+        // Backup current framework
+        $backupCurrent = $frameworkDir . '_pre_restore_' . date('YmdHis');
+        if (is_dir($frameworkDir)) {
+            rename($frameworkDir, $backupCurrent);
+        }
+
+        // Create fresh directory
+        mkdir($frameworkDir, 0755, true);
+
+        // Extract
+        $cmd = sprintf(
+            "tar -xzf %s -C %s 2>&1",
+            escapeshellarg($frameworkArchive),
+            escapeshellarg($atomRoot)
+        );
+
+        exec($cmd, $output, $returnCode);
+
+        if ($returnCode !== 0) {
+            // Restore original on failure
+            if (is_dir($backupCurrent)) {
+                if (is_dir($frameworkDir)) {
+                    exec("rm -rf " . escapeshellarg($frameworkDir));
+                }
+                rename($backupCurrent, $frameworkDir);
+            }
+            return ['status' => 'error', 'message' => implode("\n", $output)];
+        }
+
+        exec("chown -R www-data:www-data " . escapeshellarg($frameworkDir));
+
+        $this->log("Framework restored successfully");
+        return ['status' => 'success', 'backup_of_original' => basename($backupCurrent)];
+    }
+
+    /**
+     * Get AtoM root directory
+     */
+    private function getAtomRoot(): string
+    {
+        if (class_exists('sfConfig', false)) {
+            return \sfConfig::get('sf_root_dir', '/usr/share/nginx/archive');
+        }
+        // Fallback: calculate from this file location
+        return dirname(dirname(dirname(__DIR__)));
+    }
+private function restoreFuseki(string $backupDir): void
     {
         $fusekiUrl = $this->settings->get('fuseki_url', 'http://localhost:3030');
         $dataset = $this->settings->get('fuseki_dataset', 'ric');
