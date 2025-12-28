@@ -56,19 +56,26 @@ SET FOREIGN_KEY_CHECKS=0;
 -- =============================================
 
 CREATE TABLE IF NOT EXISTS atom_plugin (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    name VARCHAR(100) NOT NULL UNIQUE,
-    display_name VARCHAR(255),
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(255) NOT NULL UNIQUE,
+    class_name VARCHAR(255) NOT NULL DEFAULT '',
+    version VARCHAR(50) DEFAULT NULL,
     description TEXT,
-    version VARCHAR(20) DEFAULT '1.0.0',
-    category VARCHAR(50) DEFAULT 'extension',
+    author VARCHAR(255) DEFAULT NULL,
+    category VARCHAR(100) DEFAULT 'general',
     is_enabled TINYINT(1) DEFAULT 0,
     is_core TINYINT(1) DEFAULT 0,
+    is_locked TINYINT(1) DEFAULT 0,
     load_order INT DEFAULT 100,
-    dependencies JSON,
-    settings JSON,
-    installed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    plugin_path VARCHAR(500) DEFAULT NULL,
+    settings JSON DEFAULT NULL,
+    enabled_at TIMESTAMP NULL DEFAULT NULL,
+    disabled_at TIMESTAMP NULL DEFAULT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    KEY idx_category (category),
+    KEY idx_enabled (is_enabled),
+    KEY idx_load_order (load_order)
 );
 
 CREATE TABLE IF NOT EXISTS atom_plugin_audit (
@@ -79,6 +86,45 @@ CREATE TABLE IF NOT EXISTS atom_plugin_audit (
     details JSON,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
+
+-- =============================================
+-- Populate atom_plugin table
+-- =============================================
+
+INSERT INTO atom_plugin (name, class_name, category, is_enabled, is_core, version) VALUES
+-- Core plugins
+('qbAclPlugin', 'qbAclPluginConfiguration', 'core', 1, 1, '2.10.0'),
+('sfPropelPlugin', 'sfPropelPluginConfiguration', 'core', 1, 1, '2.10.0'),
+('sfDrupalPlugin', 'sfDrupalPluginConfiguration', 'core', 1, 1, '2.10.0'),
+('sfHistoryPlugin', 'sfHistoryPluginConfiguration', 'core', 1, 1, '2.10.0'),
+('sfThumbnailPlugin', 'sfThumbnailPluginConfiguration', 'core', 1, 1, '2.10.0'),
+('sfTranslatePlugin', 'sfTranslatePluginConfiguration', 'core', 1, 1, '2.10.0'),
+('sfWebBrowserPlugin', 'sfWebBrowserPluginConfiguration', 'core', 1, 1, '2.10.0'),
+('arElasticSearchPlugin', 'arElasticSearchPluginConfiguration', 'core', 1, 1, '2.10.0'),
+-- Themes
+('arDominionB5Plugin', 'arDominionB5PluginConfiguration', 'theme', 0, 0, '2.10.0'),
+('arAHGThemeB5Plugin', 'arAHGThemeB5PluginConfiguration', 'theme', 1, 0, '1.0.0'),
+-- Metadata Standards
+('sfDcPlugin', 'sfDcPluginConfiguration', 'metadata', 1, 0, '2.10.0'),
+('sfEacPlugin', 'sfEacPluginConfiguration', 'metadata', 1, 0, '2.10.0'),
+('sfEadPlugin', 'sfEadPluginConfiguration', 'metadata', 1, 0, '2.10.0'),
+('sfIsaarPlugin', 'sfIsaarPluginConfiguration', 'metadata', 1, 0, '2.10.0'),
+('sfIsadPlugin', 'sfIsadPluginConfiguration', 'metadata', 1, 0, '2.10.0'),
+('sfIsdfPlugin', 'sfIsdfPluginConfiguration', 'metadata', 1, 0, '2.10.0'),
+('sfIsdiahPlugin', 'sfIsdiahPluginConfiguration', 'metadata', 1, 0, '2.10.0'),
+('sfModsPlugin', 'sfModsPluginConfiguration', 'metadata', 1, 0, '2.10.0'),
+('sfRadPlugin', 'sfRadPluginConfiguration', 'metadata', 1, 0, '2.10.0'),
+('sfSkosPlugin', 'sfSkosPluginConfiguration', 'metadata', 1, 0, '2.10.0'),
+('arDacsPlugin', 'arDacsPluginConfiguration', 'metadata', 1, 0, '2.10.0'),
+-- Integrations
+('arOaiPlugin', 'arOaiPluginConfiguration', 'integration', 1, 0, '2.10.0'),
+('arRestApiPlugin', 'arRestApiPluginConfiguration', 'integration', 1, 0, '2.10.0'),
+-- AHG Extensions
+('arDisplayPlugin', 'arDisplayPluginConfiguration', 'ahg', 1, 0, '1.0.0'),
+('arSecurityClearancePlugin', 'arSecurityClearancePluginConfiguration', 'ahg', 1, 0, '1.0.0'),
+('arAccessRequestPlugin', 'arAccessRequestPluginConfiguration', 'ahg', 1, 0, '1.0.0')
+ON DUPLICATE KEY UPDATE category = VALUES(category), is_enabled = VALUES(is_enabled);
+
 
 CREATE TABLE IF NOT EXISTS ahg_settings (
     id INT AUTO_INCREMENT PRIMARY KEY,
