@@ -5,6 +5,7 @@ namespace AtomFramework\Console;
 use AtomFramework\Extensions\ExtensionManager;
 use AtomFramework\Extensions\PluginFetcher;
 use AtomFramework\Extensions\MigrationHandler;
+use AtomFramework\Extensions\ExtensionProtection;
 
 class ExtensionCommand
 {
@@ -303,6 +304,13 @@ class ExtensionCommand
             return 1;
         }
 
+
+        // Check protection level
+        $check = ExtensionProtection::canUninstall($name);
+        if (!$check['allowed']) {
+            $this->error($check['reason']);
+            return 1;
+        }
         $this->line('');
         
         // Check for migrations
@@ -375,18 +383,22 @@ class ExtensionCommand
     protected function disable(array $args): int
     {
         $name = $args[0] ?? null;
-        
         if (!$name) {
             $this->error('Usage: php bin/atom extension:disable <machine_name>');
             return 1;
         }
 
+        // Check protection level
+        $check = ExtensionProtection::canDisable($name);
+        if (!$check['allowed']) {
+            $this->error($check['reason']);
+            return 1;
+        }
+
         $this->manager->disable($name);
-        
         $this->line('');
         $this->success("Extension '{$name}' disabled.");
         $this->line('');
-
         return 0;
     }
 
