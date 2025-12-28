@@ -1,6 +1,6 @@
 #!/bin/bash
 # =============================================================================
-# AtoM Framework Installer v2.1
+# AtoM Framework Installer v2.2
 # Automates: table creation, symlinks, ProjectConfiguration, dist assets, themes
 # =============================================================================
 
@@ -15,7 +15,7 @@ NC='\033[0m'
 
 echo -e "${GREEN}"
 echo "=============================================="
-echo "  AtoM Framework Installer v2.1"
+echo "  AtoM Framework Installer v2.2"
 echo "=============================================="
 echo -e "${NC}"
 
@@ -595,7 +595,6 @@ CREATE TABLE IF NOT EXISTS `object_watermark_setting` (
   UNIQUE KEY `object_id` (`object_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
--- Insert default classification levels
 INSERT IGNORE INTO security_classification (code, level, name, description, color, active) VALUES
 ('UNCLASSIFIED', 0, 'Unclassified', 'Public information', '#28a745', 1),
 ('RESTRICTED', 1, 'Restricted', 'Limited distribution', '#ffc107', 1),
@@ -603,11 +602,202 @@ INSERT IGNORE INTO security_classification (code, level, name, description, colo
 ('SECRET', 3, 'Secret', 'Highly sensitive information', '#dc3545', 1),
 ('TOP_SECRET', 4, 'Top Secret', 'Most sensitive information', '#6f42c1', 1);
 
--- Insert default watermark types
 INSERT IGNORE INTO watermark_type (code, name, image_file, position, opacity, active, sort_order) VALUES
 ('draft', 'Draft', 'draft.png', 'center', 0.30, 1, 1),
 ('confidential', 'Confidential', 'confidential.png', 'repeat', 0.20, 1, 2),
 ('restricted', 'Restricted', 'restricted.png', 'center', 0.30, 1, 3);
+
+-- =============================================
+-- Research Plugin Tables
+-- =============================================
+
+CREATE TABLE IF NOT EXISTS `research_researcher` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `user_id` int NOT NULL,
+  `title` varchar(50) DEFAULT NULL,
+  `first_name` varchar(100) NOT NULL,
+  `last_name` varchar(100) NOT NULL,
+  `email` varchar(255) NOT NULL,
+  `phone` varchar(50) DEFAULT NULL,
+  `affiliation_type` enum('academic','government','private','independent','student','other') DEFAULT 'independent',
+  `institution` varchar(255) DEFAULT NULL,
+  `department` varchar(255) DEFAULT NULL,
+  `position` varchar(255) DEFAULT NULL,
+  `student_id` varchar(100) DEFAULT NULL,
+  `research_interests` text,
+  `current_project` text,
+  `orcid_id` varchar(50) DEFAULT NULL,
+  `id_type` enum('passport','national_id','drivers_license','student_card','other') DEFAULT NULL,
+  `id_number` varchar(100) DEFAULT NULL,
+  `id_verified` tinyint(1) DEFAULT '0',
+  `id_verified_by` int DEFAULT NULL,
+  `id_verified_at` datetime DEFAULT NULL,
+  `status` enum('pending','approved','suspended','expired') DEFAULT 'pending',
+  `rejection_reason` text,
+  `approved_by` int DEFAULT NULL,
+  `approved_at` datetime DEFAULT NULL,
+  `expires_at` date DEFAULT NULL,
+  `notes` text,
+  `created_at` datetime DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_user` (`user_id`),
+  KEY `idx_status` (`status`),
+  KEY `idx_email` (`email`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS `research_reading_room` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `name` varchar(255) NOT NULL,
+  `code` varchar(20) DEFAULT NULL,
+  `description` text,
+  `amenities` text,
+  `capacity` int DEFAULT '10',
+  `location` varchar(255) DEFAULT NULL,
+  `operating_hours` text,
+  `rules` text,
+  `advance_booking_days` int DEFAULT '14',
+  `max_booking_hours` int DEFAULT '4',
+  `cancellation_hours` int DEFAULT '24',
+  `is_active` tinyint(1) DEFAULT '1',
+  `created_at` datetime DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `opening_time` time DEFAULT '09:00:00',
+  `closing_time` time DEFAULT '17:00:00',
+  `days_open` varchar(50) DEFAULT 'Mon,Tue,Wed,Thu,Fri',
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS `research_booking` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `researcher_id` int NOT NULL,
+  `reading_room_id` int NOT NULL,
+  `booking_date` date NOT NULL,
+  `start_time` time NOT NULL,
+  `end_time` time NOT NULL,
+  `purpose` text,
+  `status` enum('pending','confirmed','cancelled','completed','no_show') DEFAULT 'pending',
+  `confirmed_by` int DEFAULT NULL,
+  `confirmed_at` datetime DEFAULT NULL,
+  `cancelled_at` datetime DEFAULT NULL,
+  `cancellation_reason` text,
+  `checked_in_at` datetime DEFAULT NULL,
+  `checked_out_at` datetime DEFAULT NULL,
+  `notes` text,
+  `created_at` datetime DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_researcher` (`researcher_id`),
+  KEY `idx_room` (`reading_room_id`),
+  KEY `idx_date` (`booking_date`),
+  KEY `idx_status` (`status`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS `research_material_request` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `booking_id` int NOT NULL,
+  `object_id` int NOT NULL,
+  `quantity` int DEFAULT '1',
+  `notes` text,
+  `status` enum('requested','retrieved','delivered','in_use','returned','unavailable') DEFAULT 'requested',
+  `retrieved_by` int DEFAULT NULL,
+  `retrieved_at` datetime DEFAULT NULL,
+  `returned_at` datetime DEFAULT NULL,
+  `condition_notes` text,
+  `created_at` datetime DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_booking` (`booking_id`),
+  KEY `idx_object` (`object_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS `research_collection` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `researcher_id` int NOT NULL,
+  `name` varchar(255) NOT NULL,
+  `description` text,
+  `is_public` tinyint(1) DEFAULT '0',
+  `share_token` varchar(64) DEFAULT NULL,
+  `created_at` datetime DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_researcher` (`researcher_id`),
+  KEY `idx_share_token` (`share_token`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS `research_collection_item` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `collection_id` int NOT NULL,
+  `object_id` int NOT NULL,
+  `notes` text,
+  `sort_order` int DEFAULT '0',
+  `created_at` datetime DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `unique_item` (`collection_id`,`object_id`),
+  KEY `idx_collection` (`collection_id`),
+  KEY `idx_object` (`object_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS `research_annotation` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `researcher_id` int NOT NULL,
+  `object_id` int NOT NULL,
+  `digital_object_id` int DEFAULT NULL,
+  `annotation_type` enum('note','highlight','bookmark','tag','transcription') DEFAULT 'note',
+  `title` varchar(255) DEFAULT NULL,
+  `content` text,
+  `target_selector` text,
+  `tags` varchar(500) DEFAULT NULL,
+  `is_private` tinyint(1) DEFAULT '1',
+  `created_at` datetime DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_researcher` (`researcher_id`),
+  KEY `idx_object` (`object_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS `research_saved_search` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `researcher_id` int NOT NULL,
+  `name` varchar(255) NOT NULL,
+  `description` text,
+  `search_query` text NOT NULL,
+  `search_filters` text,
+  `search_type` varchar(50) DEFAULT 'informationobject',
+  `alert_enabled` tinyint(1) DEFAULT '0',
+  `alert_frequency` enum('daily','weekly','monthly') DEFAULT 'weekly',
+  `last_alert_at` datetime DEFAULT NULL,
+  `new_results_count` int DEFAULT '0',
+  `is_public` tinyint(1) DEFAULT '0',
+  `created_at` datetime DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_researcher` (`researcher_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS `research_citation_log` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `researcher_id` int DEFAULT NULL,
+  `object_id` int NOT NULL,
+  `citation_style` varchar(50) NOT NULL,
+  `citation_text` text NOT NULL,
+  `created_at` datetime DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_researcher` (`researcher_id`),
+  KEY `idx_object` (`object_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS `research_password_reset` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `user_id` int NOT NULL,
+  `token` varchar(64) NOT NULL,
+  `expires_at` datetime NOT NULL,
+  `created_at` datetime DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_token` (`token`),
+  KEY `idx_user` (`user_id`),
+  KEY `idx_expires` (`expires_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 SET FOREIGN_KEY_CHECKS=1;
 EOSQL
@@ -688,8 +878,8 @@ if echo "$CURRENT_PLUGINS" | grep -q "arAHGThemeB5Plugin"; then
     echo -e "  ${YELLOW}→${NC} Plugins already configured"
 else
     # Add all required plugins
-    mysql -h "$DB_HOST" -u "$DB_USER" -p"$DB_PASS" "$DB_NAME" -e "UPDATE setting_i18n SET value = 'a:15:{i:0;s:10:\"sfDcPlugin\";i:1;s:18:\"arDominionB5Plugin\";i:2;s:11:\"sfEacPlugin\";i:3;s:11:\"sfEadPlugin\";i:4;s:13:\"sfIsaarPlugin\";i:5;s:12:\"sfIsadPlugin\";i:6;s:12:\"arDacsPlugin\";i:7;s:12:\"sfIsdfPlugin\";i:8;s:14:\"sfIsdiahPlugin\";i:9;s:12:\"sfModsPlugin\";i:10;s:11:\"sfRadPlugin\";i:11;s:12:\"sfSkosPlugin\";i:12;s:15:\"arDisplayPlugin\";i:13;s:25:\"arSecurityClearancePlugin\";i:14;s:18:\"arAHGThemeB5Plugin\";}' WHERE id = 1;"
-    echo -e "  ${GREEN}✓${NC} Enabled arDominionB5Plugin, arDisplayPlugin, arSecurityClearancePlugin, arAHGThemeB5Plugin"
+    mysql -h "$DB_HOST" -u "$DB_USER" -p"$DB_PASS" "$DB_NAME" -e "UPDATE setting_i18n SET value = 'a:16:{i:0;s:10:\"sfDcPlugin\";i:1;s:18:\"arDominionB5Plugin\";i:2;s:11:\"sfEacPlugin\";i:3;s:11:\"sfEadPlugin\";i:4;s:13:\"sfIsaarPlugin\";i:5;s:12:\"sfIsadPlugin\";i:6;s:12:\"arDacsPlugin\";i:7;s:12:\"sfIsdfPlugin\";i:8;s:14:\"sfIsdiahPlugin\";i:9;s:12:\"sfModsPlugin\";i:10;s:11:\"sfRadPlugin\";i:11;s:12:\"sfSkosPlugin\";i:12;s:15:\"arDisplayPlugin\";i:13;s:25:\"arSecurityClearancePlugin\";i:14;s:16:\"arResearchPlugin\";i:15;s:18:\"arAHGThemeB5Plugin\";}' WHERE id = 1;"
+    echo -e "  ${GREEN}✓${NC} Enabled all AHG plugins"
 fi
 
 # =============================================================================
