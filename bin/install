@@ -97,6 +97,70 @@ INSERT IGNORE INTO ahg_settings (setting_key, setting_value, setting_group) VALU
 ('ahg_card_header_text', '#ffffff', 'general');
 
 -- =============================================
+-- Extension Manager Tables
+-- =============================================
+
+CREATE TABLE IF NOT EXISTS atom_extension (
+    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    machine_name VARCHAR(100) NOT NULL UNIQUE,
+    display_name VARCHAR(255) NOT NULL,
+    version VARCHAR(20) DEFAULT '1.0.0',
+    description TEXT,
+    author VARCHAR(255),
+    license VARCHAR(50) DEFAULT 'GPL-3.0',
+    status ENUM('installed','enabled','disabled','pending_removal') DEFAULT 'installed',
+    protection_level ENUM('core','system','theme','extension') DEFAULT 'extension',
+    theme_support JSON,
+    requires_framework VARCHAR(20),
+    requires_atom VARCHAR(20),
+    requires_php VARCHAR(20),
+    dependencies JSON,
+    optional_dependencies JSON,
+    tables_created JSON,
+    shared_tables JSON,
+    helpers JSON,
+    install_task VARCHAR(100),
+    uninstall_task VARCHAR(100),
+    config_path VARCHAR(500),
+    installed_at DATETIME,
+    enabled_at DATETIME,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS atom_extension_audit (
+    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    extension_id INT UNSIGNED,
+    extension_name VARCHAR(100) NOT NULL,
+    action ENUM('installed','enabled','disabled','uninstalled','backup_created','data_deleted','upgraded') NOT NULL,
+    performed_by INT,
+    ip_address VARCHAR(45),
+    details JSON,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS atom_extension_setting (
+    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    extension_id INT UNSIGNED NULL,
+    setting_key VARCHAR(100) NOT NULL,
+    setting_value TEXT,
+    setting_type ENUM('string','integer','boolean','json') DEFAULT 'string',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY (extension_id, setting_key)
+);
+
+CREATE TABLE IF NOT EXISTS atom_extension_pending_deletion (
+    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    extension_name VARCHAR(100) NOT NULL,
+    table_name VARCHAR(100) NOT NULL,
+    backup_path VARCHAR(500),
+    delete_after DATETIME NOT NULL,
+    status ENUM('pending','deleted','restored','cancelled') DEFAULT 'pending',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+-- =============================================
 -- Display Plugin Tables
 -- =============================================
 
