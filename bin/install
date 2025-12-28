@@ -91,39 +91,39 @@ CREATE TABLE IF NOT EXISTS atom_plugin_audit (
 -- Populate atom_plugin table
 -- =============================================
 
-INSERT INTO atom_plugin (name, class_name, category, is_enabled, is_core, version) VALUES
+INSERT INTO atom_plugin (name, class_name, category, is_enabled, is_core, version, description) VALUES
 -- Core plugins
-('qbAclPlugin', 'qbAclPluginConfiguration', 'core', 1, 1, '2.10.0'),
-('sfPropelPlugin', 'sfPropelPluginConfiguration', 'core', 1, 1, '2.10.0'),
-('sfDrupalPlugin', 'sfDrupalPluginConfiguration', 'core', 1, 1, '2.10.0'),
-('sfHistoryPlugin', 'sfHistoryPluginConfiguration', 'core', 1, 1, '2.10.0'),
-('sfThumbnailPlugin', 'sfThumbnailPluginConfiguration', 'core', 1, 1, '2.10.0'),
-('sfTranslatePlugin', 'sfTranslatePluginConfiguration', 'core', 1, 1, '2.10.0'),
-('sfWebBrowserPlugin', 'sfWebBrowserPluginConfiguration', 'core', 1, 1, '2.10.0'),
-('arElasticSearchPlugin', 'arElasticSearchPluginConfiguration', 'core', 1, 1, '2.10.0'),
+('qbAclPlugin', 'qbAclPluginConfiguration', 'core', 1, 1, '2.10.0', 'Access Control List management'),
+('sfPropelPlugin', 'sfPropelPluginConfiguration', 'core', 1, 1, '2.10.0', 'Propel ORM integration'),
+('sfDrupalPlugin', 'sfDrupalPluginConfiguration', 'core', 1, 1, '2.10.0', 'Drupal theme compatibility'),
+('sfHistoryPlugin', 'sfHistoryPluginConfiguration', 'core', 1, 1, '2.10.0', 'Object history tracking'),
+('sfThumbnailPlugin', 'sfThumbnailPluginConfiguration', 'core', 1, 1, '2.10.0', 'Image thumbnail generation'),
+('sfTranslatePlugin', 'sfTranslatePluginConfiguration', 'core', 1, 1, '2.10.0', 'Multi-language translation support'),
+('sfWebBrowserPlugin', 'sfWebBrowserPluginConfiguration', 'core', 1, 1, '2.10.0', 'HTTP client for web requests'),
+('arElasticSearchPlugin', 'arElasticSearchPluginConfiguration', 'core', 1, 1, '2.10.0', 'Elasticsearch search engine integration'),
 -- Themes
-('arDominionB5Plugin', 'arDominionB5PluginConfiguration', 'theme', 0, 0, '2.10.0'),
-('arAHGThemeB5Plugin', 'arAHGThemeB5PluginConfiguration', 'theme', 1, 0, '1.0.0'),
+('arDominionB5Plugin', 'arDominionB5PluginConfiguration', 'theme', 0, 0, '2.10.0', 'Default Bootstrap 5 theme'),
+('arAHGThemeB5Plugin', 'arAHGThemeB5PluginConfiguration', 'theme', 1, 0, '1.0.0', 'Modern Bootstrap 5 theme with enhanced UI components'),
 -- Metadata Standards
-('sfDcPlugin', 'sfDcPluginConfiguration', 'metadata', 1, 0, '2.10.0'),
-('sfEacPlugin', 'sfEacPluginConfiguration', 'metadata', 1, 0, '2.10.0'),
-('sfEadPlugin', 'sfEadPluginConfiguration', 'metadata', 1, 0, '2.10.0'),
-('sfIsaarPlugin', 'sfIsaarPluginConfiguration', 'metadata', 1, 0, '2.10.0'),
-('sfIsadPlugin', 'sfIsadPluginConfiguration', 'metadata', 1, 0, '2.10.0'),
-('sfIsdfPlugin', 'sfIsdfPluginConfiguration', 'metadata', 1, 0, '2.10.0'),
-('sfIsdiahPlugin', 'sfIsdiahPluginConfiguration', 'metadata', 1, 0, '2.10.0'),
-('sfModsPlugin', 'sfModsPluginConfiguration', 'metadata', 1, 0, '2.10.0'),
-('sfRadPlugin', 'sfRadPluginConfiguration', 'metadata', 1, 0, '2.10.0'),
-('sfSkosPlugin', 'sfSkosPluginConfiguration', 'metadata', 1, 0, '2.10.0'),
-('arDacsPlugin', 'arDacsPluginConfiguration', 'metadata', 1, 0, '2.10.0'),
+('sfDcPlugin', 'sfDcPluginConfiguration', 'metadata', 1, 0, '2.10.0', 'Dublin Core metadata standard'),
+('sfEacPlugin', 'sfEacPluginConfiguration', 'metadata', 1, 0, '2.10.0', 'EAC-CPF authority records'),
+('sfEadPlugin', 'sfEadPluginConfiguration', 'metadata', 1, 0, '2.10.0', 'EAD archival description export/import'),
+('sfIsaarPlugin', 'sfIsaarPluginConfiguration', 'metadata', 1, 0, '2.10.0', 'ISAAR-CPF authority records'),
+('sfIsadPlugin', 'sfIsadPluginConfiguration', 'metadata', 1, 0, '2.10.0', 'ISAD(G) archival description'),
+('sfIsdfPlugin', 'sfIsdfPluginConfiguration', 'metadata', 1, 0, '2.10.0', 'ISDF function descriptions'),
+('sfIsdiahPlugin', 'sfIsdiahPluginConfiguration', 'metadata', 1, 0, '2.10.0', 'ISDIAH repository descriptions'),
+('sfModsPlugin', 'sfModsPluginConfiguration', 'metadata', 1, 0, '2.10.0', 'MODS bibliographic metadata'),
+('sfRadPlugin', 'sfRadPluginConfiguration', 'metadata', 1, 0, '2.10.0', 'RAD archival description (Canadian)'),
+('sfSkosPlugin', 'sfSkosPluginConfiguration', 'metadata', 1, 0, '2.10.0', 'SKOS taxonomy import/export'),
+('arDacsPlugin', 'arDacsPluginConfiguration', 'metadata', 1, 0, '2.10.0', 'DACS archival description (US)'),
 -- Integrations
-('arOaiPlugin', 'arOaiPluginConfiguration', 'integration', 1, 0, '2.10.0'),
-('arRestApiPlugin', 'arRestApiPluginConfiguration', 'integration', 1, 0, '2.10.0'),
+('arOaiPlugin', 'arOaiPluginConfiguration', 'integration', 1, 0, '2.10.0', 'OAI-PMH harvesting protocol'),
+('arRestApiPlugin', 'arRestApiPluginConfiguration', 'integration', 1, 0, '2.10.0', 'REST API for programmatic access'),
 -- AHG Extensions
-('arDisplayPlugin', 'arDisplayPluginConfiguration', 'ahg', 1, 0, '1.0.0'),
-('arSecurityClearancePlugin', 'arSecurityClearancePluginConfiguration', 'ahg', 1, 0, '1.0.0'),
-('arAccessRequestPlugin', 'arAccessRequestPluginConfiguration', 'ahg', 1, 0, '1.0.0')
-ON DUPLICATE KEY UPDATE category = VALUES(category), is_enabled = VALUES(is_enabled);
+('ahgDisplayPlugin', 'ahgDisplayPluginConfiguration', 'ahg', 1, 0, '1.0.0', 'GLAM browser and display modes for archival content'),
+('ahgSecurityClearancePlugin', 'ahgSecurityClearancePluginConfiguration', 'ahg', 1, 0, '1.0.0', 'Security classification and clearance management'),
+('ahgAccessRequestPlugin', 'ahgAccessRequestPluginConfiguration', 'ahg', 1, 0, '1.0.0', 'Researcher access request management')
+ON DUPLICATE KEY UPDATE category = VALUES(category), is_enabled = VALUES(is_enabled), description = VALUES(description);
 
 
 CREATE TABLE IF NOT EXISTS ahg_settings (
