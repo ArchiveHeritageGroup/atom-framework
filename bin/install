@@ -925,6 +925,34 @@ CREATE TABLE IF NOT EXISTS `access_justification_template` (
   `created_at` datetime DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- =============================================
+-- Email Settings Table
+-- =============================================
+
+CREATE TABLE IF NOT EXISTS `email_setting` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `setting_key` varchar(100) NOT NULL,
+  `setting_value` text,
+  `setting_type` enum('text','email','number','boolean','textarea','password') DEFAULT 'text',
+  `setting_group` varchar(50) DEFAULT 'general',
+  `description` varchar(255) DEFAULT NULL,
+  `created_at` datetime DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `setting_key` (`setting_key`),
+  KEY `idx_group` (`setting_group`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+INSERT IGNORE INTO email_setting (setting_key, setting_value, setting_type, setting_group, description) VALUES
+('smtp_host', '', 'text', 'smtp', 'SMTP server hostname'),
+('smtp_port', '587', 'number', 'smtp', 'SMTP server port'),
+('smtp_username', '', 'text', 'smtp', 'SMTP username'),
+('smtp_password', '', 'password', 'smtp', 'SMTP password'),
+('smtp_encryption', 'tls', 'text', 'smtp', 'Encryption type (tls/ssl)'),
+('from_email', '', 'email', 'smtp', 'Default from email address'),
+('from_name', '', 'text', 'smtp', 'Default from name');
+
 SET FOREIGN_KEY_CHECKS=1;
 EOSQL
 
