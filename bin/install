@@ -1078,7 +1078,7 @@ AHG_PLUGINS="${ATOM_ROOT}/atom-ahg-plugins"
 PLUGINS_DIR="${ATOM_ROOT}/plugins"
 
 if [ -d "$AHG_PLUGINS" ]; then
-    for plugin in arAHGThemeB5Plugin arDisplayPlugin arAccessRequestPlugin arSecurityClearancePlugin; do
+    for plugin in arAHGThemeB5Plugin ahgDisplayPlugin ahgAccessRequestPlugin ahgSecurityClearancePlugin; do
         if [ -d "${AHG_PLUGINS}/${plugin}" ]; then
             if [ ! -L "${PLUGINS_DIR}/${plugin}" ]; then
                 ln -sf "${AHG_PLUGINS}/${plugin}" "${PLUGINS_DIR}/${plugin}"
@@ -1142,7 +1142,7 @@ if echo "$CURRENT_PLUGINS" | grep -q "arAHGThemeB5Plugin"; then
     echo -e "  ${YELLOW}→${NC} Plugins already configured"
 else
     # Add all required plugins
-    mysql -h "$DB_HOST" -u "$DB_USER" -p"$DB_PASS" "$DB_NAME" -e "UPDATE setting_i18n SET value = 'a:16:{i:0;s:10:\"sfDcPlugin\";i:1;s:18:\"arDominionB5Plugin\";i:2;s:11:\"sfEacPlugin\";i:3;s:11:\"sfEadPlugin\";i:4;s:13:\"sfIsaarPlugin\";i:5;s:12:\"sfIsadPlugin\";i:6;s:12:\"arDacsPlugin\";i:7;s:12:\"sfIsdfPlugin\";i:8;s:14:\"sfIsdiahPlugin\";i:9;s:12:\"sfModsPlugin\";i:10;s:11:\"sfRadPlugin\";i:11;s:12:\"sfSkosPlugin\";i:12;s:15:\"arDisplayPlugin\";i:13;s:25:\"arSecurityClearancePlugin\";i:14;s:21:\"arAccessRequestPlugin\";i:15;s:18:\"arAHGThemeB5Plugin\";}' WHERE id = 1;"
+    mysql -h "$DB_HOST" -u "$DB_USER" -p"$DB_PASS" "$DB_NAME" -e "UPDATE setting_i18n SET value = 'a:16:{i:0;s:10:\"sfDcPlugin\";i:1;s:18:\"arDominionB5Plugin\";i:2;s:11:\"sfEacPlugin\";i:3;s:11:\"sfEadPlugin\";i:4;s:13:\"sfIsaarPlugin\";i:5;s:12:\"sfIsadPlugin\";i:6;s:12:\"arDacsPlugin\";i:7;s:12:\"sfIsdfPlugin\";i:8;s:14:\"sfIsdiahPlugin\";i:9;s:12:\"sfModsPlugin\";i:10;s:11:\"sfRadPlugin\";i:11;s:12:\"sfSkosPlugin\";i:12;s:16:\"ahgDisplayPlugin\";i:13;s:26:\"ahgSecurityClearancePlugin\";i:14;s:22:\"ahgAccessRequestPlugin\";i:15;s:18:\"arAHGThemeB5Plugin\";}' WHERE id = 1;"
     echo -e "  ${GREEN}✓${NC} Enabled all AHG plugins"
 fi
 
