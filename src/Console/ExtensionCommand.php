@@ -14,7 +14,7 @@ class ExtensionCommand
     protected PluginFetcher $fetcher;
     protected MigrationHandler $migrationHandler;
     protected bool $interactive = true;
-    
+
     protected array $commands = [
         'list' => 'List all extensions',
         'info' => 'Show extension details',
@@ -67,7 +67,7 @@ class ExtensionCommand
     protected function listExtensions(array $args): int
     {
         $status = $this->getOption($args, 'status');
-        
+
         $this->line('');
         $this->info('AHG Extension Manager v1.0.0');
         $this->line('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
@@ -89,7 +89,7 @@ class ExtensionCommand
         } else {
             $i = 1;
             foreach ($extensions as $ext) {
-                $this->line(sprintf('  %-3d %-35s %-10s %s', 
+                $this->line(sprintf('  %-3d %-35s %-10s %s',
                     $i++,
                     $this->truncate($ext->display_name, 35),
                     $ext->version,
@@ -108,22 +108,22 @@ class ExtensionCommand
     protected function showInfo(array $args): int
     {
         $name = $args[0] ?? null;
-        
+
         if (!$name) {
             $this->error('Usage: php bin/atom extension:info <machine_name>');
             return 1;
         }
 
         $extension = $this->manager->find($name);
-        
+
         if (!$extension) {
             $discovered = $this->manager->discover();
             $found = $discovered->first(fn($e) => ($e['machine_name'] ?? '') === $name);
-            
+
             if ($found) {
                 return $this->displayManifest($found);
             }
-            
+
             $this->error("Extension '{$name}' not found.");
             return 1;
         }
@@ -133,13 +133,13 @@ class ExtensionCommand
         $this->info("  {$extension['display_name']}");
         $this->line('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
         $this->line('');
-        
+
         $this->line("  Machine Name:  {$extension['machine_name']}");
         $this->line("  Version:       {$extension['version']}");
         $this->line("  Status:        {$this->formatStatus($extension['status'])}");
         $this->line("  Author:        " . ($extension['author'] ?? 'Unknown'));
         $this->line("  License:       " . ($extension['license'] ?? 'GPL-3.0'));
-        
+
         if (!empty($extension['description'])) {
             $this->line('');
             $this->line("  Description:");
@@ -168,21 +168,21 @@ class ExtensionCommand
         $autoTables = in_array('--with-tables', $args) || in_array('-t', $args);
         $skipTables = in_array('--skip-tables', $args) || in_array('-s', $args);
         $noEnable = in_array('--no-enable', $args);
-        
+
         if (!$name) {
             $this->error('Usage: php bin/atom extension:install <machine_name> [--with-tables|-t] [--skip-tables|-s] [--no-enable]');
             return 1;
         }
 
         $this->line('');
-        
+
         // Check if plugin exists locally
         $pluginsPath = $this->manager->getSetting('extensions_path', null, '/usr/share/nginx/atom/plugins');
         $pluginPath = "{$pluginsPath}/{$name}";
-        
+
         if (!is_dir($pluginPath)) {
             $this->info("→ Plugin not found locally. Fetching from GitHub...");
-            
+
             if ($this->fetcher->fetch($name)) {
                 $this->success("Downloaded {$name}");
             } else {
@@ -195,11 +195,11 @@ class ExtensionCommand
         // Check for migrations/tables
         $hasMigrations = $this->migrationHandler->hasMigrations($name);
         $hasSql = $this->migrationHandler->hasSqlFile($name);
-        
+
         if ($hasMigrations || $hasSql) {
             $this->line('');
             $this->warning("⚠ This extension requires database tables.");
-            
+
             // Check if tables already exist
             $manifestPath = "{$pluginPath}/extension.json";
             $tables = [];
@@ -207,9 +207,9 @@ class ExtensionCommand
                 $manifest = json_decode(file_get_contents($manifestPath), true);
                 $tables = $manifest['tables'] ?? [];
             }
-            
+
             $tablesExist = !empty($tables) && $this->migrationHandler->tablesExist($tables);
-            
+
             if ($tablesExist) {
                 $this->line("  Tables already exist. Skipping creation.");
                 $createTables = false;
@@ -223,13 +223,13 @@ class ExtensionCommand
                 $this->line("    [Y] Create tables automatically");
                 $this->line("    [N] Skip - I will create tables manually");
                 $this->line('');
-                
+
                 if ($hasSql) {
                     $sqlPath = $this->migrationHandler->getSqlFilePath($name);
                     $this->line("  SQL file location: {$sqlPath}");
                     $this->line('');
                 }
-                
+
                 echo "  Create tables automatically? [Y/n]: ";
                 $answer = strtolower(trim(fgets(STDIN)));
                 $createTables = ($answer === '' || $answer === 'y' || $answer === 'yes');
@@ -241,10 +241,10 @@ class ExtensionCommand
             if ($createTables) {
                 $this->line('');
                 $this->info("→ Creating database tables...");
-                
+
                 if ($hasMigrations) {
                     $results = $this->migrationHandler->runMigrations($name);
-                    
+
                     foreach ($results['success'] as $file) {
                         $this->success("  {$file}");
                     }
@@ -273,12 +273,12 @@ class ExtensionCommand
                 }
             }
         }
-        
+
         $this->line('');
         $this->info("→ Installing {$name}...");
-        
+
         $this->manager->install($name);
-        
+
         // Auto-enable unless --no-enable flag
         if (!$noEnable) {
             $this->manager->enable($name);
@@ -287,7 +287,7 @@ class ExtensionCommand
             $this->success("Extension '{$name}' installed.");
             $this->line("Run 'php bin/atom extension:enable {$name}' to enable it.");
         }
-        
+
         $this->line('');
 
         return 0;
@@ -298,7 +298,7 @@ class ExtensionCommand
         $name = $args[0] ?? null;
         $noBackup = in_array('--no-backup', $args);
         $dropTables = in_array('--drop-tables', $args);
-        
+
         if (!$name) {
             $this->error('Usage: php bin/atom extension:uninstall <machine_name> [--no-backup] [--drop-tables]');
             return 1;
@@ -312,10 +312,10 @@ class ExtensionCommand
             return 1;
         }
         $this->line('');
-        
+
         // Check for migrations
         $hasMigrations = $this->migrationHandler->hasMigrations($name);
-        
+
         if ($hasMigrations && !$dropTables && $this->interactive) {
             $this->warning("⚠ This extension has database tables.");
             $this->line('');
@@ -323,23 +323,23 @@ class ExtensionCommand
             $this->line("    [Y] Keep tables (data preserved)");
             $this->line("    [N] Drop tables (data deleted)");
             $this->line('');
-            
+
             echo "  Keep database tables? [Y/n]: ";
             $answer = strtolower(trim(fgets(STDIN)));
             $dropTables = ($answer === 'n' || $answer === 'no');
         }
-        
+
         $this->warning("Uninstalling {$name}...");
-        
+
         if (!$noBackup) {
             $this->line("Creating backup...");
         }
-        
+
         // Drop tables if requested
         if ($dropTables && $hasMigrations) {
             $this->info("→ Dropping database tables...");
             $results = $this->migrationHandler->rollbackMigrations($name);
-            
+
             foreach ($results['success'] as $file) {
                 $this->success("  Rolled back: {$file}");
             }
@@ -347,15 +347,15 @@ class ExtensionCommand
                 $this->error("  {$error}");
             }
         }
-        
+
         $this->manager->uninstall($name, !$noBackup);
-        
+
         $this->success("Extension '{$name}' uninstalled.");
-        
+
         if (!$dropTables && $hasMigrations) {
             $this->line("Database tables were preserved.");
         }
-        
+
         $this->line("Run 'php bin/atom extension:restore {$name}' to undo if needed.");
         $this->line('');
 
@@ -365,14 +365,14 @@ class ExtensionCommand
     protected function enable(array $args): int
     {
         $name = $args[0] ?? null;
-        
+
         if (!$name) {
             $this->error('Usage: php bin/atom extension:enable <machine_name>');
             return 1;
         }
 
         $this->manager->enable($name);
-        
+
         $this->line('');
         $this->success("Extension '{$name}' enabled.");
         $this->line('');
@@ -405,14 +405,14 @@ class ExtensionCommand
     protected function restore(array $args): int
     {
         $name = $args[0] ?? null;
-        
+
         if (!$name) {
             $this->error('Usage: php bin/atom extension:restore <machine_name>');
             return 1;
         }
 
         $this->manager->restore($name);
-        
+
         $this->line('');
         $this->success("Extension '{$name}' restored.");
         $this->line('');
@@ -424,12 +424,12 @@ class ExtensionCommand
     {
         $this->line('');
         $this->info('Processing pending deletions...');
-        
+
         $results = $this->manager->processPendingDeletions();
-        
+
         $this->line("Processed: {$results['processed']}");
         $this->line("Failed: {$results['failed']}");
-        
+
         if (!empty($results['errors'])) {
             $this->line('');
             $this->warning('Errors:');
@@ -437,7 +437,7 @@ class ExtensionCommand
                 $this->line("  • {$error}");
             }
         }
-        
+
         $this->line('');
 
         return $results['failed'] > 0 ? 1 : 0;
@@ -447,23 +447,23 @@ class ExtensionCommand
     {
         $this->line('');
         $this->info('Discovering extensions...');
-        
+
         // Get local plugins
         $local = $this->manager->discover();
-        
+
         // Get remote plugins
         $this->line('  Checking GitHub for available plugins...');
         $remote = $this->fetcher->getRemotePlugins();
-        
+
         // Merge lists
         $all = [];
-        
+
         foreach ($local as $plugin) {
             $name = $plugin['machine_name'] ?? '';
             $all[$name] = $plugin;
             $all[$name]['source'] = 'local';
         }
-        
+
         foreach ($remote as $plugin) {
             $name = $plugin['machine_name'] ?? '';
             if (!isset($all[$name])) {
@@ -471,34 +471,35 @@ class ExtensionCommand
                 $all[$name]['source'] = 'remote';
             }
         }
-        
+
         if (empty($all)) {
             $this->line('');
             $this->line('  No extensions found.');
             $this->line('');
             return 0;
         }
-        
+
         $this->line('');
-        $this->line(sprintf('  %-35s %-10s %-12s %-10s', 'Name', 'Version', 'Source', 'Status'));
-        $this->line('───────────────────────────────────────────────────────────────────');
-        
-        foreach ($all as $ext) {
+        $this->line(sprintf('  %-28s %-8s %-12s %-10s %s', 'Name', 'Version', 'Source', 'Status', 'Machine Name'));
+        $this->line('─────────────────────────────────────────────────────────────────────────────────────────────────');
+
+        foreach ($all as $machineName => $ext) {
             $name = $ext['name'] ?? $ext['machine_name'] ?? 'Unknown';
             $version = $ext['version'] ?? '?';
             $source = $ext['source'] ?? 'local';
             $status = ($ext['is_registered'] ?? false) ? 'Installed' : 'Available';
-            
+
             $sourceDisplay = $source === 'remote' ? "\033[36m(GitHub)\033[0m" : '(Local)';
-            
-            $this->line(sprintf('  %-35s %-10s %-20s %-10s',
-                $this->truncate($name, 35),
+
+            $this->line(sprintf('  %-28s %-8s %-20s %-10s %s',
+                $this->truncate($name, 28),
                 $version,
                 $sourceDisplay,
-                $status
+                $status,
+                $machineName
             ));
         }
-        
+
         $this->line('');
         $this->line('  Install: php bin/atom extension:install <machine_name>');
         $this->line('');
@@ -510,13 +511,13 @@ class ExtensionCommand
     {
         $name = $args[0] ?? null;
         $limit = (int)($this->getOption($args, 'limit') ?? 20);
-        
+
         $this->line('');
         $this->info('Extension Audit Log');
         $this->line('───────────────────────────────────────────────────────────');
-        
+
         $logs = $this->manager->getAuditLog($name, $limit);
-        
+
         if ($logs->isEmpty()) {
             $this->line('No audit entries found.');
         } else {
@@ -529,7 +530,7 @@ class ExtensionCommand
                 ));
             }
         }
-        
+
         $this->line('');
 
         return 0;
@@ -542,11 +543,11 @@ class ExtensionCommand
         $this->warning("  {$manifest['name']} (Not Installed)");
         $this->line('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
         $this->line('');
-        
+
         $this->line("  Machine Name:  {$manifest['machine_name']}");
         $this->line("  Version:       " . ($manifest['version'] ?? 'Unknown'));
         $this->line("  Author:        " . ($manifest['author'] ?? 'Unknown'));
-        
+
         if (!empty($manifest['description'])) {
             $this->line('');
             $this->line("  Description:");
@@ -568,11 +569,11 @@ class ExtensionCommand
         $this->line('Usage: php bin/atom extension:<command> [arguments] [options]');
         $this->line('');
         $this->line('Commands:');
-        
+
         foreach ($this->commands as $cmd => $desc) {
             $this->line(sprintf('  %-15s %s', $cmd, $desc));
         }
-        
+
         $this->line('');
         $this->line('Install Options:');
         $this->line('  --with-tables, -t    Create database tables automatically');
