@@ -242,6 +242,8 @@ class ExtensionManager implements ExtensionManagerContract
             // Silently continue if atom_plugin table doesn't exist
         }
 
+        $this->updateSymfonyPlugins($machineName, true);
+
         return true;
     }
 
@@ -266,6 +268,18 @@ class ExtensionManager implements ExtensionManagerContract
         ]);
 
         $this->repository->logAction($machineName, 'disabled', $extension->id);
+
+        // Update atom_plugin table
+        try {
+            DB::table('atom_plugin')
+                ->where('name', $machineName)
+                ->update(['is_enabled' => 0]);
+        } catch (\Exception $e) {
+            // Silently continue
+        }
+
+        // Update Symfony setting_i18n plugins array
+        $this->updateSymfonyPlugins($machineName, false);
 
         return true;
     }
@@ -442,4 +456,46 @@ class ExtensionManager implements ExtensionManagerContract
             throw new \RuntimeException("Task '{$task}' failed: " . implode("\n", $output));
         }
     }
+
+    /**
+     * Update Symfony setting_i18n plugins array
+     */
+    private function updateSymfonyPlugins(string $machineName, bool $add): void
+    {
+        try {
+            $row = DB::table('setting_i18n')
+                ->where('id', 1)
+                ->where('culture', 'en')
+                ->first();
+            
+            if (!$row || empty($row->value)) {
+                return;
+            }
+            
+            $plugins = @unserialize($row->value);
+            if (!is_array($plugins)) {
+                return;
+            }
+            
+            $key = array_search($machineName, $plugins);
+            
+            if ($add && $key === false) {
+                $plugins[] = $machineName;
+                DB::table('setting_i18n')
+                    ->where('id', 1)
+                    ->where('culture', 'en')
+                    ->update(['value' => serialize($plugins)]);
+            } elseif (!$add && $key !== false) {
+                unset($plugins[$key]);
+                $plugins = array_values($plugins);
+                DB::table('setting_i18n')
+                    ->where('id', 1)
+                    ->where('culture', 'en')
+                    ->update(['value' => serialize($plugins)]);
+            }
+        } catch (\Exception $e) {
+            // Silently continue if setting_i18n doesn't exist
+        }
+    }
+
 }
