@@ -98,13 +98,6 @@ Go to **Admin → Themes** to switch between:
 - **arDominionB5Plugin** - AtoM default Bootstrap 5 theme
 - **arAHGThemeB5Plugin** - AHG custom theme with enhanced features
 
-### Enable Optional Features
-```sql
--- Enable DAM Tools (TIFF to PDF, 3D thumbnails)
-INSERT INTO ahg_settings (setting_key, setting_value, setting_group) 
-VALUES ('dam_tools_enabled', '1', 'general');
-```
-
 ## How It Works
 
 1. **atom-framework** provides Laravel Query Builder via Composer
