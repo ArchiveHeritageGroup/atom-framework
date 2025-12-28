@@ -799,6 +799,132 @@ CREATE TABLE IF NOT EXISTS `research_password_reset` (
   KEY `idx_expires` (`expires_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+
+-- =============================================
+-- Access Request Plugin Tables
+-- =============================================
+
+CREATE TABLE IF NOT EXISTS `access_request` (
+  `id` int unsigned NOT NULL AUTO_INCREMENT,
+  `request_type` enum('clearance','object','repository','authority','researcher') DEFAULT 'clearance',
+  `scope_type` enum('single','with_children','collection','repository_all') DEFAULT 'single',
+  `user_id` int unsigned NOT NULL,
+  `requested_classification_id` int unsigned NOT NULL,
+  `current_classification_id` int unsigned DEFAULT NULL,
+  `reason` text NOT NULL,
+  `justification` text,
+  `urgency` enum('low','normal','high','critical') DEFAULT 'normal',
+  `status` enum('pending','approved','denied','cancelled','expired') DEFAULT 'pending',
+  `reviewed_by` int unsigned DEFAULT NULL,
+  `reviewed_at` datetime DEFAULT NULL,
+  `review_notes` text,
+  `expires_at` datetime DEFAULT NULL,
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_user_id` (`user_id`),
+  KEY `idx_status` (`status`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS `access_request_approver` (
+  `id` int unsigned NOT NULL AUTO_INCREMENT,
+  `user_id` int unsigned NOT NULL,
+  `min_classification_level` int unsigned DEFAULT '0',
+  `max_classification_level` int unsigned DEFAULT '5',
+  `email_notifications` tinyint(1) DEFAULT '1',
+  `active` tinyint(1) DEFAULT '1',
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `unique_user` (`user_id`),
+  KEY `idx_active` (`active`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS `access_request_justification` (
+  `id` int unsigned NOT NULL AUTO_INCREMENT,
+  `request_id` int NOT NULL,
+  `template_id` int unsigned DEFAULT NULL,
+  `justification_text` text NOT NULL,
+  `created_by` int DEFAULT NULL,
+  `created_at` datetime DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_request` (`request_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS `access_request_log` (
+  `id` int unsigned NOT NULL AUTO_INCREMENT,
+  `request_id` int unsigned NOT NULL,
+  `action` enum('created','updated','approved','denied','cancelled','expired','escalated') NOT NULL,
+  `actor_id` int unsigned DEFAULT NULL,
+  `details` text,
+  `ip_address` varchar(45) DEFAULT NULL,
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_request_id` (`request_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS `access_request_scope` (
+  `id` int unsigned NOT NULL AUTO_INCREMENT,
+  `request_id` int unsigned NOT NULL,
+  `object_type` enum('information_object','repository','actor') NOT NULL,
+  `object_id` int unsigned NOT NULL,
+  `include_descendants` tinyint(1) DEFAULT '0',
+  `object_title` varchar(500) DEFAULT NULL,
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_request_id` (`request_id`),
+  KEY `idx_object` (`object_type`,`object_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS `object_access_grant` (
+  `id` int unsigned NOT NULL AUTO_INCREMENT,
+  `user_id` int unsigned NOT NULL,
+  `request_id` int unsigned DEFAULT NULL,
+  `object_type` enum('information_object','repository','actor') NOT NULL,
+  `object_id` int unsigned NOT NULL,
+  `include_descendants` tinyint(1) DEFAULT '0',
+  `access_level` enum('view','download','edit') DEFAULT 'view',
+  `granted_by` int unsigned NOT NULL,
+  `granted_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `expires_at` datetime DEFAULT NULL,
+  `revoked_at` datetime DEFAULT NULL,
+  `revoked_by` int unsigned DEFAULT NULL,
+  `notes` text,
+  `active` tinyint(1) DEFAULT '1',
+  PRIMARY KEY (`id`),
+  KEY `idx_user_id` (`user_id`),
+  KEY `idx_object` (`object_type`,`object_id`),
+  KEY `idx_active` (`active`),
+  KEY `idx_request` (`request_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS `user_compartment_access` (
+  `id` int unsigned NOT NULL AUTO_INCREMENT,
+  `user_id` int unsigned NOT NULL,
+  `compartment_id` int unsigned NOT NULL,
+  `granted_by` int unsigned NOT NULL,
+  `granted_date` date NOT NULL,
+  `expiry_date` date DEFAULT NULL,
+  `briefing_date` date DEFAULT NULL,
+  `briefing_reference` varchar(100) DEFAULT NULL,
+  `notes` text,
+  `active` tinyint(1) DEFAULT '1',
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `unique_user_compartment` (`user_id`,`compartment_id`),
+  KEY `idx_compartment` (`compartment_id`),
+  KEY `idx_expiry` (`expiry_date`,`active`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS `access_justification_template` (
+  `id` int unsigned NOT NULL AUTO_INCREMENT,
+  `name` varchar(255) NOT NULL,
+  `paia_section` varchar(50) DEFAULT NULL,
+  `template_text` text NOT NULL,
+  `is_active` tinyint(1) DEFAULT '1',
+  `created_at` datetime DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 SET FOREIGN_KEY_CHECKS=1;
 EOSQL
 
@@ -878,7 +1004,7 @@ if echo "$CURRENT_PLUGINS" | grep -q "arAHGThemeB5Plugin"; then
     echo -e "  ${YELLOW}→${NC} Plugins already configured"
 else
     # Add all required plugins
-    mysql -h "$DB_HOST" -u "$DB_USER" -p"$DB_PASS" "$DB_NAME" -e "UPDATE setting_i18n SET value = 'a:16:{i:0;s:10:\"sfDcPlugin\";i:1;s:18:\"arDominionB5Plugin\";i:2;s:11:\"sfEacPlugin\";i:3;s:11:\"sfEadPlugin\";i:4;s:13:\"sfIsaarPlugin\";i:5;s:12:\"sfIsadPlugin\";i:6;s:12:\"arDacsPlugin\";i:7;s:12:\"sfIsdfPlugin\";i:8;s:14:\"sfIsdiahPlugin\";i:9;s:12:\"sfModsPlugin\";i:10;s:11:\"sfRadPlugin\";i:11;s:12:\"sfSkosPlugin\";i:12;s:15:\"arDisplayPlugin\";i:13;s:25:\"arSecurityClearancePlugin\";i:14;s:16:\"arResearchPlugin\";i:15;s:18:\"arAHGThemeB5Plugin\";}' WHERE id = 1;"
+    mysql -h "$DB_HOST" -u "$DB_USER" -p"$DB_PASS" "$DB_NAME" -e "UPDATE setting_i18n SET value = 'a:17:{i:0;s:10:\"sfDcPlugin\";i:1;s:18:\"arDominionB5Plugin\";i:2;s:11:\"sfEacPlugin\";i:3;s:11:\"sfEadPlugin\";i:4;s:13:\"sfIsaarPlugin\";i:5;s:12:\"sfIsadPlugin\";i:6;s:12:\"arDacsPlugin\";i:7;s:12:\"sfIsdfPlugin\";i:8;s:14:\"sfIsdiahPlugin\";i:9;s:12:\"sfModsPlugin\";i:10;s:11:\"sfRadPlugin\";i:11;s:12:\"sfSkosPlugin\";i:12;s:15:\"arDisplayPlugin\";i:13;s:25:\"arSecurityClearancePlugin\";i:14;s:16:\"arResearchPlugin\";i:15;s:21:\"arAccessRequestPlugin\";i:16;s:18:\"arAHGThemeB5Plugin\";}' WHERE id = 1;"
     echo -e "  ${GREEN}✓${NC} Enabled all AHG plugins"
 fi
 
