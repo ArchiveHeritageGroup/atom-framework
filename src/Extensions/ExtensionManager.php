@@ -487,18 +487,43 @@ class ExtensionManager implements ExtensionManagerContract
             return;
         }
         
-        // Split by semicolon but be careful with stored procedures
-        $statements = array_filter(array_map("trim", explode(";", $sql)));
+        // Get database config
+        $configPath = dirname($this->pluginsPath) . '/config/config.php';
+        if (!file_exists($configPath)) {
+            error_log("runSqlFile: config.php not found");
+            return;
+        }
         
-        foreach ($statements as $statement) {
-            if (!empty($statement) && !preg_match("/^\s*--/", $statement)) {
-                try {
-                    DB::statement($statement);
-                } catch (\Exception $e) {
-                    // Log but continue - table may already exist
-                    error_log("Extension SQL warning: " . $e->getMessage());
-                }
+        $config = require $configPath;
+        $params = $config['all']['propel']['param'] ?? [];
+        
+        // Parse DSN
+        $dsn = $params['dsn'] ?? '';
+        $dsnParts = [];
+        $dsnWithoutDriver = preg_replace('/^[a-z]+:/', '', $dsn);
+        foreach (explode(';', $dsnWithoutDriver) as $part) {
+            if (strpos($part, '=') !== false) {
+                list($key, $value) = explode('=', $part, 2);
+                $dsnParts[trim($key)] = trim($value);
             }
+        }
+        
+        try {
+            $pdo = new \PDO(
+                sprintf('mysql:host=%s;port=%d;dbname=%s;charset=utf8mb4',
+                    $dsnParts['host'] ?? 'localhost',
+                    $dsnParts['port'] ?? 3306,
+                    $dsnParts['dbname'] ?? 'atom'
+                ),
+                $params['username'] ?? 'root',
+                $params['password'] ?? '',
+                [\PDO::ATTR_ERRMODE => \PDO::ERRMODE_EXCEPTION]
+            );
+            
+            $pdo->exec($sql);
+            
+        } catch (\Exception $e) {
+            error_log("runSqlFile ERROR: " . $e->getMessage());
         }
     }
 
