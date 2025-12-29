@@ -123,9 +123,9 @@ echo -e "${BLUE}Step 4: Copying dist assets...${NC}"
 
 DIST_DIR="${ATOM_ROOT}/dist"
 
-if [ -d "${AHG_PLUGINS}/arAHGThemeB5Plugin/dist" ]; then
-    cp -f ${AHG_PLUGINS}/arAHGThemeB5Plugin/dist/css/* ${DIST_DIR}/css/ 2>/dev/null && echo -e "  ${GREEN}✓${NC} Copied CSS assets" || echo -e "  ${YELLOW}→${NC} No CSS to copy"
-    cp -f ${AHG_PLUGINS}/arAHGThemeB5Plugin/dist/js/* ${DIST_DIR}/js/ 2>/dev/null && echo -e "  ${GREEN}✓${NC} Copied JS assets" || echo -e "  ${YELLOW}→${NC} No JS to copy"
+if [ -d "${AHG_PLUGINS}/ahgThemeB5Plugin/dist" ]; then
+    cp -f ${AHG_PLUGINS}/ahgThemeB5Plugin/dist/css/* ${DIST_DIR}/css/ 2>/dev/null && echo -e "  ${GREEN}✓${NC} Copied CSS assets" || echo -e "  ${YELLOW}→${NC} No CSS to copy"
+    cp -f ${AHG_PLUGINS}/ahgThemeB5Plugin/dist/js/* ${DIST_DIR}/js/ 2>/dev/null && echo -e "  ${GREEN}✓${NC} Copied JS assets" || echo -e "  ${YELLOW}→${NC} No JS to copy"
 else
     echo -e "  ${YELLOW}⚠${NC} AHG theme dist folder not found"
 fi
@@ -136,14 +136,14 @@ fi
 echo ""
 echo -e "${BLUE}Step 5: Enabling themes and plugins...${NC}"
 
-# Check if arAHGThemeB5Plugin already in plugins
+# Check if ahgThemeB5Plugin already in plugins
 CURRENT_PLUGINS=$(mysql -h "$DB_HOST" -u "$DB_USER" -p"$DB_PASS" "$DB_NAME" -N -e "SELECT value FROM setting_i18n WHERE id = 1;")
 
-if echo "$CURRENT_PLUGINS" | grep -q "arAHGThemeB5Plugin"; then
+if echo "$CURRENT_PLUGINS" | grep -q "ahgThemeB5Plugin"; then
     echo -e "  ${YELLOW}→${NC} Plugins already configured"
 else
     # Add all required plugins
-    mysql -h "$DB_HOST" -u "$DB_USER" -p"$DB_PASS" "$DB_NAME" -e "UPDATE setting_i18n SET value = 'a:16:{i:0;s:10:\"sfDcPlugin\";i:1;s:18:\"arDominionB5Plugin\";i:2;s:11:\"sfEacPlugin\";i:3;s:11:\"sfEadPlugin\";i:4;s:13:\"sfIsaarPlugin\";i:5;s:12:\"sfIsadPlugin\";i:6;s:12:\"arDacsPlugin\";i:7;s:12:\"sfIsdfPlugin\";i:8;s:14:\"sfIsdiahPlugin\";i:9;s:12:\"sfModsPlugin\";i:10;s:11:\"sfRadPlugin\";i:11;s:12:\"sfSkosPlugin\";i:12;s:16:\"ahgDisplayPlugin\";i:13;s:26:\"ahgSecurityClearancePlugin\";i:14;s:22:\"ahgAccessRequestPlugin\";i:15;s:18:\"arAHGThemeB5Plugin\";}' WHERE id = 1;"
+    mysql -h "$DB_HOST" -u "$DB_USER" -p"$DB_PASS" "$DB_NAME" -e "UPDATE setting_i18n SET value = 'a:16:{i:0;s:10:\"sfDcPlugin\";i:1;s:18:\"arDominionB5Plugin\";i:2;s:11:\"sfEacPlugin\";i:3;s:11:\"sfEadPlugin\";i:4;s:13:\"sfIsaarPlugin\";i:5;s:12:\"sfIsadPlugin\";i:6;s:12:\"arDacsPlugin\";i:7;s:12:\"sfIsdfPlugin\";i:8;s:14:\"sfIsdiahPlugin\";i:9;s:12:\"sfModsPlugin\";i:10;s:11:\"sfRadPlugin\";i:11;s:12:\"sfSkosPlugin\";i:12;s:16:\"ahgDisplayPlugin\";i:13;s:26:\"ahgSecurityClearancePlugin\";i:14;s:22:\"ahgAccessRequestPlugin\";i:15;s:18:\"ahgThemeB5Plugin\";}' WHERE id = 1;"
     echo -e "  ${GREEN}✓${NC} Enabled all AHG plugins"
 fi
 
@@ -163,7 +163,7 @@ echo ""
 echo -e "${BLUE}Step 6b: Loading plugin data...${NC}"
 
 # List of AHG plugins with data files
-AHG_DATA_PLUGINS="arAHGThemeB5Plugin ahgLibraryPlugin ahgSecurityClearancePlugin ahgDAMPlugin ahgAuditTrailPlugin ahgResearchPlugin sfMuseumPlugin arGalleryPlugin"
+AHG_DATA_PLUGINS="ahgThemeB5Plugin ahgLibraryPlugin ahgSecurityClearancePlugin ahgDAMPlugin ahgAuditTrailPlugin ahgResearchPlugin sfMuseumPlugin arGalleryPlugin"
 
 for plugin in $AHG_DATA_PLUGINS; do
     DATA_SQL="${PLUGINS_DIR}/${plugin}/data/install.sql"
