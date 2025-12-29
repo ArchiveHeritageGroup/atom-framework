@@ -62,11 +62,6 @@ class ExtensionManager implements ExtensionManagerContract
         }
         return $extensions;
     }
-            }
-        }
-
-        return $extensions;
-    }
 
     /**
      * Get all registered extensions from database
@@ -514,5 +509,4 @@ class ExtensionManager implements ExtensionManagerContract
             // Silently continue if setting_i18n doesn't exist
         }
     }
-
 }
