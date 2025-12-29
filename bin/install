@@ -157,6 +157,31 @@ rm -rf ${ATOM_ROOT}/cache/*
 echo -e "  ${GREEN}✓${NC} Cache cleared"
 
 # =============================================================================
+# Step 6b: Load plugin data files
+# =============================================================================
+echo ""
+echo -e "${BLUE}Step 6b: Loading plugin data...${NC}"
+
+# List of AHG plugins with data files
+AHG_DATA_PLUGINS="arAHGThemeB5Plugin ahgLibraryPlugin ahgSecurityClearancePlugin ahgDAMPlugin ahgAuditTrailPlugin ahgResearchPlugin sfMuseumPlugin arGalleryPlugin"
+
+for plugin in $AHG_DATA_PLUGINS; do
+    DATA_SQL="${PLUGINS_DIR}/${plugin}/data/install.sql"
+    if [ -f "$DATA_SQL" ]; then
+        echo -e "  ${YELLOW}→${NC} Loading data for $plugin..."
+        mysql -h "$DB_HOST" -u "$DB_USER" -p"$DB_PASS" "$DB_NAME" < "$DATA_SQL" 2>/dev/null
+        if [ $? -eq 0 ]; then
+            echo -e "  ${GREEN}✓${NC} $plugin data loaded"
+        else
+            echo -e "  ${RED}✗${NC} Error loading $plugin data (may be expected if tables empty)"
+        fi
+    fi
+done
+
+echo -e "${GREEN}✓ Plugin data loaded${NC}"
+
+
+# =============================================================================
 # =============================================================================
 # Step 7: Generate Install Log
 # =============================================================================
