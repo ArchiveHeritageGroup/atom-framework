@@ -466,6 +466,10 @@ class ExtensionCommand
 
         foreach ($remote as $plugin) {
             $name = $plugin['machine_name'] ?? '';
+            // Skip themes
+            if (!empty($plugin['is_theme']) || ($plugin['category'] ?? '') === 'theme') {
+                continue;
+            }
             if (!isset($all[$name])) {
                 $all[$name] = $plugin;
                 $all[$name]['source'] = 'remote';
