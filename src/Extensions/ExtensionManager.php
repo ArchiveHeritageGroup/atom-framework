@@ -28,23 +28,40 @@ class ExtensionManager implements ExtensionManagerContract
     public function discover(): Collection
     {
         $extensions = collect();
-        
         if (!is_dir($this->pluginsPath)) {
             return $extensions;
         }
-
-        $dirs = glob($this->pluginsPath . '/*Plugin', GLOB_ONLYDIR);
         
+        // Get list of plugins enabled in atom_plugin table
+        $enabledInAtomPlugin = [];
+        try {
+            $rows = DB::table('atom_plugin')->where('is_enabled', 1)->pluck('name')->toArray();
+            $enabledInAtomPlugin = array_flip($rows);
+        } catch (\Exception $e) {
+            // Table may not exist
+        }
+        
+        $dirs = glob($this->pluginsPath . '/*Plugin', GLOB_ONLYDIR);
         foreach ($dirs as $dir) {
             $manifestPath = $dir . '/extension.json';
-            
             if (file_exists($manifestPath)) {
                 $manifest = $this->loadManifest($manifestPath);
                 if ($manifest) {
+                    // Skip themes
+                    if (!empty($manifest['is_theme']) || ($manifest['category'] ?? '') === 'theme') {
+                        continue;
+                    }
                     $manifest['path'] = $dir;
-                    $manifest['is_registered'] = $this->repository->exists($manifest['machine_name'] ?? basename($dir));
-                    if (empty($manifest["is_theme"]) && ($manifest["category"] ?? "") !== "theme") { $extensions->push($manifest); }
+                    $machineName = $manifest['machine_name'] ?? basename($dir);
+                    // Check both atom_extension and atom_plugin tables
+                    $manifest['is_registered'] = $this->repository->exists($machineName) 
+                        || isset($enabledInAtomPlugin[$machineName]);
+                    $extensions->push($manifest);
                 }
+            }
+        }
+        return $extensions;
+    }
             }
         }
 
