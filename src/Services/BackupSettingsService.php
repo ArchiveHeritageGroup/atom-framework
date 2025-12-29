@@ -294,7 +294,7 @@ class BackupSettingsService
             'arDonorPlugin',
             'arExtendedRightsPlugin',
             'arGalleryPlugin',
-            'arGrapPlugin',
+            'ahgGrapPlugin',
             'arIiifCollectionPlugin',
             'ahgLibraryPlugin',
             'arPluginManagerPlugin',
