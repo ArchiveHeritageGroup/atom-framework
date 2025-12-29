@@ -125,6 +125,14 @@ INSERT INTO atom_plugin (name, class_name, category, is_enabled, is_core, versio
 ('ahgAccessRequestPlugin', 'ahgAccessRequestPluginConfiguration', 'ahg', 1, 0, '1.0.0', 'Researcher access request management')
 ON DUPLICATE KEY UPDATE category = VALUES(category), is_enabled = VALUES(is_enabled), description = VALUES(description);
 
+-- Register AHG plugins in extension manager
+INSERT INTO atom_extension (machine_name, display_name, version, description, status, installed_at, enabled_at, created_at, updated_at)
+VALUES
+('ahgDisplayPlugin', 'Display Plugin', '1.0.0', 'GLAM browser and display modes for archival content', 'enabled', NOW(), NOW(), NOW(), NOW()),
+('ahgSecurityClearancePlugin', 'Security Clearance', '1.0.0', 'Security classification and clearance management', 'enabled', NOW(), NOW(), NOW(), NOW()),
+('ahgAccessRequestPlugin', 'Access Request', '1.0.0', 'Researcher access request management', 'enabled', NOW(), NOW(), NOW(), NOW())
+ON DUPLICATE KEY UPDATE status = 'enabled', enabled_at = NOW();
+
 
 CREATE TABLE IF NOT EXISTS ahg_settings (
     id INT AUTO_INCREMENT PRIMARY KEY,
