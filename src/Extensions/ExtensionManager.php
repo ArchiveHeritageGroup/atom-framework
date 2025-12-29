@@ -43,7 +43,7 @@ class ExtensionManager implements ExtensionManagerContract
                 if ($manifest) {
                     $manifest['path'] = $dir;
                     $manifest['is_registered'] = $this->repository->exists($manifest['machine_name'] ?? basename($dir));
-                    $extensions->push($manifest);
+                    if (empty($manifest["is_theme"]) && ($manifest["category"] ?? "") !== "theme") { $extensions->push($manifest); }
                 }
             }
         }
