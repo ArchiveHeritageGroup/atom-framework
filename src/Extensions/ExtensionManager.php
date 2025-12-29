@@ -150,6 +150,14 @@ class ExtensionManager implements ExtensionManagerContract
             $this->runSymfonyTask($manifest['install_task']);
         }
 
+        // Run install SQL if defined
+        if (!empty($manifest["install_sql"])) {
+            $sqlPath = $this->pluginsPath . "/" . $machineName . "/" . $manifest["install_sql"];
+            if (file_exists($sqlPath)) {
+                $this->runSqlFile($sqlPath);
+            }
+        }
+
         // Log action
         $this->repository->logAction($machineName, 'installed', $id, null, [
             'version' => $manifest['version'] ?? '1.0.0',
@@ -466,6 +474,31 @@ class ExtensionManager implements ExtensionManagerContract
 
         if ($returnCode !== 0) {
             throw new \RuntimeException("Task '{$task}' failed: " . implode("\n", $output));
+        }
+    }
+
+    /**
+     * Run SQL file for extension installation
+     */
+    protected function runSqlFile(string $sqlPath): void
+    {
+        $sql = file_get_contents($sqlPath);
+        if (empty($sql)) {
+            return;
+        }
+        
+        // Split by semicolon but be careful with stored procedures
+        $statements = array_filter(array_map("trim", explode(";", $sql)));
+        
+        foreach ($statements as $statement) {
+            if (!empty($statement) && !preg_match("/^\s*--/", $statement)) {
+                try {
+                    DB::statement($statement);
+                } catch (\Exception $e) {
+                    // Log but continue - table may already exist
+                    error_log("Extension SQL warning: " . $e->getMessage());
+                }
+            }
         }
     }
 
