@@ -587,9 +587,9 @@ class ExtensionCommand
         $this->line('');
         $this->line('Examples:');
         $this->line('  php bin/atom extension:discover');
-        $this->line('  php bin/atom extension:install arSecurityClearancePlugin');
-        $this->line('  php bin/atom extension:disable arSecurityClearancePlugin');
-        $this->line('  php bin/atom extension:enable arSecurityClearancePlugin');
+        $this->line('  php bin/atom extension:install ahgSecurityClearancePlugin');
+        $this->line('  php bin/atom extension:disable ahgSecurityClearancePlugin');
+        $this->line('  php bin/atom extension:enable ahgSecurityClearancePlugin');
         $this->line('');
 
         return 0;

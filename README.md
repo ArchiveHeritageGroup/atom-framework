@@ -43,14 +43,14 @@ sudo systemctl restart php8.3-fpm
 │
 ├── atom-ahg-plugins/                     # Plugin repository (separate clone)
 │   ├── arAHGThemeB5Plugin/               # Bootstrap 5 theme
-│   ├── arDisplayPlugin/                  # Display profiles & modes
-│   ├── arSecurityClearancePlugin/        # Security classification
-│   ├── arResearchPlugin/                 # Researcher management
-│   └── arAccessRequestPlugin/            # Access request workflow
+│   ├── ahgDisplayPlugin/                  # Display profiles & modes
+│   ├── ahgSecurityClearancePlugin/        # Security classification
+│   ├── ahgResearchPlugin/                 # Researcher management
+│   └── ahgAccessRequestPlugin/            # Access request workflow
 │
 ├── plugins/                              # AtoM plugins directory
 │   ├── arAHGThemeB5Plugin -> ../atom-ahg-plugins/arAHGThemeB5Plugin
-│   ├── arDisplayPlugin -> ../atom-ahg-plugins/arDisplayPlugin
+│   ├── ahgDisplayPlugin -> ../atom-ahg-plugins/ahgDisplayPlugin
 │   └── ...                               # Symlinks created by installer
 │
 └── config/
@@ -77,10 +77,10 @@ The installer creates database tables, symlinks, and configuration:
 
 The installer adds these plugins to AtoM's plugin configuration:
 
-- **arDisplayPlugin** - Display mode switching and extended levels
-- **arSecurityClearancePlugin** - Security classification system
-- **arResearchPlugin** - Researcher portal and bookings
-- **arAccessRequestPlugin** - Access request workflow
+- **ahgDisplayPlugin** - Display mode switching and extended levels
+- **ahgSecurityClearancePlugin** - Security classification system
+- **ahgResearchPlugin** - Researcher portal and bookings
+- **ahgAccessRequestPlugin** - Access request workflow
 - **arAHGThemeB5Plugin** - Custom Bootstrap 5 theme
 
 ### Default Data
