@@ -198,6 +198,7 @@ CREATE TABLE IF NOT EXISTS atom_extension_pending_deletion (
     id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     extension_name VARCHAR(100) NOT NULL,
     table_name VARCHAR(100) NOT NULL,
+    record_count INT DEFAULT 0,
     backup_path VARCHAR(500),
     delete_after DATETIME NOT NULL,
     status ENUM('pending','deleted','restored','cancelled') DEFAULT 'pending',
@@ -1162,6 +1163,50 @@ rm -rf ${ATOM_ROOT}/cache/*
 echo -e "  ${GREEN}✓${NC} Cache cleared"
 
 # =============================================================================
+# =============================================================================
+# Step 7: Generate Install Log
+# =============================================================================
+echo ""
+echo -e "${BLUE}Step 7: Generating install log...${NC}"
+
+INSTALL_LOG="${ATOM_ROOT}/install_$(date +%Y%m%d_%H%M%S).log"
+{
+    echo "AtoM Framework Installation Log"
+    echo "================================"
+    echo "Date: $(date)"
+    echo "Server: $(hostname)"
+    echo ""
+    echo "== Database Tables =="
+    mysql -h "$DB_HOST" -u "$DB_USER" -p"$DB_PASS" "$DB_NAME" -N -e "SHOW TABLES;" | wc -l | xargs echo "Total tables:"
+    echo ""
+    echo "-- Extension Tables --"
+    mysql -h "$DB_HOST" -u "$DB_USER" -p"$DB_PASS" "$DB_NAME" -N -e "SHOW TABLES LIKE 'atom_extension%';"
+    echo ""
+    echo "-- AHG Tables --"
+    mysql -h "$DB_HOST" -u "$DB_USER" -p"$DB_PASS" "$DB_NAME" -N -e "SHOW TABLES LIKE 'ahg_%';"
+    echo ""
+    echo "-- Display Tables --"
+    mysql -h "$DB_HOST" -u "$DB_USER" -p"$DB_PASS" "$DB_NAME" -N -e "SHOW TABLES LIKE 'display_%';"
+    echo ""
+    echo "== Enabled Plugins (atom_plugin) =="
+    mysql -h "$DB_HOST" -u "$DB_USER" -p"$DB_PASS" "$DB_NAME" -N -e "SELECT name, category, is_enabled FROM atom_plugin WHERE is_enabled = 1 ORDER BY category, name;"
+    echo ""
+    echo "== Registered Extensions (atom_extension) =="
+    mysql -h "$DB_HOST" -u "$DB_USER" -p"$DB_PASS" "$DB_NAME" -N -e "SELECT machine_name, status, version FROM atom_extension ORDER BY machine_name;"
+    echo ""
+    echo "== Plugin Symlinks =="
+    ls -la ${ATOM_ROOT}/plugins/ | grep "^l"
+    echo ""
+    echo "== Framework Version =="
+    cat ${ATOM_ROOT}/atom-framework/composer.json 2>/dev/null | grep version || echo "Unknown"
+    echo ""
+    echo "================================"
+    echo "Install completed successfully"
+} > "$INSTALL_LOG" 2>&1
+
+echo -e "  ${GREEN}✓${NC} Install log created: $INSTALL_LOG"
+cat "$INSTALL_LOG"
+
 # Complete
 # =============================================================================
 echo ""
