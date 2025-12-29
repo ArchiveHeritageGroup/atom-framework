@@ -9,11 +9,11 @@
  * - Create waveforms
  * 
  * Installation:
- * 1. Copy to: /usr/share/nginx/archive/plugins/arAHGThemeB5Plugin/lib/
+ * 1. Copy to: /usr/share/nginx/archive/plugins/ahgThemeB5Plugin/lib/
  * 2. Add to QubitDigitalObject::save() or use event listener
  * 
  * Usage in controller/action:
- *   require_once sfConfig::get('sf_plugins_dir').'/arAHGThemeB5Plugin/lib/MediaUploadHook.php';
+ *   require_once sfConfig::get('sf_plugins_dir').'/ahgThemeB5Plugin/lib/MediaUploadHook.php';
  *   MediaUploadHook::processDigitalObject($digitalObject);
  * 
  * Or via job queue:

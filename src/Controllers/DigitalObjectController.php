@@ -441,7 +441,7 @@ class DigitalObjectController
 <html>
 <head>
     <title>Error {$code}</title>
-    <link rel="stylesheet" href="/plugins/arAHGThemeB5Plugin/css/min.css">
+    <link rel="stylesheet" href="/plugins/ahgThemeB5Plugin/css/min.css">
 </head>
 <body>
     <div class="container mt-5">

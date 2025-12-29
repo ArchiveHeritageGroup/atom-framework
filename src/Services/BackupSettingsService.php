@@ -267,7 +267,7 @@ class BackupSettingsService
                 ->orWhere('name', 'sfMuseumPlugin')
                 ->orWhere('name', 'IiifViewerFramework')
                 ->orWhere('name', 'arPluginManagerPlugin')
-                ->orWhere('name', 'arAHGThemeB5Plugin')
+                ->orWhere('name', 'ahgThemeB5Plugin')
                 ->pluck('name')
                 ->toArray();
             
@@ -285,7 +285,7 @@ class BackupSettingsService
         return [
             'ar3DModelPlugin',
             'ahgAccessRequestPlugin',
-            'arAHGThemeB5Plugin',
+            'ahgThemeB5Plugin',
             'ahgAuditTrailPlugin',
             'arConditionPlugin',
             'ahgDAMPlugin',

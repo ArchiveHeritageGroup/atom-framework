@@ -5,7 +5,7 @@
  * 
  * Helper functions to display media metadata and transcriptions in AtoM templates
  * 
- * Install to: /usr/share/nginx/archive/plugins/arAHGThemeB5Plugin/lib/helper/MediaHelper.php
+ * Install to: /usr/share/nginx/archive/plugins/ahgThemeB5Plugin/lib/helper/MediaHelper.php
  * 
  * Usage:
  *   use_helper('Media');

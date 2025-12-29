@@ -6,7 +6,7 @@
  * Drop-in replacement for existing digital object viewing in AtoM
  * Replaces: ZoomPan, OpenSeadragon, video/audio players
  * 
- * Add to: /usr/share/nginx/archive/plugins/arAHGThemeB5Plugin/lib/helper/IiifViewerHelper.php
+ * Add to: /usr/share/nginx/archive/plugins/ahgThemeB5Plugin/lib/helper/IiifViewerHelper.php
  * 
  * @author Johan Pieterse - The Archive and Heritage Group
  * @version 1.0.0

@@ -49,7 +49,7 @@ class DisplayModeHelper
 
         ob_start();
         include sfConfig::get('sf_plugins_dir')
-            . '/arAHGThemeB5Plugin/modules/sfAHGPlugin/templates/_displayModeToolbar.php';
+            . '/ahgThemeB5Plugin/modules/sfAHGPlugin/templates/_displayModeToolbar.php';
 
         return ob_get_clean();
     }
@@ -102,11 +102,11 @@ class DisplayModeHelper
     {
         $mode = self::getCurrentMode($module);
         $templatePath = sfConfig::get('sf_plugins_dir')
-            . '/arAHGThemeB5Plugin/templates/displayModes/_' . $mode . '.php';
+            . '/ahgThemeB5Plugin/templates/displayModes/_' . $mode . '.php';
 
         if (!file_exists($templatePath)) {
             $templatePath = sfConfig::get('sf_plugins_dir')
-                . '/arAHGThemeB5Plugin/templates/displayModes/_list.php';
+                . '/ahgThemeB5Plugin/templates/displayModes/_list.php';
         }
 
         ob_start();

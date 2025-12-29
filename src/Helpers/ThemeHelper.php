@@ -11,7 +11,7 @@ class ThemeHelper
             'css_prefix' => 'dominion',
             'bootstrap' => '5',
         ],
-        'arAHGThemeB5Plugin' => [
+        'ahgThemeB5Plugin' => [
             'name' => 'AHG Theme B5',
             'css_prefix' => 'ahg',
             'bootstrap' => '5',
@@ -50,7 +50,7 @@ class ThemeHelper
         }
 
         // Default to AHG theme
-        self::$currentTheme = 'arAHGThemeB5Plugin';
+        self::$currentTheme = 'ahgThemeB5Plugin';
         return self::$currentTheme;
     }
 

@@ -131,7 +131,7 @@ class ModuleDiscoveryService
             'sfWebBrowserPlugin',
             'arElasticSearchPlugin',
             'arDominionB5Plugin',
-            'arAHGThemeB5Plugin',
+            'ahgThemeB5Plugin',
         ];
     }
 
