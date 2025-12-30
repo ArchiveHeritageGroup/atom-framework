@@ -544,7 +544,7 @@ class ExtensionCommand
 
             foreach ($updates as $machineName => $ext) {
                 $name = $ext['name'] ?? $machineName;
-                $this->line(sprintf('  %-30s %-12s \033[32m%-12s\033[0m %s',
+                $this->line(sprintf("  %-30s %-12s sprintf('  %-30s %-12s \033[32m%-12s\033[0m %s',33[32m%-12ssprintf('  %-30s %-12s \033[32m%-12s\033[0m %s',33[0m %s",
                     $this->truncate($name, 30),
                     $ext['local_version'],
                     $ext['remote_version'],
