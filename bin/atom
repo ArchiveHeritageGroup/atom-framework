@@ -33,27 +33,35 @@ switch ($module) {
         require_once FRAMEWORK_ROOT . '/src/Console/ExtensionCommand.php';
         $cmd = new \AtomFramework\Console\ExtensionCommand(array_merge(['atom', $command], $remaining));
         exit($cmd->run());
-    
+
     case 'migrate':
         require_once FRAMEWORK_ROOT . '/src/Database/MigrationRunner.php';
         require_once FRAMEWORK_ROOT . '/src/Console/MigrateCommand.php';
         $cmd = new \AtomFramework\Console\MigrateCommand();
         exit($cmd->run(array_merge([$command], $remaining)));
-    
+
     case 'framework':
-        if ($command === 'install') {
-            runFrameworkInstall();
-            exit(0);
+        switch ($command) {
+            case 'install':
+                runFrameworkInstall();
+                exit(0);
+            case 'update':
+                exit(runFrameworkUpdate($remaining));
+            case 'version':
+                showFrameworkVersion();
+                exit(0);
+            default:
+                echo "\033[31mUnknown framework command: {$command}\033[0m\n";
+                echo "Available: install, update, version\n";
+                exit(1);
         }
-        echo "\033[31mUnknown framework command: {$command}\033[0m\n";
-        exit(1);
-    
+
     case 'help':
     case '--help':
     case '-h':
         showHelp();
         exit(0);
-    
+
     default:
         echo "\033[31mUnknown command: {$module}\033[0m\n";
         showHelp();
@@ -64,14 +72,14 @@ function runFrameworkInstall(): void
 {
     echo "Installing AtoM Framework...\n";
     echo str_repeat('═', 60) . "\n";
-    
+
     // Run migrations
     require_once FRAMEWORK_ROOT . '/src/Database/MigrationRunner.php';
     $runner = new \AtomFramework\Database\MigrationRunner();
-    
+
     echo "→ Running database migrations...\n";
     $results = $runner->migrate();
-    
+
     if (empty($results)) {
         echo "  ✓ Database already up to date.\n";
     } else {
@@ -84,17 +92,200 @@ function runFrameworkInstall(): void
             echo "\n";
         }
     }
-    
+
     // Insert default settings if needed
     echo "→ Checking default settings...\n";
     insertDefaultSettings();
     echo "  ✓ Settings configured.\n";
-    
+
     echo str_repeat('═', 60) . "\n";
     echo "  ✓ Framework installation complete!\n\n";
     echo "Next steps:\n";
     echo "  php bin/atom extension:discover    # Find available extensions\n";
     echo "  php bin/atom extension:list        # List installed extensions\n";
+}
+
+function runFrameworkUpdate(array $args): int
+{
+    $noBackup = in_array('--no-backup', $args);
+    $force = in_array('--force', $args) || in_array('-f', $args);
+    
+    echo "\n";
+    echo "\033[36mAtoM Framework Update\033[0m\n";
+    echo str_repeat('━', 60) . "\n\n";
+
+    // Get current version
+    $versionFile = FRAMEWORK_ROOT . '/version.json';
+    $currentVersion = '0.0.0';
+    if (file_exists($versionFile)) {
+        $versionData = json_decode(file_get_contents($versionFile), true);
+        $currentVersion = $versionData['version'] ?? '0.0.0';
+    }
+    
+    echo "  Current version: v{$currentVersion}\n";
+
+    // Check remote version
+    echo "  Checking GitHub for updates...\n";
+    
+    $remoteVersion = getRemoteFrameworkVersion();
+    
+    if (!$remoteVersion) {
+        echo "\033[31m✗ Could not fetch remote version\033[0m\n";
+        return 1;
+    }
+    
+    echo "  Available version: v{$remoteVersion}\n\n";
+    
+    if (version_compare($remoteVersion, $currentVersion, '<=') && !$force) {
+        echo "\033[32m✓ Framework is already up to date!\033[0m\n";
+        echo "  Use --force to reinstall anyway.\n\n";
+        return 0;
+    }
+    
+    // Confirm update
+    if (!in_array('-y', $args) && !in_array('--yes', $args)) {
+        echo "  Proceed with update? [Y/n]: ";
+        $answer = strtolower(trim(fgets(STDIN)));
+        if ($answer !== '' && $answer !== 'y' && $answer !== 'yes') {
+            echo "  Update cancelled.\n";
+            return 0;
+        }
+    }
+    
+    echo "\n";
+    
+    // Step 1: Backup
+    if (!$noBackup) {
+        echo "→ Creating backup...\n";
+        $backupPath = createFrameworkBackup();
+        if ($backupPath) {
+            echo "  Backup: {$backupPath}\n";
+        }
+    }
+    
+    // Step 2: Git pull
+    echo "→ Pulling latest changes...\n";
+    
+    $output = [];
+    $returnCode = 0;
+    
+    exec("cd " . FRAMEWORK_ROOT . " && git fetch origin 2>&1", $output, $returnCode);
+    
+    if ($returnCode !== 0) {
+        echo "\033[31m✗ Git fetch failed\033[0m\n";
+        echo implode("\n", $output) . "\n";
+        return 1;
+    }
+    
+    exec("cd " . FRAMEWORK_ROOT . " && git pull origin main 2>&1", $output, $returnCode);
+    
+    if ($returnCode !== 0) {
+        echo "\033[31m✗ Git pull failed\033[0m\n";
+        echo implode("\n", $output) . "\n";
+        return 1;
+    }
+    
+    echo "  \033[32m✓ Code updated\033[0m\n";
+    
+    // Step 3: Run migrations
+    echo "→ Running migrations...\n";
+    
+    require_once FRAMEWORK_ROOT . '/src/Database/MigrationRunner.php';
+    $runner = new \AtomFramework\Database\MigrationRunner();
+    $results = $runner->migrate();
+    
+    if (empty($results)) {
+        echo "  Database already up to date.\n";
+    } else {
+        foreach ($results as $result) {
+            $status = $result['status'] === 'success' ? '✓' : '✗';
+            echo "  {$status} {$result['migration']}\n";
+        }
+    }
+    
+    // Step 4: Clear cache
+    echo "→ Clearing cache...\n";
+    $cacheDir = ATOM_ROOT . '/cache';
+    if (is_dir($cacheDir)) {
+        exec("rm -rf {$cacheDir}/*");
+        echo "  \033[32m✓ Cache cleared\033[0m\n";
+    }
+    
+    // Done
+    echo "\n" . str_repeat('━', 60) . "\n";
+    echo "\033[32m✓ Framework updated to v{$remoteVersion}\033[0m\n\n";
+    
+    echo "Next steps:\n";
+    echo "  php bin/atom extension:discover      # Check for plugin updates\n";
+    echo "  php bin/atom extension:update --all  # Update all plugins\n\n";
+    
+    return 0;
+}
+
+function getRemoteFrameworkVersion(): ?string
+{
+    $url = 'https://raw.githubusercontent.com/ArchiveHeritageGroup/atom-framework/main/version.json';
+    
+    $context = stream_context_create([
+        'http' => [
+            'timeout' => 10,
+            'user_agent' => 'AtoM-Framework-CLI'
+        ]
+    ]);
+    
+    $content = @file_get_contents($url, false, $context);
+    
+    if ($content === false) {
+        // Try git ls-remote as fallback
+        $output = [];
+        exec("git ls-remote --tags https://github.com/ArchiveHeritageGroup/atom-framework.git 2>/dev/null | tail -1", $output);
+        
+        if (!empty($output[0]) && preg_match('/refs\/tags\/v?(\d+\.\d+\.\d+)/', $output[0], $matches)) {
+            return $matches[1];
+        }
+        
+        return null;
+    }
+    
+    $data = json_decode($content, true);
+    return $data['version'] ?? null;
+}
+
+function createFrameworkBackup(): ?string
+{
+    $backupDir = ATOM_ROOT . '/backups/framework';
+    
+    if (!is_dir($backupDir)) {
+        mkdir($backupDir, 0755, true);
+    }
+    
+    $timestamp = date('Ymd_His');
+    $backupPath = "{$backupDir}/atom-framework_{$timestamp}";
+    
+    exec("cp -r " . FRAMEWORK_ROOT . " {$backupPath} 2>&1", $output, $code);
+    
+    return $code === 0 ? $backupPath : null;
+}
+
+function showFrameworkVersion(): void
+{
+    $versionFile = FRAMEWORK_ROOT . '/version.json';
+    
+    if (file_exists($versionFile)) {
+        $data = json_decode(file_get_contents($versionFile), true);
+        $version = $data['version'] ?? 'unknown';
+        $date = $data['date'] ?? 'unknown';
+        
+        echo "\n";
+        echo "\033[36mAtoM Framework\033[0m\n";
+        echo "  Version: v{$version}\n";
+        echo "  Date:    {$date}\n";
+        echo "  Path:    " . FRAMEWORK_ROOT . "\n\n";
+    } else {
+        echo "\n";
+        echo "\033[33mVersion file not found\033[0m\n";
+        echo "  Path: " . FRAMEWORK_ROOT . "\n\n";
+    }
 }
 
 function insertDefaultSettings(): void
@@ -105,7 +296,7 @@ function insertDefaultSettings(): void
         ['setting_key' => 'preserve_shared_table_data', 'setting_value' => '1', 'setting_type' => 'boolean', 'setting_group' => 'extensions'],
         ['setting_key' => 'backup_directory', 'setting_value' => '/usr/share/nginx/atom/data/extension-backups', 'setting_type' => 'string', 'setting_group' => 'extensions'],
     ];
-    
+
     foreach ($defaults as $setting) {
         try {
             \Illuminate\Database\Capsule\Manager::table('atom_extension_setting')
@@ -123,27 +314,32 @@ function showHelp(): void
 
 Usage: php bin/atom <command> [options]
 
-\033[33mCommands:\033[0m
+\033[33mFramework Commands:\033[0m
   framework:install     Install/upgrade framework tables
+  framework:update      Update framework from GitHub
+  framework:version     Show current framework version
+
+\033[33mMigration Commands:\033[0m
   migrate run           Run pending database migrations
   migrate status        Show migration status
-  
-  extension:list        List all extensions
-  extension:discover    Discover available extensions
+
+\033[33mExtension Commands:\033[0m
+  extension:list        List installed extensions
+  extension:discover    Discover extensions & check for updates
   extension:install     Install an extension
   extension:uninstall   Uninstall an extension
   extension:enable      Enable an extension
   extension:disable     Disable an extension
+  extension:update      Update an extension (or --all)
   extension:restore     Restore pending deletion
   extension:cleanup     Process pending deletions
   extension:audit       Show audit log
 
 \033[33mExamples:\033[0m
-  php bin/atom framework:install
-  php bin/atom migrate status
-  php bin/atom extension:discover
-  php bin/atom extension:install arAHGThemeB5Plugin
-  php bin/atom extension:enable arAHGThemeB5Plugin
+  php bin/atom framework:update           # Update framework core
+  php bin/atom extension:discover         # Check for updates
+  php bin/atom extension:update --all     # Update all plugins/themes
+  php bin/atom extension:install ahgSecurityClearancePlugin
 
 HELP;
 }

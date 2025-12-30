@@ -33,9 +33,9 @@ class PluginFetcher
     }
 
     /**
-     * Get list of available remote plugins
+     * Get list of available remote plugins (including themes)
      */
-    public function getRemotePlugins(): array
+    public function getRemotePlugins(bool $includeThemes = true): array
     {
         $this->cloneRepo();
         $plugins = [];
@@ -45,9 +45,17 @@ class PluginFetcher
             if (file_exists($extensionJson)) {
                 $manifest = json_decode(file_get_contents($extensionJson), true);
                 if ($manifest) {
+                    $isTheme = !empty($manifest['is_theme']) || ($manifest['category'] ?? '') === 'theme';
+                    
+                    // Skip themes if not requested
+                    if ($isTheme && !$includeThemes) {
+                        continue;
+                    }
+                    
                     $manifest['machine_name'] = $manifest['machine_name'] ?? basename($dir);
                     $manifest['remote'] = true;
                     $manifest['local'] = is_dir("{$this->pluginsPath}/" . basename($dir));
+                    $manifest['is_theme'] = $isTheme;
                     $plugins[] = $manifest;
                 }
             }
@@ -75,6 +83,7 @@ class PluginFetcher
         if ($manifest) {
             $manifest['machine_name'] = $manifest['machine_name'] ?? $machineName;
             $manifest['remote'] = true;
+            $manifest['is_theme'] = !empty($manifest['is_theme']) || ($manifest['category'] ?? '') === 'theme';
         }
         
         $this->cleanup();

@@ -1,0 +1,8 @@
+{
+    "version": "1.0.0",
+    "date": "2025-12-30",
+    "name": "AtoM Framework",
+    "description": "Laravel Query Builder integration for AtoM 2.10",
+    "author": "The Archive and Heritage Group",
+    "repository": "https://github.com/ArchiveHeritageGroup/atom-framework"
+}
