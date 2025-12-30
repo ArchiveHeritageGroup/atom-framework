@@ -247,4 +247,20 @@ class BackupSettingsService
             'custom_plugins' => ['ahgThemeB5Plugin', 'ahgSecurityClearancePlugin'],
         ];
     }
+
+    /**
+     * Get DB config from AtoM config.php (for display purposes)
+     */
+    public function getDbConfigFromFile(): array
+    {
+        return $this->atomConfig;
+    }
+
+    /**
+     * Alias for getAllSettings() - for template compatibility
+     */
+    public function all(): array
+    {
+        return $this->getAllSettings();
+    }
 }
