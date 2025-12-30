@@ -473,6 +473,13 @@ class ExtensionCommand
         $installedVersions = [];
         foreach ($installed as $ext) {
             $installedVersions[$ext->machine_name] = $ext->version ?? '0.0.0';
+        // Also include local plugins with extension.json as installed
+        foreach ($local as $plugin) {
+            $name = $plugin["machine_name"] ?? "";
+            if ($name && !isset($installedVersions[$name])) {
+                $installedVersions[$name] = $plugin["version"] ?? "0.0.0";
+            }
+        }
         }
 
         // Merge lists
