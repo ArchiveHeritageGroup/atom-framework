@@ -7,6 +7,17 @@ use Illuminate\Database\Capsule\Manager as DB;
 class SecurityClearanceService
 {
     /**
+     * Get all security classifications
+     */
+    public static function getAllClassifications(): array
+    {
+        return DB::table('security_classification')
+            ->orderBy('level', 'asc')
+            ->get()
+            ->toArray();
+    }
+
+    /**
      * Grant clearance to a user
      */
     public static function grantClearance(int $userId, int $classificationId, int $grantedBy, ?string $expiresAt = null, ?string $notes = null): bool
