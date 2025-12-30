@@ -862,6 +862,9 @@ class ExtensionCommand
                     }
                 }
 
+                $this->success("Updated {$ext['display_name']} to v{$ext['remote']}");
+                $success++;
+
             } catch (\Exception $e) {
                 $this->error("Failed to update {$extName}: " . $e->getMessage());
 
