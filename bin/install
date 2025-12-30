@@ -79,7 +79,7 @@ AHG_PLUGINS="${ATOM_ROOT}/atom-ahg-plugins"
 PLUGINS_DIR="${ATOM_ROOT}/plugins"
 
 if [ -d "$AHG_PLUGINS" ]; then
-    for plugin in ahgThemeB5Plugin ahgLibraryPlugin ahgGrapPlugin ahgDAMPlugin ahgSecurityClearancePlugin ahgAuditTrailPlugin ahgDisplayPlugin ahgAccessRequestPlugin ahgResearchPlugin ahgBackupPlugin sfMuseumPlugin ahgGalleryPlugin arOAISPlugin ahgRightsPlugin ahg3DModelPlugin IiifViewerFramework; do
+    for plugin in ahgThemeB5Plugin ahgLibraryPlugin ahgGrapPlugin ahgDAMPlugin ahgSecurityClearancePlugin ahgAuditTrailPlugin ahgDisplayPlugin ahgAccessRequestPlugin ahgResearchPlugin ahgBackupPlugin ahgMuseumPlugin ahgGalleryPlugin arOAISPlugin ahgRightsPlugin ahg3DModelPlugin IiifViewerFramework; do
         if [ -d "${AHG_PLUGINS}/${plugin}" ]; then
             if [ ! -L "${PLUGINS_DIR}/${plugin}" ]; then
                 ln -sf "${AHG_PLUGINS}/${plugin}" "${PLUGINS_DIR}/${plugin}"
@@ -175,7 +175,7 @@ echo ""
 echo -e "${BLUE}Step 6b: Loading plugin data...${NC}"
 
 # List of AHG plugins with data files
-AHG_DATA_PLUGINS="ahgThemeB5Plugin ahgLibraryPlugin ahgSecurityClearancePlugin ahgDAMPlugin ahgAuditTrailPlugin ahgResearchPlugin sfMuseumPlugin ahgGalleryPlugin"
+AHG_DATA_PLUGINS="ahgThemeB5Plugin ahgLibraryPlugin ahgSecurityClearancePlugin ahgDAMPlugin ahgAuditTrailPlugin ahgResearchPlugin ahgMuseumPlugin ahgGalleryPlugin"
 
 for plugin in $AHG_DATA_PLUGINS; do
     DATA_SQL="${PLUGINS_DIR}/${plugin}/data/install.sql"
