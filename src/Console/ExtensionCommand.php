@@ -119,7 +119,7 @@ class ExtensionCommand
         $extension = $this->manager->find($name);
 
         if (!$extension) {
-            $discovered = $this->manager->discover();
+            $discovered = $this->manager->discover(true);
             $found = $discovered->first(fn($e) => ($e['machine_name'] ?? '') === $name);
 
             if ($found) {
@@ -453,7 +453,7 @@ class ExtensionCommand
         $this->info('Discovering extensions...');
 
         // Get local plugins
-        $local = $this->manager->discover();
+        $local = $this->manager->discover(true);
 
         // Get remote plugins
         $this->line('  Checking GitHub for available plugins...');

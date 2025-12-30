@@ -25,7 +25,7 @@ class ExtensionManager implements ExtensionManagerContract
     /**
      * Discover all extensions with extension.json in plugins directory
      */
-    public function discover(): Collection
+    public function discover(bool $includeThemes = false): Collection
     {
         $extensions = collect();
         if (!is_dir($this->pluginsPath)) {
@@ -48,7 +48,7 @@ class ExtensionManager implements ExtensionManagerContract
                 $manifest = $this->loadManifest($manifestPath);
                 if ($manifest) {
                     // Skip themes
-                    if (!empty($manifest['is_theme']) || ($manifest['category'] ?? '') === 'theme') {
+                    if (!$includeThemes && (!empty($manifest["is_theme"]) || ($manifest["category"] ?? "") === "theme")) {
                         continue;
                     }
                     $manifest['path'] = $dir;
