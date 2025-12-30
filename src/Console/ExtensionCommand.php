@@ -16,7 +16,7 @@ class ExtensionCommand
     protected bool $interactive = true;
 
     protected array $commands = [
-        'list' => 'List all extensions',
+        'list' => 'List installed extensions',
         'info' => 'Show extension details',
         'install' => 'Install an extension (auto-enables)',
         'uninstall' => 'Uninstall an extension',
@@ -24,7 +24,8 @@ class ExtensionCommand
         'disable' => 'Disable an extension',
         'restore' => 'Restore pending deletion',
         'cleanup' => 'Process pending deletions',
-        'discover' => 'Discover available extensions',
+        'discover' => 'Discover extensions & check for updates',
+        'update' => 'Update an extension',
         'audit' => 'Show audit log',
     ];
 
@@ -54,6 +55,7 @@ class ExtensionCommand
                 'restore' => $this->restore($args),
                 'cleanup' => $this->cleanup($args),
                 'discover' => $this->discover($args),
+                'update' => $this->update($args),
                 'audit' => $this->audit($args),
                 'help', '--help', '-h' => $this->showHelp(),
                 default => $this->unknownCommand($command),
@@ -304,7 +306,6 @@ class ExtensionCommand
             return 1;
         }
 
-
         // Check protection level
         $check = ExtensionProtection::canUninstall($name);
         if (!$check['allowed']) {
@@ -443,6 +444,9 @@ class ExtensionCommand
         return $results['failed'] > 0 ? 1 : 0;
     }
 
+    /**
+     * Discover extensions & check for updates
+     */
     protected function discover(array $args): int
     {
         $this->line('');
@@ -454,6 +458,22 @@ class ExtensionCommand
         // Get remote plugins
         $this->line('  Checking GitHub for available plugins...');
         $remote = $this->fetcher->getRemotePlugins();
+
+        // Build remote lookup
+        $remoteByName = [];
+        foreach ($remote as $plugin) {
+            $name = $plugin['machine_name'] ?? '';
+            if ($name) {
+                $remoteByName[$name] = $plugin;
+            }
+        }
+
+        // Get installed extensions for version comparison
+        $installed = $this->manager->all();
+        $installedVersions = [];
+        foreach ($installed as $ext) {
+            $installedVersions[$ext->machine_name] = $ext->version ?? '0.0.0';
+        }
 
         // Merge lists
         $all = [];
@@ -483,32 +503,456 @@ class ExtensionCommand
             return 0;
         }
 
-        $this->line('');
-        $this->line(sprintf('  %-28s %-8s %-12s %-10s %s', 'Name', 'Version', 'Source', 'Status', 'Machine Name'));
-        $this->line('─────────────────────────────────────────────────────────────────────────────────────────────────');
+        // Separate into categories
+        $updates = [];
+        $installedList = [];
+        $available = [];
 
         foreach ($all as $machineName => $ext) {
-            $name = $ext['name'] ?? $ext['machine_name'] ?? 'Unknown';
-            $version = $ext['version'] ?? '?';
-            $source = $ext['source'] ?? 'local';
-            $status = ($ext['is_registered'] ?? false) ? 'Installed' : 'Available';
+            $isInstalled = isset($installedVersions[$machineName]);
+            $localVersion = $installedVersions[$machineName] ?? null;
+            $remoteVersion = $remoteByName[$machineName]['version'] ?? null;
 
-            $sourceDisplay = $source === 'remote' ? "\033[36m(GitHub)\033[0m" : '(Local)';
-
-            $this->line(sprintf('  %-28s %-8s %-20s %-10s %s',
-                $this->truncate($name, 28),
-                $version,
-                $sourceDisplay,
-                $status,
-                $machineName
-            ));
+            if ($isInstalled) {
+                if ($remoteVersion && version_compare($remoteVersion, $localVersion, '>')) {
+                    $updates[$machineName] = $ext;
+                    $updates[$machineName]['local_version'] = $localVersion;
+                    $updates[$machineName]['remote_version'] = $remoteVersion;
+                } else {
+                    $installedList[$machineName] = $ext;
+                    $installedList[$machineName]['local_version'] = $localVersion;
+                }
+            } else {
+                $available[$machineName] = $ext;
+            }
         }
 
+        // Display updates available
+        if (!empty($updates)) {
+            $this->line('');
+            $this->warning('⬆ UPDATES AVAILABLE:');
+            $this->line('───────────────────────────────────────────────────────────────────────────────');
+            $this->line(sprintf('  %-30s %-12s %-12s %s', 'Name', 'Installed', 'Available', 'Machine Name'));
+            $this->line('───────────────────────────────────────────────────────────────────────────────');
+
+            foreach ($updates as $machineName => $ext) {
+                $name = $ext['name'] ?? $machineName;
+                $this->line(sprintf('  %-30s %-12s \033[32m%-12s\033[0m %s',
+                    $this->truncate($name, 30),
+                    $ext['local_version'],
+                    $ext['remote_version'],
+                    $machineName
+                ));
+            }
+        }
+
+        // Display installed (up to date)
+        if (!empty($installedList)) {
+            $this->line('');
+            $this->info('✓ INSTALLED (Up to date):');
+            $this->line('───────────────────────────────────────────────────────────────────────────────');
+            $this->line(sprintf('  %-30s %-12s %-12s %s', 'Name', 'Version', 'Source', 'Machine Name'));
+            $this->line('───────────────────────────────────────────────────────────────────────────────');
+
+            foreach ($installedList as $machineName => $ext) {
+                $name = $ext['name'] ?? $machineName;
+                $source = $ext['source'] ?? 'local';
+                $sourceDisplay = $source === 'remote' ? '(GitHub)' : '(Local)';
+
+                $this->line(sprintf('  %-30s %-12s %-12s %s',
+                    $this->truncate($name, 30),
+                    $ext['local_version'],
+                    $sourceDisplay,
+                    $machineName
+                ));
+            }
+        }
+
+        // Display available (not installed)
+        if (!empty($available)) {
+            $this->line('');
+            $this->line('○ AVAILABLE (Not installed):');
+            $this->line('───────────────────────────────────────────────────────────────────────────────');
+            $this->line(sprintf('  %-30s %-12s %-12s %s', 'Name', 'Version', 'Source', 'Machine Name'));
+            $this->line('───────────────────────────────────────────────────────────────────────────────');
+
+            foreach ($available as $machineName => $ext) {
+                $name = $ext['name'] ?? $machineName;
+                $version = $ext['version'] ?? '?';
+                $source = $ext['source'] ?? 'local';
+                $sourceDisplay = $source === 'remote' ? "\033[36m(GitHub)\033[0m" : '(Local)';
+
+                $this->line(sprintf('  %-30s %-12s %-20s %s',
+                    $this->truncate($name, 30),
+                    $version,
+                    $sourceDisplay,
+                    $machineName
+                ));
+            }
+        }
+
+        // Summary and commands
         $this->line('');
-        $this->line('  Install: php bin/atom extension:install <machine_name>');
+        $this->line('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+        $this->line(sprintf('  Updates: %d  |  Installed: %d  |  Available: %d',
+            count($updates),
+            count($installedList),
+            count($available)
+        ));
+        $this->line('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+
+        if (!empty($updates)) {
+            $this->line('');
+            $this->warning('  Update:   php bin/atom extension:update <name>  |  extension:update --all');
+        }
+        $this->line('  Install:  php bin/atom extension:install <machine_name>');
         $this->line('');
 
         return 0;
+    }
+
+    /**
+     * Update an extension
+     */
+    protected function update(array $args): int
+    {
+        $name = $args[0] ?? null;
+        $updateAll = in_array('--all', $args);
+        $noBackup = in_array('--no-backup', $args);
+        $force = in_array('--force', $args) || in_array('-f', $args);
+
+        if (!$name && !$updateAll) {
+            $this->error('Usage: php bin/atom extension:update <machine_name> [--no-backup] [--force]');
+            $this->line('       php bin/atom extension:update --all [--no-backup]');
+            return 1;
+        }
+
+        $this->line('');
+
+        // Get list of extensions to update
+        $toUpdate = [];
+
+        if ($updateAll) {
+            // Get all installed extensions that have updates
+            $installed = $this->manager->all();
+            $remote = $this->fetcher->getRemotePlugins();
+
+            $remoteVersions = [];
+            foreach ($remote as $plugin) {
+                $pName = $plugin['machine_name'] ?? '';
+                if ($pName) {
+                    $remoteVersions[$pName] = $plugin['version'] ?? '0.0.0';
+                }
+            }
+
+            foreach ($installed as $ext) {
+                $extName = $ext->machine_name;
+                $localVersion = $ext->version ?? '0.0.0';
+                $remoteVersion = $remoteVersions[$extName] ?? null;
+
+                if ($remoteVersion && version_compare($remoteVersion, $localVersion, '>')) {
+                    $toUpdate[] = [
+                        'name' => $extName,
+                        'display_name' => $ext->display_name,
+                        'local' => $localVersion,
+                        'remote' => $remoteVersion,
+                    ];
+                }
+            }
+
+            if (empty($toUpdate)) {
+                $this->success('All extensions are up to date!');
+                $this->line('');
+                return 0;
+            }
+
+            $this->info('Extensions to update:');
+            foreach ($toUpdate as $ext) {
+                $this->line("  • {$ext['display_name']} ({$ext['local']} → {$ext['remote']})");
+            }
+            $this->line('');
+
+            if ($this->interactive && !$force) {
+                echo "  Proceed with update? [Y/n]: ";
+                $answer = strtolower(trim(fgets(STDIN)));
+                if ($answer !== '' && $answer !== 'y' && $answer !== 'yes') {
+                    $this->line('  Update cancelled.');
+                    return 0;
+                }
+            }
+        } else {
+            // Single extension
+            $extension = $this->manager->find($name);
+
+            if (!$extension) {
+                $this->error("Extension '{$name}' is not installed.");
+                return 1;
+            }
+
+            // Check remote version
+            $remoteManifest = $this->fetcher->getRemoteManifest($name);
+
+            if (!$remoteManifest) {
+                $this->error("Could not fetch remote version for '{$name}'.");
+                return 1;
+            }
+
+            $localVersion = $extension['version'] ?? '0.0.0';
+            $remoteVersion = $remoteManifest['version'] ?? '0.0.0';
+
+            if (version_compare($remoteVersion, $localVersion, '<=') && !$force) {
+                $this->success("'{$name}' is already up to date (v{$localVersion}).");
+                $this->line('  Use --force to reinstall anyway.');
+                $this->line('');
+                return 0;
+            }
+
+            $toUpdate[] = [
+                'name' => $name,
+                'display_name' => $extension['display_name'],
+                'local' => $localVersion,
+                'remote' => $remoteVersion,
+            ];
+
+            $this->info("Updating {$extension['display_name']}...");
+            $this->line("  Current: v{$localVersion}");
+            $this->line("  Available: v{$remoteVersion}");
+            $this->line('');
+
+            if ($this->interactive && !$force) {
+                echo "  Proceed with update? [Y/n]: ";
+                $answer = strtolower(trim(fgets(STDIN)));
+                if ($answer !== '' && $answer !== 'y' && $answer !== 'yes') {
+                    $this->line('  Update cancelled.');
+                    return 0;
+                }
+            }
+        }
+
+        // Process updates
+        $success = 0;
+        $failed = 0;
+
+        foreach ($toUpdate as $ext) {
+            $extName = $ext['name'];
+            $backupPath = null;
+
+            $this->line('');
+            $this->info("→ Updating {$ext['display_name']}...");
+
+            try {
+                // Step 1: Backup current version
+                if (!$noBackup) {
+                    $this->line('  Creating backup...');
+                    $backupPath = $this->createBackup($extName);
+                    if ($backupPath) {
+                        $this->line("  Backup: {$backupPath}");
+                    }
+                }
+
+                // Step 2: Fetch new version from GitHub
+                $this->line('  Downloading latest version...');
+                $pluginsPath = $this->manager->getSetting('extensions_path', null, '/usr/share/nginx/atom/plugins');
+                $pluginPath = "{$pluginsPath}/{$extName}";
+
+                // Remove old version (but keep database tables)
+                if (is_dir($pluginPath)) {
+                    $this->removeDirectory($pluginPath);
+                }
+
+                // Download new version
+                if (!$this->fetcher->fetch($extName)) {
+                    throw new \Exception("Failed to download {$extName} from GitHub");
+                }
+
+                // Step 3: Run migrations if any
+                $this->line('  Checking for migrations...');
+                $this->runUpdateMigrations($extName, $ext['local'], $ext['remote']);
+
+                // Step 4: Update database record
+                $this->manager->updateVersion($extName, $ext['remote']);
+
+                // Step 5: Clear cache
+                $this->clearCache();
+
+                $this->success("Updated {$ext['display_name']} to v{$ext['remote']}");
+                $success++;
+
+                // Log audit
+                $this->manager->logAudit($extName, 'upgraded', [
+                    'from_version' => $ext['local'],
+                    'to_version' => $ext['remote'],
+                ]);
+
+            } catch (\Exception $e) {
+                $this->error("Failed to update {$extName}: " . $e->getMessage());
+
+                // Attempt restore from backup
+                if (!$noBackup && $backupPath) {
+                    $this->warning('  Attempting to restore from backup...');
+                    $this->restoreFromBackup($backupPath, $pluginPath ?? '');
+                }
+
+                $failed++;
+            }
+        }
+
+        $this->line('');
+        $this->line('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+        $this->line("  Updated: {$success}  |  Failed: {$failed}");
+        $this->line('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+        $this->line('');
+
+        return $failed > 0 ? 1 : 0;
+    }
+
+    /**
+     * Create backup of extension
+     */
+    protected function createBackup(string $name): ?string
+    {
+        $pluginsPath = $this->manager->getSetting('extensions_path', null, '/usr/share/nginx/atom/plugins');
+        $pluginPath = "{$pluginsPath}/{$name}";
+        $backupDir = dirname($pluginsPath) . '/backups/extensions';
+
+        if (!is_dir($pluginPath)) {
+            return null;
+        }
+
+        if (!is_dir($backupDir)) {
+            mkdir($backupDir, 0755, true);
+        }
+
+        $timestamp = date('Ymd_His');
+        $backupPath = "{$backupDir}/{$name}_{$timestamp}";
+
+        // Copy directory
+        $this->copyDirectory($pluginPath, $backupPath);
+
+        return $backupPath;
+    }
+
+    /**
+     * Restore from backup
+     */
+    protected function restoreFromBackup(string $backupPath, string $targetPath): bool
+    {
+        if (!is_dir($backupPath)) {
+            return false;
+        }
+
+        if (is_dir($targetPath)) {
+            $this->removeDirectory($targetPath);
+        }
+
+        $this->copyDirectory($backupPath, $targetPath);
+        return true;
+    }
+
+    /**
+     * Run update migrations
+     */
+    protected function runUpdateMigrations(string $name, string $fromVersion, string $toVersion): void
+    {
+        $pluginsPath = $this->manager->getSetting('extensions_path', null, '/usr/share/nginx/atom/plugins');
+        $migrationsPath = "{$pluginsPath}/{$name}/schema/migrations";
+
+        if (!is_dir($migrationsPath)) {
+            return;
+        }
+
+        // Find migrations between versions
+        $migrations = glob("{$migrationsPath}/*.sql");
+        sort($migrations);
+
+        foreach ($migrations as $migration) {
+            $filename = basename($migration);
+
+            // Expected format: 001_1.0.1_add_column.sql or 1.0.1_add_column.sql
+            if (preg_match('/^(?:\d+_)?(\d+\.\d+\.\d+)_/', $filename, $matches)) {
+                $migrationVersion = $matches[1];
+
+                // Run if migration version is > from and <= to
+                if (version_compare($migrationVersion, $fromVersion, '>') &&
+                    version_compare($migrationVersion, $toVersion, '<=')) {
+
+                    $this->line("  Running migration: {$filename}");
+
+                    try {
+                        $this->migrationHandler->executeSqlFile($migration);
+                        $this->success("  Applied: {$filename}");
+                    } catch (\Exception $e) {
+                        $this->warning("  Warning: {$filename} - " . $e->getMessage());
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Clear Symfony cache
+     */
+    protected function clearCache(): void
+    {
+        $cacheDir = defined('ATOM_ROOT') ? ATOM_ROOT . '/cache' : '/usr/share/nginx/atom/cache';
+
+        if (is_dir($cacheDir)) {
+            $this->removeDirectory($cacheDir, false);
+            $this->line('  Cache cleared.');
+        }
+    }
+
+    /**
+     * Copy directory recursively
+     */
+    protected function copyDirectory(string $src, string $dst): void
+    {
+        $dir = opendir($src);
+        @mkdir($dst, 0755, true);
+
+        while (($file = readdir($dir)) !== false) {
+            if ($file === '.' || $file === '..') {
+                continue;
+            }
+
+            $srcPath = "{$src}/{$file}";
+            $dstPath = "{$dst}/{$file}";
+
+            if (is_dir($srcPath)) {
+                $this->copyDirectory($srcPath, $dstPath);
+            } else {
+                copy($srcPath, $dstPath);
+            }
+        }
+
+        closedir($dir);
+    }
+
+    /**
+     * Remove directory recursively
+     */
+    protected function removeDirectory(string $dir, bool $removeRoot = true): void
+    {
+        if (!is_dir($dir)) {
+            return;
+        }
+
+        $items = new \RecursiveIteratorIterator(
+            new \RecursiveDirectoryIterator($dir, \RecursiveDirectoryIterator::SKIP_DOTS),
+            \RecursiveIteratorIterator::CHILD_FIRST
+        );
+
+        foreach ($items as $item) {
+            if ($item->isDir()) {
+                rmdir($item->getRealPath());
+            } else {
+                unlink($item->getRealPath());
+            }
+        }
+
+        if ($removeRoot) {
+            rmdir($dir);
+        }
     }
 
     protected function audit(array $args): int
@@ -589,11 +1033,16 @@ class ExtensionCommand
         $this->line('  --no-backup          Skip backup creation');
         $this->line('  --drop-tables        Drop database tables');
         $this->line('');
+        $this->line('Update Options:');
+        $this->line('  --all                Update all extensions');
+        $this->line('  --no-backup          Skip backup before update');
+        $this->line('  --force, -f          Force update even if up-to-date');
+        $this->line('');
         $this->line('Examples:');
         $this->line('  php bin/atom extension:discover');
         $this->line('  php bin/atom extension:install ahgSecurityClearancePlugin');
-        $this->line('  php bin/atom extension:disable ahgSecurityClearancePlugin');
-        $this->line('  php bin/atom extension:enable ahgSecurityClearancePlugin');
+        $this->line('  php bin/atom extension:update ahg3DModelPlugin');
+        $this->line('  php bin/atom extension:update --all');
         $this->line('');
 
         return 0;

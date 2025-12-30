@@ -567,4 +567,32 @@ class ExtensionManager implements ExtensionManagerContract
             // Silently continue if setting_i18n doesn't exist
         }
     }
+
+    /**
+     * Update extension version in database
+     */
+    public function updateVersion(string $machineName, string $newVersion): bool
+    {
+        $extension = $this->repository->findByMachineName($machineName);
+        
+        if (!$extension) {
+            throw new \RuntimeException("Extension '{$machineName}' is not installed.");
+        }
+        
+        return $this->repository->update($extension->id, [
+            'version' => $newVersion,
+            'updated_at' => date('Y-m-d H:i:s'),
+        ]);
+    }
+
+    /**
+     * Log audit entry
+     */
+    public function logAudit(string $machineName, string $action, ?array $details = null): void
+    {
+        $extension = $this->repository->findByMachineName($machineName);
+        $extensionId = $extension ? $extension->id : null;
+        
+        $this->repository->logAction($machineName, $action, $extensionId, null, $details);
+	}
 }
