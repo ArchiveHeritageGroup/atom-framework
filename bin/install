@@ -79,7 +79,7 @@ AHG_PLUGINS="${ATOM_ROOT}/atom-ahg-plugins"
 PLUGINS_DIR="${ATOM_ROOT}/plugins"
 
 if [ -d "$AHG_PLUGINS" ]; then
-    for plugin in ahgThemeB5Plugin ahgLibraryPlugin ahgGrapPlugin ahgDAMPlugin ahgSecurityClearancePlugin ahgAuditTrailPlugin ahgDisplayPlugin ahgAccessRequestPlugin ahgResearchPlugin ahgBackupPlugin ahgMuseumPlugin ahgGalleryPlugin arOAISPlugin ahgRightsPlugin ahg3DModelPlugin IiifViewerFramework; do
+    for plugin in ahgThemeB5Plugin ahgSecurityClearancePlugin; do
         if [ -d "${AHG_PLUGINS}/${plugin}" ]; then
             if [ ! -L "${PLUGINS_DIR}/${plugin}" ]; then
                 ln -sf "${AHG_PLUGINS}/${plugin}" "${PLUGINS_DIR}/${plugin}"
