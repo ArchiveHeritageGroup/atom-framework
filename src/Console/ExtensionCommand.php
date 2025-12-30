@@ -827,18 +827,25 @@ class ExtensionCommand
                 }
 
                 // Step 2: Handle symlink or directory
-                $this->line('  Downloading latest version...');
-                
-                if (is_link($pluginPath)) {
+                // Step 2: Check if git repo or regular directory
+                if ($this->isGitRepo($pluginPath)) {
+                    // Git repo - use git pull
+                    $this->line('  Updating via git pull...');
+                    $repoRoot = $this->getGitRoot($pluginPath);
+                    if ($repoRoot && $this->gitPullUpdate($repoRoot)) {
+                        $this->line('  Git pull successful.');
+                    } else {
+                        throw new \Exception("Git pull failed for {$extName}");
+                    }
+                } elseif (is_link($pluginPath)) {
                     // Handle symlink - update the target
+                    $this->line('  Downloading latest version...');
                     $targetPath = readlink($pluginPath);
                     if ($targetPath && is_dir($targetPath)) {
                         $this->removeDirectory($targetPath);
-                        // Fetch to target location
                         if (!$this->fetcher->fetch($extName)) {
                             throw new \Exception("Failed to download {$extName} from GitHub");
                         }
-                        // Move to original symlink target
                         if (is_dir($pluginPath) && !is_link($pluginPath)) {
                             rename($pluginPath, $targetPath);
                             symlink($targetPath, $pluginPath);
@@ -846,42 +853,12 @@ class ExtensionCommand
                     }
                 } else {
                     // Regular directory
+                    $this->line('  Downloading latest version...');
                     if (is_dir($pluginPath)) {
                         $this->removeDirectory($pluginPath);
                     }
                     if (!$this->fetcher->fetch($extName)) {
                         throw new \Exception("Failed to download {$extName} from GitHub");
-                    }
-                }
-
-                // Step 3: Run migrations if any
-                $this->line('  Checking for migrations...');
-                $this->runUpdateMigrations($extName, $ext['local'], $ext['remote']);
-
-                // Step 4: Update database record if registered
-                if ($ext['registered']) {
-                    try {
-                        $this->manager->updateVersion($extName, $ext['remote']);
-                    } catch (\Exception $e) {
-                        // Ignore if table doesn't exist
-                    }
-                }
-
-                // Step 5: Clear cache
-                $this->clearCache();
-
-                $this->success("Updated {$ext['display_name']} to v{$ext['remote']}");
-                $success++;
-
-                // Log audit if registered
-                if ($ext['registered']) {
-                    try {
-                        $this->manager->logAudit($extName, 'upgraded', [
-                            'from_version' => $ext['local'],
-                            'to_version' => $ext['remote'],
-                        ]);
-                    } catch (\Exception $e) {
-                        // Ignore
                     }
                 }
 
@@ -1052,6 +1029,57 @@ class ExtensionCommand
         }
     }
 
+
+    /**
+     * Check if path is inside a git repository
+     */
+    protected function isGitRepo(string $path): bool
+    {
+        $checkPath = is_link($path) ? readlink($path) : $path;
+        $dir = is_dir($checkPath) ? $checkPath : dirname($checkPath);
+        
+        while ($dir !== "/" && $dir !== "") {
+            if (is_dir("{$dir}/.git")) {
+                return true;
+            }
+            $dir = dirname($dir);
+        }
+        return false;
+    }
+
+    /**
+     * Get git repo root for a path
+     */
+    protected function getGitRoot(string $path): ?string
+    {
+        $checkPath = is_link($path) ? readlink($path) : $path;
+        $dir = is_dir($checkPath) ? $checkPath : dirname($checkPath);
+        
+        while ($dir !== "/" && $dir !== "") {
+            if (is_dir("{$dir}/.git")) {
+                return $dir;
+            }
+            $dir = dirname($dir);
+        }
+        return null;
+    }
+
+    /**
+     * Update via git pull
+     */
+    protected function gitPullUpdate(string $repoPath): bool
+    {
+        $output = [];
+        $returnCode = 0;
+        
+        exec("cd {$repoPath} && git fetch origin 2>&1", $output, $returnCode);
+        if ($returnCode !== 0) {
+            return false;
+        }
+        
+        exec("cd {$repoPath} && git pull origin main 2>&1", $output, $returnCode);
+        return $returnCode === 0;
+    }
     protected function audit(array $args): int
     {
         $name = $args[0] ?? null;
