@@ -6429,3 +6429,20 @@ CREATE TABLE IF NOT EXISTS `library_settings` (
   PRIMARY KEY (`id`),
   UNIQUE KEY `setting_key` (`setting_key`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Seed: email_setting defaults
+INSERT IGNORE INTO `email_setting` (`setting_key`, `setting_value`, `setting_type`, `setting_group`, `description`) VALUES
+('smtp_enabled', '0', 'boolean', 'smtp', 'Enable email sending'),
+('smtp_host', '', 'text', 'smtp', 'SMTP server hostname'),
+('smtp_port', '587', 'number', 'smtp', 'SMTP server port'),
+('smtp_encryption', 'tls', 'text', 'smtp', 'Encryption type (tls, ssl, or empty)'),
+('smtp_username', '', 'text', 'smtp', 'SMTP username'),
+('smtp_password', '', 'password', 'smtp', 'SMTP password'),
+('smtp_from_email', '', 'email', 'smtp', 'From email address'),
+('smtp_from_name', 'AtoM Archive', 'text', 'smtp', 'From name'),
+('notify_new_researcher', '', 'email', 'notifications', 'Email to notify of new researcher registrations'),
+('notify_new_booking', '', 'email', 'notifications', 'Email to notify of new booking requests'),
+('notify_access_request', '', 'email', 'notifications', 'Email to notify of access requests'),
+('template_welcome', 'Welcome to our archive. Your registration has been received.', 'textarea', 'templates', 'Welcome email template'),
+('template_booking_confirm', 'Your booking has been confirmed.', 'textarea', 'templates', 'Booking confirmation template'),
+('template_access_approved', 'Your access request has been approved.', 'textarea', 'templates', 'Access approved template');
