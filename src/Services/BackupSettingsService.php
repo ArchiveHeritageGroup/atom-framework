@@ -7,158 +7,202 @@ use Illuminate\Database\Capsule\Manager as DB;
 class BackupSettingsService
 {
     private static ?array $cache = null;
-    private array $dbConfigFromFile = [];
-    private string $atomRoot;
+    private array $atomConfig = [];
+    private static ?string $atomRoot = null;
 
     public function __construct()
     {
-        // Get AtoM root directory - check if sfConfig exists first
-        if (class_exists('sfConfig', false)) {
-            $this->atomRoot = \sfConfig::get('sf_root_dir', '/usr/share/nginx/archive');
-        } else {
-            // Fallback: calculate from this file's location
-            // This file is at: atom-framework/src/Services/BackupSettingsService.php
-            // AtoM root is at: atom-framework/../ = /usr/share/nginx/archive
-            $this->atomRoot = dirname(dirname(dirname(__DIR__)));
-        }
-        
-        $this->loadDbConfigFromFile();
+        $this->loadAtomConfig();
     }
 
     /**
-     * Load database credentials from AtoM's config.php
-     * 
-     * config.php structure:
-     * return array(
-     *   'all' => array(
-     *     'propel' => array(
-     *       'param' => array(
-     *         'dsn' => 'mysql:dbname=archive;port=3306',
-     *         'username' => 'root',
-     *         'password' => 'xxx',
-     *       )
-     *     )
-     *   )
-     * );
+     * Detect AtoM root path dynamically
      */
-    private function loadDbConfigFromFile(): void
+    public static function getAtomRoot(): string
     {
-        $configFile = $this->atomRoot . '/config/config.php';
-        
-        if (file_exists($configFile)) {
-            $config = require $configFile;
-            
-            if (is_array($config)) {
-                // AtoM/Propel structure: all -> propel -> param
-                $params = $config['all']['propel']['param'] ?? [];
-                
-                if (!empty($params)) {
-                    // Parse DSN: mysql:dbname=archive;port=3306;host=localhost
-                    if (isset($params['dsn'])) {
-                        $dsn = $params['dsn'];
-                        
-                        if (preg_match('/dbname=([^;]+)/', $dsn, $m)) {
-                            $this->dbConfigFromFile['db_name'] = $m[1];
-                        }
-                        if (preg_match('/host=([^;]+)/', $dsn, $m)) {
-                            $this->dbConfigFromFile['db_host'] = $m[1];
-                        } else {
-                            // Default to localhost if not in DSN
-                            $this->dbConfigFromFile['db_host'] = 'localhost';
-                        }
-                        if (preg_match('/port=([^;]+)/', $dsn, $m)) {
-                            $this->dbConfigFromFile['db_port'] = (int)$m[1];
-                        }
-                    }
-                    
-                    $this->dbConfigFromFile['db_user'] = $params['username'] ?? 'root';
-                    $this->dbConfigFromFile['db_password'] = $params['password'] ?? '';
-                    $this->dbConfigFromFile['db_port'] = $this->dbConfigFromFile['db_port'] ?? 3306;
-                    
-                    return;
-                }
-                
-                // Alternative structure: database -> ...
-                if (isset($config['database'])) {
-                    $db = $config['database'];
-                    $this->dbConfigFromFile = [
-                        'db_host' => $db['host'] ?? 'localhost',
-                        'db_name' => $db['database'] ?? $db['name'] ?? 'archive',
-                        'db_user' => $db['username'] ?? $db['user'] ?? 'root',
-                        'db_password' => $db['password'] ?? '',
-                        'db_port' => (int)($db['port'] ?? 3306),
-                    ];
-                    return;
-                }
+        if (self::$atomRoot !== null) {
+            return self::$atomRoot;
+        }
+
+        // Method 1: Symfony sfConfig (if loaded)
+        if (class_exists('sfConfig')) {
+            $root = \sfConfig::get('sf_root_dir');
+            if ($root && is_dir($root)) {
+                self::$atomRoot = $root;
+                return self::$atomRoot;
             }
         }
 
-        // Fallback to defaults if config.php not found or invalid
-        $this->dbConfigFromFile = [
-            'db_host' => 'localhost',
-            'db_name' => 'archive',
-            'db_user' => 'root',
-            'db_password' => '',
-            'db_port' => 3306,
+        // Method 2: Environment variable
+        $envRoot = getenv('ATOM_ROOT');
+        if ($envRoot && is_dir($envRoot)) {
+            self::$atomRoot = $envRoot;
+            return self::$atomRoot;
+        }
+
+        // Method 3: Relative to framework (atom-framework is inside AtoM root)
+        $frameworkDir = dirname(__DIR__, 2);
+        $parentDir = dirname($frameworkDir);
+        if (file_exists($parentDir . '/config/config.php')) {
+            self::$atomRoot = $parentDir;
+            return self::$atomRoot;
+        }
+
+        // Method 4: Common constant (set by AtoM bootstrap)
+        if (defined('SF_ROOT_DIR')) {
+            self::$atomRoot = SF_ROOT_DIR;
+            return self::$atomRoot;
+        }
+
+        // Method 5: Working directory fallback
+        $cwd = getcwd();
+        if (file_exists($cwd . '/config/config.php')) {
+            self::$atomRoot = $cwd;
+            return self::$atomRoot;
+        }
+
+        self::$atomRoot = '';
+        return self::$atomRoot;
+    }
+
+    /**
+     * Load AtoM's database config from config.php
+     */
+    private function loadAtomConfig(): void
+    {
+        $atomRoot = self::getAtomRoot();
+        if (empty($atomRoot)) {
+            return;
+        }
+
+        $configPath = $atomRoot . '/config/config.php';
+        if (!file_exists($configPath)) {
+            return;
+        }
+
+        $config = require $configPath;
+        if (!isset($config['all']['propel']['param'])) {
+            return;
+        }
+
+        $propel = $config['all']['propel']['param'];
+        
+        $dsn = $propel['dsn'] ?? '';
+        $dbname = 'archive';
+        $host = 'localhost';
+        $port = 3306;
+        
+        if (preg_match('/dbname=([^;]+)/', $dsn, $m)) {
+            $dbname = $m[1];
+        }
+        if (preg_match('/host=([^;]+)/', $dsn, $m)) {
+            $host = $m[1];
+        }
+        if (preg_match('/port=([^;]+)/', $dsn, $m)) {
+            $port = (int)$m[1];
+        }
+        
+        $this->atomConfig = [
+            'db_host' => $host,
+            'db_name' => $dbname,
+            'db_user' => $propel['username'] ?? 'root',
+            'db_password' => $propel['password'] ?? '',
+            'db_port' => $port,
         ];
     }
 
-    /**
-     * Get database config from AtoM's config file
-     */
-    public function getDbConfigFromFile(): array
+    public function get(string $key, mixed $default = null): mixed
     {
-        return $this->dbConfigFromFile;
+        $settings = $this->getAllSettings();
+        
+        if (isset($settings[$key]) && $settings[$key] !== null && $settings[$key] !== '') {
+            return $settings[$key];
+        }
+        
+        if (isset($this->atomConfig[$key])) {
+            return $this->atomConfig[$key];
+        }
+        
+        return $default;
     }
 
-    /**
-     * Get AtoM root directory
-     */
-    public function getAtomRoot(): string
+    public function getAllSettings(): array
     {
-        return $this->atomRoot;
-    }
-
-    /**
-     * Get config file path
-     */
-    public function getConfigFilePath(): string
-    {
-        return $this->atomRoot . '/config/config.php';
-    }
-
-    /**
-     * Get a setting value - DB credentials come from config file
-     */
-    public function get(string $key, $default = null)
-    {
-        // Database credentials always from config file
-        $dbKeys = ['db_host', 'db_name', 'db_user', 'db_password', 'db_port'];
-        if (in_array($key, $dbKeys)) {
-            return $this->dbConfigFromFile[$key] ?? $default;
+        if (self::$cache !== null) {
+            return self::$cache;
         }
 
-        $settings = $this->all();
-        return $settings[$key] ?? $default;
-    }
-
-    public function set(string $key, $value, string $type = 'string', string $description = ''): bool
-    {
-        $dbKeys = ['db_host', 'db_name', 'db_user', 'db_password', 'db_port'];
-        if (in_array($key, $dbKeys)) {
-            return false;
-        }
+        $defaults = $this->getDefaults();
 
         try {
-            DB::table('backup_setting')->updateOrInsert(
-                ['setting_key' => $key],
-                [
-                    'setting_value' => is_array($value) ? json_encode($value) : (string)$value,
+            $rows = DB::table('backup_setting')->get();
+            
+            foreach ($rows as $row) {
+                $value = $row->setting_value;
+                $type = $row->setting_type ?? 'string';
+                
+                if ($type === 'boolean') {
+                    $value = in_array(strtolower($value), ['1', 'true', 'yes']);
+                } elseif ($type === 'integer') {
+                    $value = (int)$value;
+                } elseif ($type === 'json') {
+                    $decoded = json_decode($value, true);
+                    $value = is_array($decoded) ? $decoded : $value;
+                }
+                
+                $defaults[$row->setting_key] = $value;
+            }
+        } catch (\Exception $e) {
+            // Table doesn't exist, use defaults + atom config
+        }
+
+        foreach ($this->atomConfig as $key => $value) {
+            if (!isset($defaults[$key]) || $defaults[$key] === null || $defaults[$key] === '') {
+                $defaults[$key] = $value;
+            }
+        }
+
+        self::$cache = $defaults;
+        return self::$cache;
+    }
+
+    public function set(string $key, mixed $value): bool
+    {
+        try {
+            $exists = DB::table('backup_setting')
+                ->where('setting_key', $key)
+                ->exists();
+
+            $type = match(true) {
+                is_bool($value) => 'boolean',
+                is_int($value) => 'integer',
+                is_array($value) => 'json',
+                default => 'string'
+            };
+
+            if ($type === 'boolean') {
+                $value = $value ? '1' : '0';
+            } elseif ($type === 'json' && is_array($value)) {
+                $value = json_encode($value);
+            }
+
+            if ($exists) {
+                DB::table('backup_setting')
+                    ->where('setting_key', $key)
+                    ->update([
+                        'setting_value' => (string)$value,
+                        'updated_at' => date('Y-m-d H:i:s'),
+                    ]);
+            } else {
+                DB::table('backup_setting')->insert([
+                    'setting_key' => $key,
+                    'setting_value' => (string)$value,
                     'setting_type' => $type,
-                    'description' => $description ?: null,
+                    'created_at' => date('Y-m-d H:i:s'),
                     'updated_at' => date('Y-m-d H:i:s'),
-                ]
-            );
+                ]);
+            }
+
             self::$cache = null;
             return true;
         } catch (\Exception $e) {
@@ -166,82 +210,11 @@ class BackupSettingsService
         }
     }
 
-    public function all(): array
+    public function saveAll(array $settings): bool
     {
-        if (self::$cache !== null) {
-            return array_merge(self::$cache, $this->dbConfigFromFile);
-        }
-
-        try {
-            $rows = DB::table('backup_setting')->get();
-            $settings = [];
-            
-            foreach ($rows as $row) {
-                if (in_array($row->setting_key, ['db_host', 'db_name', 'db_user', 'db_password', 'db_port'])) {
-                    continue;
-                }
-
-                $value = $row->setting_value;
-                
-                switch ($row->setting_type) {
-                    case 'integer':
-                        $value = (int)$value;
-                        break;
-                    case 'boolean':
-                        $value = (bool)$value;
-                        break;
-                    case 'json':
-                        $value = json_decode($value, true) ?? [];
-                        break;
-                }
-                
-                $settings[$row->setting_key] = $value;
-            }
-            
-            self::$cache = $settings;
-            return array_merge($settings, $this->dbConfigFromFile);
-        } catch (\Exception $e) {
-            return array_merge($this->getDefaults(), $this->dbConfigFromFile);
-        }
-    }
-
-    public function getAllWithMeta(): array
-    {
-        try {
-            return DB::table('backup_setting')
-                ->whereNotIn('setting_key', ['db_host', 'db_name', 'db_user', 'db_password', 'db_port'])
-                ->orderBy('setting_key')
-                ->get()
-                ->toArray();
-        } catch (\Exception $e) {
-            return [];
-        }
-    }
-
-    public function saveMultiple(array $settings): bool
-    {
-        $dbKeys = ['db_host', 'db_name', 'db_user', 'db_password', 'db_port'];
-        $settings = array_filter($settings, fn($key) => !in_array($key, $dbKeys), ARRAY_FILTER_USE_KEY);
-
         try {
             foreach ($settings as $key => $value) {
-                $row = DB::table('backup_setting')->where('setting_key', $key)->first();
-                $type = $row->setting_type ?? 'string';
-                
-                if ($type === 'boolean') {
-                    $value = $value ? '1' : '0';
-                } elseif ($type === 'json' && is_array($value)) {
-                    $value = json_encode($value);
-                }
-                
-                DB::table('backup_setting')
-                    ->updateOrInsert(
-                        ['setting_key' => $key],
-                        [
-                            'setting_value' => (string)$value,
-                            'updated_at' => date('Y-m-d H:i:s'),
-                        ]
-                    );
+                $this->set($key, $value);
             }
             self::$cache = null;
             return true;
@@ -252,59 +225,8 @@ class BackupSettingsService
 
     public function clearCache(): void
     {
+        self::$atomRoot = null;
         self::$cache = null;
-    }
-
-
-    /**
-     * Get AHG plugins from database for backup
-     */
-    private function getAhgPlugins(): array
-    {
-        try {
-            $plugins = DB::table('atom_plugin')
-                ->where('category', 'ahg')
-                ->orWhere('name', 'ahgMuseumPlugin')
-                ->orWhere('name', 'IiifViewerFramework')
-                ->orWhere('name', 'arPluginManagerPlugin')
-                ->orWhere('name', 'ahgThemeB5Plugin')
-                ->pluck('name')
-                ->toArray();
-            
-            return !empty($plugins) ? $plugins : $this->getDefaultAhgPlugins();
-        } catch (\Exception $e) {
-            return $this->getDefaultAhgPlugins();
-        }
-    }
-
-    /**
-     * Fallback list if database unavailable
-     */
-    private function getDefaultAhgPlugins(): array
-    {
-        return [
-            'ahg3DModelPlugin',
-            'ahgAccessRequestPlugin',
-            'ahgThemeB5Plugin',
-            'ahgAuditTrailPlugin',
-            'ahgConditionPlugin',
-            'ahgDAMPlugin',
-            'ahgDisplayPlugin',
-            'ahgDonorAgreementPlugin',
-            'ahgDonorPlugin',
-            'ahgExtendedRightsPlugin',
-            'ahgGalleryPlugin',
-            'ahgGrapPlugin',
-            'ahgIiifCollectionPlugin',
-            'ahgLibraryPlugin',
-            'arPluginManagerPlugin',
-            'ahgResearchPlugin',
-            'ahgRicExplorerPlugin',
-            'ahgSecurityClearancePlugin',
-            'ahgSpectrumPlugin',
-            'IiifViewerFramework',
-            'ahgMuseumPlugin',
-        ];
     }
 
     private function getDefaults(): array
@@ -322,7 +244,7 @@ class BackupSettingsService
             'notify_email' => '',
             'notify_on_success' => false,
             'notify_on_failure' => true,
-            'custom_plugins' => $this->getAhgPlugins(),
+            'custom_plugins' => ['ahgThemeB5Plugin', 'ahgSecurityClearancePlugin'],
         ];
     }
 }
