@@ -102,27 +102,18 @@ class SecurityClearanceService
     }
 
     /**
-     * Check if user has clearance for a classification level
-     */
-    public static function hasAccess(int $userId, int $requiredLevel): bool
-    {
-        $clearance = self::getUserClearance($userId);
-        if (!$clearance) {
-            return false;
-        }
-        return ($clearance->level ?? 0) >= $requiredLevel;
-    }
-
     /**
      * Log action
      */
-    private static function log(string $level, string $message, array $context = []): void
+    private static function log(string $action, string $message, array $context = []): void
     {
         try {
             DB::table('user_security_clearance_log')->insert([
-                'level' => $level,
-                'message' => $message,
-                'context' => json_encode($context),
+                'user_id' => $context['user_id'] ?? 0,
+                'classification_id' => $context['classification_id'] ?? null,
+                'action' => $action === 'info' ? 'granted' : 'revoked',
+                'changed_by' => $context['granted_by'] ?? $context['revoked_by'] ?? null,
+                'notes' => $message . ' - ' . json_encode($context),
                 'created_at' => date('Y-m-d H:i:s'),
             ]);
         } catch (\Exception $e) {
