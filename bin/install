@@ -204,7 +204,7 @@ echo -e "${BLUE}Step 6c: Enabling required plugins...${NC}"
 # Theme and Security are required and cannot be disabled
 mysql -h "$DB_HOST" -u "$DB_USER" -p"$DB_PASS" "$DB_NAME" -e "
 INSERT INTO atom_plugin (name, class_name, is_enabled, is_core, is_locked, load_order, category, created_at, updated_at) VALUES
-('ahgThemeB5Plugin', 'ahgThemeB5PluginConfiguration', 1, 1, 1, 10, 'theme', NOW(), NOW()),
+('ahgThemeB5Plugin', 'ahgThemeB5PluginConfiguration', 0, 1, 1, 10, 'theme', NOW(), NOW()),
 ('ahgSecurityClearancePlugin', 'ahgSecurityClearancePluginConfiguration', 1, 1, 1, 20, 'ahg', NOW(), NOW())
 ON DUPLICATE KEY UPDATE is_enabled = 1, is_core = 1, is_locked = 1, updated_at = NOW();
 "
