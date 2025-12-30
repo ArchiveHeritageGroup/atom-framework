@@ -447,17 +447,20 @@ class ExtensionCommand
     /**
      * Discover extensions & check for updates
      */
+    /**
+     * Discover extensions & themes, check for updates
+     */
     protected function discover(array $args): int
     {
         $this->line('');
-        $this->info('Discovering extensions...');
+        $this->info('Discovering extensions and themes...');
 
         // Get local plugins
         $local = $this->manager->discover(true);
 
         // Get remote plugins
         $this->line('  Checking GitHub for available plugins...');
-        $remote = $this->fetcher->getRemotePlugins();
+        $remote = $this->fetcher->getRemotePlugins(true);
 
         // Build remote lookup
         $remoteByName = [];
@@ -468,23 +471,40 @@ class ExtensionCommand
             }
         }
 
-        // Get installed extensions for version comparison
-        $installed = $this->manager->all();
-        $installedVersions = [];
-        foreach ($installed as $ext) {
-            $installedVersions[$ext->machine_name] = $ext->version ?? '0.0.0';
-        // Also include local plugins with extension.json as installed
-        foreach ($local as $plugin) {
-            $name = $plugin["machine_name"] ?? "";
-            if ($name && !isset($installedVersions[$name])) {
-                $installedVersions[$name] = $plugin["version"] ?? "0.0.0";
-            }
+        // Get enabled plugins from atom_plugin table
+        $enabledPlugins = [];
+        try {
+            $rows = \Illuminate\Database\Capsule\Manager::table('atom_plugin')
+                ->where('is_enabled', 1)
+                ->pluck('name')
+                ->toArray();
+            $enabledPlugins = array_flip($rows);
+        } catch (\Exception $e) {
+            // Table may not exist
         }
+
+        // Get installed extensions from atom_extension table
+        $installedVersions = [];
+        try {
+            $installed = $this->manager->all();
+            foreach ($installed as $ext) {
+                $installedVersions[$ext->machine_name] = $ext->version ?? '0.0.0';
+            }
+        } catch (\Exception $e) {
+            // Table may not exist
+        }
+
+        // Also include local plugins with extension.json
+        $pluginsPath = $this->manager->getSetting('extensions_path', null, '/usr/share/nginx/atom/plugins');
+        foreach ($local as $plugin) {
+            $name = $plugin['machine_name'] ?? '';
+            if ($name && !isset($installedVersions[$name])) {
+                $installedVersions[$name] = $plugin['version'] ?? '0.0.0';
+            }
         }
 
         // Merge lists
         $all = [];
-
         foreach ($local as $plugin) {
             $name = $plugin['machine_name'] ?? '';
             $all[$name] = $plugin;
@@ -493,13 +513,11 @@ class ExtensionCommand
 
         foreach ($remote as $plugin) {
             $name = $plugin['machine_name'] ?? '';
-            // Skip themes
-            if (!empty($plugin['is_theme']) || ($plugin['category'] ?? '') === 'theme') {
-                continue;
-            }
             if (!isset($all[$name])) {
                 $all[$name] = $plugin;
                 $all[$name]['source'] = 'remote';
+            } else {
+                $all[$name]['remote_version'] = $plugin['version'] ?? null;
             }
         }
 
@@ -512,25 +530,34 @@ class ExtensionCommand
 
         // Separate into categories
         $updates = [];
-        $installedList = [];
-        $available = [];
+        $enabledList = [];
+        $localNotEnabled = [];
+        $remoteAvailable = [];
 
         foreach ($all as $machineName => $ext) {
-            $isInstalled = isset($installedVersions[$machineName]);
+            $hasLocal = isset($installedVersions[$machineName]);
+            $isEnabled = isset($enabledPlugins[$machineName]);
             $localVersion = $installedVersions[$machineName] ?? null;
             $remoteVersion = $remoteByName[$machineName]['version'] ?? null;
+            $isRemoteOnly = ($ext['source'] ?? '') === 'remote';
 
-            if ($isInstalled) {
+            if ($isRemoteOnly) {
+                // Only on GitHub
+                $remoteAvailable[$machineName] = $ext;
+            } elseif ($hasLocal && $isEnabled) {
+                // Enabled in AtoM
                 if ($remoteVersion && version_compare($remoteVersion, $localVersion, '>')) {
                     $updates[$machineName] = $ext;
                     $updates[$machineName]['local_version'] = $localVersion;
                     $updates[$machineName]['remote_version'] = $remoteVersion;
                 } else {
-                    $installedList[$machineName] = $ext;
-                    $installedList[$machineName]['local_version'] = $localVersion;
+                    $enabledList[$machineName] = $ext;
+                    $enabledList[$machineName]['local_version'] = $localVersion;
                 }
-            } else {
-                $available[$machineName] = $ext;
+            } elseif ($hasLocal) {
+                // Local but not enabled
+                $localNotEnabled[$machineName] = $ext;
+                $localNotEnabled[$machineName]['local_version'] = $localVersion;
             }
         }
 
@@ -539,12 +566,11 @@ class ExtensionCommand
             $this->line('');
             $this->warning('⬆ UPDATES AVAILABLE:');
             $this->line('───────────────────────────────────────────────────────────────────────────────');
-            $this->line(sprintf('  %-30s %-12s %-12s %s', 'Name', 'Installed', 'Available', 'Machine Name'));
+            $this->line(sprintf('  %-30s %-12s %-12s %s', 'Name', 'Current', 'Available', 'Machine Name'));
             $this->line('───────────────────────────────────────────────────────────────────────────────');
 
-			foreach ($updates as $machineName => $ext) {
+            foreach ($updates as $machineName => $ext) {
                 $name = $ext['name'] ?? $machineName;
-                $type = !empty($ext['is_theme']) ? 'Theme' : 'Plugin';
                 $this->line(sprintf("  %-30s %-12s \033[32m%-12s\033[0m %s",
                     $this->truncate($name, 30),
                     $ext['local_version'],
@@ -552,80 +578,88 @@ class ExtensionCommand
                     $machineName
                 ));
             }
-		}
+        }
 
-        // Display installed (up to date)
-        if (!empty($installedList)) {
+        // Display enabled
+        if (!empty($enabledList)) {
             $this->line('');
-            $this->info('✓ INSTALLED (Up to date):');
+            $this->info('✓ ENABLED:');
             $this->line('───────────────────────────────────────────────────────────────────────────────');
-            $this->line(sprintf('  %-30s %-12s %-12s %s', 'Name', 'Version', 'Source', 'Machine Name'));
+            $this->line(sprintf('  %-30s %-12s %s', 'Name', 'Version', 'Machine Name'));
             $this->line('───────────────────────────────────────────────────────────────────────────────');
 
-            foreach ($installedList as $machineName => $ext) {
+            foreach ($enabledList as $machineName => $ext) {
                 $name = $ext['name'] ?? $machineName;
-                $source = $ext['source'] ?? 'local';
-                $sourceDisplay = $source === 'remote' ? '(GitHub)' : '(Local)';
-
-                $this->line(sprintf('  %-30s %-12s %-12s %s',
+                $this->line(sprintf('  %-30s %-12s %s',
                     $this->truncate($name, 30),
                     $ext['local_version'],
-                    $sourceDisplay,
                     $machineName
                 ));
             }
         }
 
-        // Display available (not installed)
-        if (!empty($available)) {
+        // Display local but not enabled
+        if (!empty($localNotEnabled)) {
             $this->line('');
-            $this->line('○ AVAILABLE (Not installed):');
+            $this->line('○ LOCAL (Not enabled):');
             $this->line('───────────────────────────────────────────────────────────────────────────────');
-            $this->line(sprintf('  %-30s %-12s %-12s %s', 'Name', 'Version', 'Source', 'Machine Name'));
+            $this->line(sprintf('  %-30s %-12s %s', 'Name', 'Version', 'Machine Name'));
             $this->line('───────────────────────────────────────────────────────────────────────────────');
 
-            foreach ($available as $machineName => $ext) {
+            foreach ($localNotEnabled as $machineName => $ext) {
+                $name = $ext['name'] ?? $machineName;
+                $this->line(sprintf('  %-30s %-12s %s',
+                    $this->truncate($name, 30),
+                    $ext['local_version'] ?? '?',
+                    $machineName
+                ));
+            }
+        }
+
+        // Display remote available
+        if (!empty($remoteAvailable)) {
+            $this->line('');
+            $this->line("\033[36m⬇ AVAILABLE (Download):\033[0m");
+            $this->line('───────────────────────────────────────────────────────────────────────────────');
+            $this->line(sprintf('  %-30s %-12s %s', 'Name', 'Version', 'Machine Name'));
+            $this->line('───────────────────────────────────────────────────────────────────────────────');
+
+            foreach ($remoteAvailable as $machineName => $ext) {
                 $name = $ext['name'] ?? $machineName;
                 $version = $ext['version'] ?? '?';
-                $source = $ext['source'] ?? 'local';
-                $sourceDisplay = $source === 'remote' ? "\033[36m(GitHub)\033[0m" : '(Local)';
-
-                $this->line(sprintf('  %-30s %-12s %-20s %s',
+                $this->line(sprintf('  %-30s %-12s %s',
                     $this->truncate($name, 30),
                     $version,
-                    $sourceDisplay,
                     $machineName
                 ));
             }
         }
 
-        // Summary and commands
+        // Summary
         $this->line('');
         $this->line('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-        $this->line(sprintf('  Updates: %d  |  Installed: %d  |  Available: %d',
+        $this->line(sprintf('  Updates: %d  |  Enabled: %d  |  Local: %d  |  Remote: %d',
             count($updates),
-            count($installedList),
-            count($available)
+            count($enabledList),
+            count($localNotEnabled),
+            count($remoteAvailable)
         ));
         $this->line('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
         if (!empty($updates)) {
             $this->line('');
-            $this->warning('  Update:   php bin/atom extension:update <name>  |  extension:update --all');
+            $this->warning('  Update:  php bin/atom extension:update <name>  |  extension:update --all');
         }
-        $this->line('  Install:  php bin/atom extension:install <machine_name>');
+        if (!empty($localNotEnabled)) {
+            $this->line('  Enable:  php bin/atom extension:enable <machine_name>');
+        }
+        if (!empty($remoteAvailable)) {
+            $this->line('  Install: php bin/atom extension:install <machine_name>');
+        }
         $this->line('');
 
         return 0;
     }
-
-    /**
-     * Update an extension
-     */
-
-    /**
-     * Update an extension (handles both registered and local-only plugins)
-     */
     protected function update(array $args): int
     {
         $name = $args[0] ?? null;
