@@ -120,7 +120,7 @@ $routes = [
         '#^/iiif/3d/(\d+)/manifest\.json$#' => function($matches) use ($controller) {
             // Delegate to 3D manifest handler if exists
             $modelId = (int)$matches[1];
-            require_once __DIR__ . '/../../ar3DModelPlugin/services/Model3DService.php';
+            require_once __DIR__ . '/../../ahg3DModelPlugin/services/Model3DService.php';
             $service = new \AtomFramework\Extensions\ar3DModel\Services\Model3DService();
             $manifest = $service->generateIiifManifest($modelId);
             

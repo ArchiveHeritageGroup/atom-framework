@@ -283,7 +283,7 @@ class BackupSettingsService
     private function getDefaultAhgPlugins(): array
     {
         return [
-            'ar3DModelPlugin',
+            'ahg3DModelPlugin',
             'ahgAccessRequestPlugin',
             'ahgThemeB5Plugin',
             'ahgAuditTrailPlugin',

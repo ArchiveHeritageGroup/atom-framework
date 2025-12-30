@@ -14,7 +14,7 @@ class InformationObjectHelper
     protected static array $modelCache = [];
 
     /**
-     * Check if ar3DModelPlugin is available and has models for this object
+     * Check if ahg3DModelPlugin is available and has models for this object
      */
     public static function get3DModelsFromPlugin(int $objectId): ?array
     {

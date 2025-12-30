@@ -10,7 +10,7 @@ Part of atom-framework for AtoM archival management system.
 - **Collection manifests** - Generate manifests for curated IIIF collections
 - **Image manifests** - Direct image manifests via Cantaloupe
 - **Multi-page support** - Automatic page detection for TIFF files
-- **3D integration** - Links to ar3DModelPlugin IIIF 3D manifests
+- **3D integration** - Links to ahg3DModelPlugin IIIF 3D manifests
 
 ## Directory Structure
 
