@@ -264,7 +264,7 @@ class BackupSettingsService
         try {
             $plugins = DB::table('atom_plugin')
                 ->where('category', 'ahg')
-                ->orWhere('name', 'sfMuseumPlugin')
+                ->orWhere('name', 'ahgMuseumPlugin')
                 ->orWhere('name', 'IiifViewerFramework')
                 ->orWhere('name', 'arPluginManagerPlugin')
                 ->orWhere('name', 'ahgThemeB5Plugin')
@@ -303,7 +303,7 @@ class BackupSettingsService
             'ahgSecurityClearancePlugin',
             'ahgSpectrumPlugin',
             'IiifViewerFramework',
-            'sfMuseumPlugin',
+            'ahgMuseumPlugin',
         ];
     }
 

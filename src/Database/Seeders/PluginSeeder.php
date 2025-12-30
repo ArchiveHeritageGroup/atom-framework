@@ -31,7 +31,7 @@ class PluginSeeder
         'ahgDisplayPlugin' => ['sfPropelPlugin'],
         'ahg3DModelPlugin' => ['sfPropelPlugin'],
         'ahgRicExplorerPlugin' => ['sfPropelPlugin'],
-        'sfMuseumPlugin' => ['sfPropelPlugin'],
+        'ahgMuseumPlugin' => ['sfPropelPlugin'],
     ];
 
     protected const CATEGORIES = [
@@ -60,7 +60,7 @@ class PluginSeeder
         'ahgDisplayPlugin' => 'integration',
         'ahg3DModelPlugin' => 'integration',
         'ahgRicExplorerPlugin' => 'integration',
-        'sfMuseumPlugin' => 'metadata',
+        'ahgMuseumPlugin' => 'metadata',
         'arOidcPlugin' => 'security',
     ];
 
@@ -97,7 +97,7 @@ class PluginSeeder
         'ahgDisplayPlugin' => 'Display and presentation layouts',
         'ahg3DModelPlugin' => '3D model viewing and management',
         'ahgRicExplorerPlugin' => 'Records in Contexts explorer',
-        'sfMuseumPlugin' => 'CCO museum cataloguing standard',
+        'ahgMuseumPlugin' => 'CCO museum cataloguing standard',
         'arOidcPlugin' => 'OpenID Connect authentication',
     ];
 
