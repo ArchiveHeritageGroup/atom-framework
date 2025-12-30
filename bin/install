@@ -195,6 +195,22 @@ echo -e "${GREEN}✓ Plugin data loaded${NC}"
 
 # =============================================================================
 # =============================================================================
+# =============================================================================
+# Step 6c: Enable required default plugins
+# =============================================================================
+echo ""
+echo -e "${BLUE}Step 6c: Enabling required plugins...${NC}"
+
+# Theme and Security are required and cannot be disabled
+mysql -h "$DB_HOST" -u "$DB_USER" -p"$DB_PASS" "$DB_NAME" -e "
+INSERT INTO atom_plugin (name, class_name, is_enabled, is_core, is_locked, load_order, category, created_at, updated_at) VALUES
+('ahgThemeB5Plugin', 'ahgThemeB5PluginConfiguration', 1, 1, 1, 10, 'theme', NOW(), NOW()),
+('ahgSecurityClearancePlugin', 'ahgSecurityClearancePluginConfiguration', 1, 1, 1, 20, 'ahg', NOW(), NOW())
+ON DUPLICATE KEY UPDATE is_enabled = 1, is_core = 1, is_locked = 1, updated_at = NOW();
+"
+echo -e "  ${GREEN}✓${NC} ahgThemeB5Plugin enabled (locked)"
+echo -e "  ${GREEN}✓${NC} ahgSecurityClearancePlugin enabled (locked)"
+
 # Step 7: Generate Install Log
 # =============================================================================
 echo ""
