@@ -211,39 +211,6 @@ ON DUPLICATE KEY UPDATE is_enabled = 1, is_core = 1, is_locked = 1, updated_at =
 echo -e "  ${GREEN}✓${NC} ahgThemeB5Plugin enabled (locked)"
 echo -e "  ${GREEN}✓${NC} ahgSecurityClearancePlugin enabled (locked)"
 
-# Step 6d: Register all AHG plugins from extension.json
-# =============================================================================
-echo ""
-echo -e "${BLUE}Step 6d: Registering AHG plugins from extension.json...${NC}"
-
-for plugin_dir in ${ATOM_ROOT}/atom-ahg-plugins/ahg*Plugin; do
-    if [ -d "$plugin_dir" ]; then
-        plugin_name=$(basename "$plugin_dir")
-        ext_json="$plugin_dir/extension.json"
-        
-        if [ -f "$ext_json" ]; then
-            # Extract values from extension.json
-            version=$(grep -o '"version": *"[^"]*"' "$ext_json" | head -1 | sed 's/.*: *"\([^"]*\)"/\1/')
-            description=$(grep -o '"description": *"[^"]*"' "$ext_json" | head -1 | sed 's/.*: *"\([^"]*\)"/\1/' | sed "s/'/''/g")
-            category=$(grep -o '"category": *"[^"]*"' "$ext_json" | head -1 | sed 's/.*: *"\([^"]*\)"/\1/')
-            load_order=$(grep -o '"load_order": *[0-9]*' "$ext_json" | head -1 | sed 's/.*: *//')
-            
-            # Default values
-            [ -z "$version" ] && version="1.0.0"
-            [ -z "$category" ] && category="ahg"
-            [ -z "$load_order" ] && load_order="100"
-            
-            # Insert or update
-            mysql -h "$DB_HOST" -u "$DB_USER" -p"$DB_PASS" "$DB_NAME" -e "
-                INSERT INTO atom_plugin (name, class_name, version, description, category, is_enabled, load_order, created_at, updated_at)
-                VALUES ('$plugin_name', '${plugin_name}Configuration', '$version', '$description', '$category', 0, $load_order, NOW(), NOW())
-                ON DUPLICATE KEY UPDATE version='$version', description='$description', category='$category', load_order=$load_order, updated_at=NOW();
-            " 2>/dev/null
-            
-            echo -e "  ${GREEN}✓${NC} $plugin_name v$version"
-        fi
-    fi
-done
 
 # Step 7: Generate Install Log
 # =============================================================================
