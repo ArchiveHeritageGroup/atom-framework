@@ -236,7 +236,7 @@ for plugin_dir in ${ATOM_ROOT}/atom-ahg-plugins/ahg*Plugin; do
             # Insert or update
             mysql -h "$DB_HOST" -u "$DB_USER" -p"$DB_PASS" "$DB_NAME" -e "
                 INSERT INTO atom_plugin (name, class_name, version, description, category, is_enabled, load_order, created_at, updated_at)
-                VALUES ('$plugin_name', '${plugin_name}Configuration', '$version', '$description', '$category', 1, $load_order, NOW(), NOW())
+                VALUES ('$plugin_name', '${plugin_name}Configuration', '$version', '$description', '$category', 0, $load_order, NOW(), NOW())
                 ON DUPLICATE KEY UPDATE version='$version', description='$description', category='$category', load_order=$load_order, updated_at=NOW();
             " 2>/dev/null
             
