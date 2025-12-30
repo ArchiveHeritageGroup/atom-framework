@@ -121,7 +121,7 @@ $routes = [
             // Delegate to 3D manifest handler if exists
             $modelId = (int)$matches[1];
             require_once __DIR__ . '/../../ahg3DModelPlugin/services/Model3DService.php';
-            $service = new \AtomFramework\Extensions\ar3DModel\Services\Model3DService();
+            $service = new \AtomFramework\Extensions\ahg3DModel\Services\Model3DService();
             $manifest = $service->generateIiifManifest($modelId);
             
             if ($manifest) {
