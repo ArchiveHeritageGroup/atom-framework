@@ -614,6 +614,10 @@ class ExtensionCommand
     /**
      * Update an extension
      */
+
+    /**
+     * Update an extension (handles both registered and local-only plugins)
+     */
     protected function update(array $args): int
     {
         $name = $args[0] ?? null;
@@ -628,35 +632,69 @@ class ExtensionCommand
         }
 
         $this->line('');
+        $pluginsPath = $this->manager->getSetting('extensions_path', null, '/usr/share/nginx/atom/plugins');
 
         // Get list of extensions to update
         $toUpdate = [];
 
         if ($updateAll) {
-            // Get all installed extensions that have updates
-            $installed = $this->manager->all();
-            $remote = $this->fetcher->getRemotePlugins();
+            // Get remote plugins (including themes)
+            $remote = $this->fetcher->getRemotePlugins(true);
 
             $remoteVersions = [];
             foreach ($remote as $plugin) {
                 $pName = $plugin['machine_name'] ?? '';
                 if ($pName) {
-                    $remoteVersions[$pName] = $plugin['version'] ?? '0.0.0';
+                    $remoteVersions[$pName] = [
+                        'version' => $plugin['version'] ?? '0.0.0',
+                        'name' => $plugin['name'] ?? $pName,
+                        'is_theme' => !empty($plugin['is_theme']) || ($plugin['category'] ?? '') === 'theme',
+                    ];
                 }
             }
 
-            foreach ($installed as $ext) {
-                $extName = $ext->machine_name;
-                $localVersion = $ext->version ?? '0.0.0';
-                $remoteVersion = $remoteVersions[$extName] ?? null;
+            // Check registered extensions from database
+            try {
+                $installed = $this->manager->all();
+                foreach ($installed as $ext) {
+                    $extName = $ext->machine_name;
+                    $localVersion = $ext->version ?? '0.0.0';
+                    $remoteInfo = $remoteVersions[$extName] ?? null;
 
-                if ($remoteVersion && version_compare($remoteVersion, $localVersion, '>')) {
-                    $toUpdate[] = [
-                        'name' => $extName,
-                        'display_name' => $ext->display_name,
-                        'local' => $localVersion,
-                        'remote' => $remoteVersion,
-                    ];
+                    if ($remoteInfo && version_compare($remoteInfo['version'], $localVersion, '>')) {
+                        $toUpdate[] = [
+                            'name' => $extName,
+                            'display_name' => $ext->display_name,
+                            'local' => $localVersion,
+                            'remote' => $remoteInfo['version'],
+                            'registered' => true,
+                            'is_theme' => $remoteInfo['is_theme'],
+                        ];
+                        unset($remoteVersions[$extName]); // Remove from list
+                    }
+                }
+            } catch (\Exception $e) {
+                // atom_extension table may not exist - continue with local check
+            }
+
+            // Check local plugins not in database (like themes)
+            foreach ($remoteVersions as $extName => $remoteInfo) {
+                $localManifest = "{$pluginsPath}/{$extName}/extension.json";
+                if (file_exists($localManifest)) {
+                    $manifest = json_decode(file_get_contents($localManifest), true);
+                    if ($manifest) {
+                        $localVersion = $manifest['version'] ?? '0.0.0';
+                        if (version_compare($remoteInfo['version'], $localVersion, '>')) {
+                            $toUpdate[] = [
+                                'name' => $extName,
+                                'display_name' => $manifest['name'] ?? $extName,
+                                'local' => $localVersion,
+                                'remote' => $remoteInfo['version'],
+                                'registered' => false,
+                                'is_theme' => $remoteInfo['is_theme'],
+                            ];
+                        }
+                    }
                 }
             }
 
@@ -668,7 +706,8 @@ class ExtensionCommand
 
             $this->info('Extensions to update:');
             foreach ($toUpdate as $ext) {
-                $this->line("  • {$ext['display_name']} ({$ext['local']} → {$ext['remote']})");
+                $type = !empty($ext['is_theme']) ? '(Theme)' : '';
+                $this->line("  • {$ext['display_name']} {$type} ({$ext['local']} → {$ext['remote']})");
             }
             $this->line('');
 
@@ -681,10 +720,36 @@ class ExtensionCommand
                 }
             }
         } else {
-            // Single extension
-            $extension = $this->manager->find($name);
+            // Single extension - check both database and local
+            $extension = null;
+            $localVersion = null;
+            $displayName = $name;
+            $registered = false;
 
-            if (!$extension) {
+            try {
+                $extension = $this->manager->find($name);
+                if ($extension) {
+                    $localVersion = $extension['version'] ?? '0.0.0';
+                    $displayName = $extension['display_name'];
+                    $registered = true;
+                }
+            } catch (\Exception $e) {
+                // atom_extension table may not exist
+            }
+
+            // Check local extension.json if not found in database
+            if ($localVersion === null) {
+                $localManifest = "{$pluginsPath}/{$name}/extension.json";
+                if (file_exists($localManifest)) {
+                    $manifest = json_decode(file_get_contents($localManifest), true);
+                    if ($manifest) {
+                        $localVersion = $manifest['version'] ?? '0.0.0';
+                        $displayName = $manifest['name'] ?? $name;
+                    }
+                }
+            }
+
+            if ($localVersion === null) {
                 $this->error("Extension '{$name}' is not installed.");
                 return 1;
             }
@@ -697,7 +762,6 @@ class ExtensionCommand
                 return 1;
             }
 
-            $localVersion = $extension['version'] ?? '0.0.0';
             $remoteVersion = $remoteManifest['version'] ?? '0.0.0';
 
             if (version_compare($remoteVersion, $localVersion, '<=') && !$force) {
@@ -709,12 +773,15 @@ class ExtensionCommand
 
             $toUpdate[] = [
                 'name' => $name,
-                'display_name' => $extension['display_name'],
+                'display_name' => $displayName,
                 'local' => $localVersion,
                 'remote' => $remoteVersion,
+                'registered' => $registered,
+                'is_theme' => !empty($remoteManifest['is_theme']) || ($remoteManifest['category'] ?? '') === 'theme',
             ];
 
-            $this->info("Updating {$extension['display_name']}...");
+            $type = (!empty($remoteManifest['is_theme']) || ($remoteManifest['category'] ?? '') === 'theme') ? '(Theme)' : '';
+            $this->info("Updating {$displayName} {$type}...");
             $this->line("  Current: v{$localVersion}");
             $this->line("  Available: v{$remoteVersion}");
             $this->line('');
@@ -736,6 +803,7 @@ class ExtensionCommand
         foreach ($toUpdate as $ext) {
             $extName = $ext['name'];
             $backupPath = null;
+            $pluginPath = "{$pluginsPath}/{$extName}";
 
             $this->line('');
             $this->info("→ Updating {$ext['display_name']}...");
@@ -750,27 +818,46 @@ class ExtensionCommand
                     }
                 }
 
-                // Step 2: Fetch new version from GitHub
+                // Step 2: Handle symlink or directory
                 $this->line('  Downloading latest version...');
-                $pluginsPath = $this->manager->getSetting('extensions_path', null, '/usr/share/nginx/atom/plugins');
-                $pluginPath = "{$pluginsPath}/{$extName}";
-
-                // Remove old version (but keep database tables)
-                if (is_dir($pluginPath)) {
-                    $this->removeDirectory($pluginPath);
-                }
-
-                // Download new version
-                if (!$this->fetcher->fetch($extName)) {
-                    throw new \Exception("Failed to download {$extName} from GitHub");
+                
+                if (is_link($pluginPath)) {
+                    // Handle symlink - update the target
+                    $targetPath = readlink($pluginPath);
+                    if ($targetPath && is_dir($targetPath)) {
+                        $this->removeDirectory($targetPath);
+                        // Fetch to target location
+                        if (!$this->fetcher->fetch($extName)) {
+                            throw new \Exception("Failed to download {$extName} from GitHub");
+                        }
+                        // Move to original symlink target
+                        if (is_dir($pluginPath) && !is_link($pluginPath)) {
+                            rename($pluginPath, $targetPath);
+                            symlink($targetPath, $pluginPath);
+                        }
+                    }
+                } else {
+                    // Regular directory
+                    if (is_dir($pluginPath)) {
+                        $this->removeDirectory($pluginPath);
+                    }
+                    if (!$this->fetcher->fetch($extName)) {
+                        throw new \Exception("Failed to download {$extName} from GitHub");
+                    }
                 }
 
                 // Step 3: Run migrations if any
                 $this->line('  Checking for migrations...');
                 $this->runUpdateMigrations($extName, $ext['local'], $ext['remote']);
 
-                // Step 4: Update database record
-                $this->manager->updateVersion($extName, $ext['remote']);
+                // Step 4: Update database record if registered
+                if ($ext['registered']) {
+                    try {
+                        $this->manager->updateVersion($extName, $ext['remote']);
+                    } catch (\Exception $e) {
+                        // Ignore if table doesn't exist
+                    }
+                }
 
                 // Step 5: Clear cache
                 $this->clearCache();
@@ -778,11 +865,17 @@ class ExtensionCommand
                 $this->success("Updated {$ext['display_name']} to v{$ext['remote']}");
                 $success++;
 
-                // Log audit
-                $this->manager->logAudit($extName, 'upgraded', [
-                    'from_version' => $ext['local'],
-                    'to_version' => $ext['remote'],
-                ]);
+                // Log audit if registered
+                if ($ext['registered']) {
+                    try {
+                        $this->manager->logAudit($extName, 'upgraded', [
+                            'from_version' => $ext['local'],
+                            'to_version' => $ext['remote'],
+                        ]);
+                    } catch (\Exception $e) {
+                        // Ignore
+                    }
+                }
 
             } catch (\Exception $e) {
                 $this->error("Failed to update {$extName}: " . $e->getMessage());
@@ -790,7 +883,7 @@ class ExtensionCommand
                 // Attempt restore from backup
                 if (!$noBackup && $backupPath) {
                     $this->warning('  Attempting to restore from backup...');
-                    $this->restoreFromBackup($backupPath, $pluginPath ?? '');
+                    $this->restoreFromBackup($backupPath, $pluginPath);
                 }
 
                 $failed++;
@@ -805,10 +898,6 @@ class ExtensionCommand
 
         return $failed > 0 ? 1 : 0;
     }
-
-    /**
-     * Create backup of extension
-     */
     protected function createBackup(string $name): ?string
     {
         $pluginsPath = $this->manager->getSetting('extensions_path', null, '/usr/share/nginx/atom/plugins');
