@@ -100,22 +100,34 @@ echo ""
 echo -e "${BLUE}Step 3: Updating ProjectConfiguration...${NC}"
 
 PROJECT_CONFIG="${ATOM_ROOT}/config/ProjectConfiguration.class.php"
+TEMPLATE_CONFIG="${FRAMEWORK_PATH}/config/ProjectConfiguration.class.php.template"
 
-if grep -q "atom-framework/bootstrap.php" "$PROJECT_CONFIG"; then
-    echo -e "  ${YELLOW}→${NC} Framework already configured in ProjectConfiguration"
+# Check if current ProjectConfiguration has loadPluginsFromDatabase
+if grep -q "loadPluginsFromDatabase" "$PROJECT_CONFIG"; then
+    echo -e "  ${YELLOW}→${NC} ProjectConfiguration already has database plugin loading"
 else
-    # Add framework loading after enablePlugins
-    sed -i '/\$this->enablePlugins(\$plugins);/a\
-\
-        // Load AtoM extensions framework\
-        $frameworkPath = sfConfig::get('\''sf_root_dir'\'').'\''/atom-framework/bootstrap.php'\'';\
-        if (file_exists($frameworkPath)) {\
-            require_once $frameworkPath;\
-        }' "$PROJECT_CONFIG"
-    echo -e "  ${GREEN}✓${NC} Added framework loading to ProjectConfiguration"
+    # Backup current config
+    cp "$PROJECT_CONFIG" "${PROJECT_CONFIG}.bak.$(date +%Y%m%d_%H%M%S)"
+    echo -e "  ${GREEN}✓${NC} Backed up existing ProjectConfiguration"
+    
+    # Copy template
+    cp "$TEMPLATE_CONFIG" "$PROJECT_CONFIG"
+    
+    # Fix autoload path if needed (composer vs composer/autoload)
+    if [ -f "${ATOM_ROOT}/vendor/autoload.php" ]; then
+        sed -i "s|vendor/composer/autoload.php|vendor/autoload.php|" "$PROJECT_CONFIG"
+    fi
+    
+    echo -e "  ${GREEN}✓${NC} Installed ProjectConfiguration with database plugin loading"
 fi
 
-# =============================================================================
+# Ensure framework loading is present
+if grep -q "atom-framework/bootstrap.php" "$PROJECT_CONFIG"; then
+    echo -e "  ${YELLOW}→${NC} Framework bootstrap already configured"
+else
+    echo -e "  ${RED}✗${NC} Framework bootstrap missing - run install again"
+fi
+
 # Step 4: Copy dist assets
 # =============================================================================
 echo ""
