@@ -498,6 +498,19 @@ class ExtensionCommand
         } catch (\Exception $e) {
             // Table may not exist
         }
+        
+        // Also get versions from atom_plugin table (primary source)
+        try {
+            $plugins = \Illuminate\Database\Capsule\Manager::table('atom_plugin')
+                ->whereNotNull('version')
+                ->pluck('version', 'name')
+                ->toArray();
+            foreach ($plugins as $name => $version) {
+                $installedVersions[$name] = $version;
+            }
+        } catch (\Exception $e) {
+            // Table may not exist
+        }
 
         // Also include local plugins with extension.json
         $pluginsPath = $this->manager->getSetting('extensions_path', null, '/usr/share/nginx/atom/plugins');
