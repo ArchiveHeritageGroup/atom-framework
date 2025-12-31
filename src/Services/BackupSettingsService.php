@@ -232,7 +232,7 @@ class BackupSettingsService
     private function getDefaults(): array
     {
         return [
-            'backup_path' => '/var/backups/atom',
+            'backup_path' => self::getAtomRoot() . '/backups',
             'log_path' => '/var/log/atom/backup.log',
             'max_backups' => 30,
             'retention_days' => 90,
