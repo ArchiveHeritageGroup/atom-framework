@@ -345,8 +345,15 @@ class ExtensionManager implements ExtensionManagerContract
      */
     public function isEnabled(string $machineName): bool
     {
+        // Check atom_extension table first (new extension system)
         $extension = $this->repository->findByMachineName($machineName);
-        return $extension && $extension->is_enabled == 1;
+        if ($extension) {
+            return $extension->status === 'enabled';
+        }
+        
+        // Fall back to atom_plugin table (Symfony plugin system)
+        $plugin = DB::table('atom_plugin')->where('name', $machineName)->first();
+        return $plugin && $plugin->is_enabled == 1;
     }
 
     /**
