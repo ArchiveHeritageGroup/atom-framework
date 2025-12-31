@@ -914,15 +914,13 @@ class ExtensionCommand
                     }
                 }
 
-                // Update database version
-                if ($ext['registered']) {
-                    try {
-                        \Illuminate\Database\Capsule\Manager::table('atom_plugin')
-                            ->where('name', $extName)
-                            ->update(['version' => $ext['remote'], 'updated_at' => date('Y-m-d H:i:s')]);
-                    } catch (\Exception $e) {
-                        // Ignore DB errors
-                    }
+                // Update database version in atom_plugin table
+                try {
+                    $updated = \Illuminate\Database\Capsule\Manager::table('atom_plugin')
+                        ->where('name', $extName)
+                        ->update(['version' => $ext['remote'], 'updated_at' => date('Y-m-d H:i:s')]);
+                } catch (\Exception $e) {
+                    // Ignore DB errors
                 }
                 
                 $this->success("Updated {$ext['display_name']} to v{$ext['remote']}");
