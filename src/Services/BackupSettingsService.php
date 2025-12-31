@@ -263,4 +263,53 @@ class BackupSettingsService
     {
         return $this->getAllSettings();
     }
+
+    /**
+     * Get all settings with metadata (type, description)
+     */
+    public function getAllWithMeta(): array
+    {
+        $settings = $this->getAllSettings();
+        $meta = [];
+        
+        try {
+            $rows = DB::table('backup_setting')->get();
+            foreach ($rows as $row) {
+                $meta[$row->setting_key] = [
+                    'value' => $settings[$row->setting_key] ?? null,
+                    'type' => $row->setting_type ?? 'string',
+                    'description' => $row->description ?? '',
+                ];
+            }
+        } catch (\Exception $e) {
+            // Fallback - just wrap values
+            foreach ($settings as $key => $value) {
+                $meta[$key] = [
+                    'value' => $value,
+                    'type' => is_bool($value) ? 'boolean' : (is_int($value) ? 'integer' : 'string'),
+                    'description' => '',
+                ];
+            }
+        }
+        
+        return $meta;
+    }
+
+    /**
+     * Save multiple settings at once (alias for saveAll)
+     */
+    public function saveMultiple(array $settings): bool
+    {
+        return $this->saveAll($settings);
+    }
+
+    /**
+     * Get path to AtoM config file
+     */
+    public function getConfigFilePath(): string
+    {
+        $atomRoot = self::getAtomRoot();
+        return $atomRoot ? $atomRoot . '/config/config.php' : '';
+    }
+
 }
