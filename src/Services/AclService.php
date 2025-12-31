@@ -98,7 +98,7 @@ class AclService
                     $q->where('user_id', $user->id)
                       ->orWhereIn('group_id', $groups);
                 })
-                ->where('action_id', $actionId)
+                ->where('action', $action)
                 ->where(function($q) use ($resource) {
                     $q->whereNull('object_id')
                       ->orWhere('object_id', $resource->id ?? null);
@@ -166,7 +166,7 @@ class AclService
         
         $permissions = DB::table('acl_permission')
             ->whereIn('group_id', $groups)
-            ->where('action_id', $actionId)
+            ->where('action', $action)
             ->whereNotNull('object_id')
             ->select('object_id', 'grant_deny')
             ->get();
