@@ -230,7 +230,7 @@ class ExtensionManager implements ExtensionManagerContract
             throw new \RuntimeException("Extension '{$machineName}' is not installed.");
         }
 
-        if ($extension->is_enabled == 1) {
+        if ($extension->status === 'enabled') {
             return true;
         }
 
