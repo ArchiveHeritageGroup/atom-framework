@@ -39,7 +39,7 @@ class ExtensionRepository
     public function findByMachineName(string $machineName): ?object
     {
         return DB::table($this->table)
-            ->where('machine_name', $machineName)
+            ->where('name', $machineName)
             ->first();
     }
 
@@ -84,7 +84,7 @@ class ExtensionRepository
         $data['updated_at'] = date('Y-m-d H:i:s');
         
         return DB::table($this->table)
-            ->where('machine_name', $machineName)
+            ->where('name', $machineName)
             ->update($data) > 0;
     }
 
@@ -104,7 +104,7 @@ class ExtensionRepository
     public function exists(string $machineName): bool
     {
         return DB::table($this->table)
-            ->where('machine_name', $machineName)
+            ->where('name', $machineName)
             ->exists();
     }
 

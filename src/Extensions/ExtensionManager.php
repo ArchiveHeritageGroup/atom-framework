@@ -230,7 +230,7 @@ class ExtensionManager implements ExtensionManagerContract
             throw new \RuntimeException("Extension '{$machineName}' is not installed.");
         }
 
-        if ($extension->status === 'enabled') {
+        if ($extension->is_enabled == 1) {
             return true;
         }
 
@@ -346,7 +346,7 @@ class ExtensionManager implements ExtensionManagerContract
     public function isEnabled(string $machineName): bool
     {
         $extension = $this->repository->findByMachineName($machineName);
-        return $extension && $extension->status === 'enabled';
+        return $extension && $extension->is_enabled == 1;
     }
 
     /**
