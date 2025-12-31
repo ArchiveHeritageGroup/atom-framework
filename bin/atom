@@ -210,6 +210,25 @@ function runFrameworkUpdate(array $args): int
         exec("rm -rf {$cacheDir}/*");
         echo "  \033[32m✓ Cache cleared\033[0m\n";
     }
+
+    // Step 5: Restart PHP-FPM
+    echo "→ Restarting PHP-FPM...\n";
+    $restarted = false;
+    foreach (['8.4', '8.3', '8.2', '8.1', '8.0'] as $ver) {
+        $service = "php{$ver}-fpm";
+        exec("systemctl is-active {$service} 2>/dev/null", $out, $code);
+        if ($code === 0) {
+            exec("sudo systemctl restart {$service} 2>&1", $out, $code);
+            if ($code === 0) {
+                echo "  \033[32m✓ {$service} restarted\033[0m\n";
+                $restarted = true;
+            }
+            break;
+        }
+    }
+    if (!$restarted) {
+        echo "  \033[33m⚠ Run manually: sudo systemctl restart php8.3-fpm\033[0m\n";
+    }
     
     // Done
     echo "\n" . str_repeat('━', 60) . "\n";
