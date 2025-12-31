@@ -474,8 +474,13 @@ class ExtensionCommand
         // Get enabled plugins from atom_plugin table
         $enabledPlugins = [];
         try {
+            // Include enabled, core, and locked plugins
             $rows = \Illuminate\Database\Capsule\Manager::table('atom_plugin')
-                ->where('is_enabled', 1)
+                ->where(function($q) {
+                    $q->where('is_enabled', 1)
+                      ->orWhere('is_core', 1)
+                      ->orWhere('is_locked', 1);
+                })
                 ->pluck('name')
                 ->toArray();
             $enabledPlugins = array_flip($rows);
@@ -909,6 +914,17 @@ class ExtensionCommand
                     }
                 }
 
+                // Update database version
+                if ($ext['registered']) {
+                    try {
+                        \Illuminate\Database\Capsule\Manager::table('atom_plugin')
+                            ->where('name', $extName)
+                            ->update(['version' => $ext['remote'], 'updated_at' => date('Y-m-d H:i:s')]);
+                    } catch (\Exception $e) {
+                        // Ignore DB errors
+                    }
+                }
+                
                 $this->success("Updated {$ext['display_name']} to v{$ext['remote']}");
                 $success++;
 
