@@ -680,6 +680,19 @@ class ExtensionCommand
         $toUpdate = [];
 
         if ($updateAll) {
+            // Pull latest from atom-ahg-plugins repo
+            $ahgPluginsPath = dirname($pluginsPath) . '/atom-ahg-plugins';
+            if (is_dir($ahgPluginsPath . '/.git')) {
+                $this->info('Updating atom-ahg-plugins repository...');
+                exec("cd {$ahgPluginsPath} && git pull origin main 2>&1", $gitOutput, $gitCode);
+                if ($gitCode === 0) {
+                    $this->success('Repository updated');
+                } else {
+                    $this->warning('Could not update repository: ' . implode(' ', $gitOutput));
+                }
+                $this->line('');
+            }
+            
             // Get remote plugins (including themes)
             $remote = $this->fetcher->getRemotePlugins(true);
 
