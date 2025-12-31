@@ -85,47 +85,175 @@ class BackupService
         return $backups;
     }
 
+        /**
+     * Backup presets
+     */
+    public const PRESET_DB = 'db';
+    public const PRESET_ATOM_BASE = 'atom_base';
+    public const PRESET_CONTENT = 'content';
+    public const PRESET_AHG = 'ahg';
+    public const PRESET_FULL = 'full';
+
+    /**
+     * Get preset configuration
+     */
+    public function getPresetConfig(string $preset): array
+    {
+        return match($preset) {
+            self::PRESET_DB => [
+                'database' => true,
+                'uploads' => false,
+                'digital_objects' => false,
+                'atom_base' => false,
+                'plugins' => false,
+                'framework' => false,
+                'fuseki' => false,
+            ],
+            self::PRESET_ATOM_BASE => [
+                'database' => true,
+                'uploads' => false,
+                'digital_objects' => false,
+                'atom_base' => true,
+                'plugins' => false,
+                'framework' => false,
+                'fuseki' => false,
+            ],
+            self::PRESET_CONTENT => [
+                'database' => true,
+                'uploads' => false,
+                'digital_objects' => true,
+                'atom_base' => false,
+                'plugins' => false,
+                'framework' => false,
+                'fuseki' => false,
+            ],
+            self::PRESET_AHG => [
+                'database' => true,
+                'uploads' => false,
+                'digital_objects' => false,
+                'atom_base' => false,
+                'plugins' => true,
+                'framework' => true,
+                'fuseki' => false,
+            ],
+            self::PRESET_FULL => [
+                'database' => true,
+                'uploads' => true,
+                'digital_objects' => false,
+                'atom_base' => true,
+                'plugins' => true,
+                'framework' => true,
+                'fuseki' => true,
+            ],
+            default => [
+                'database' => true,
+                'uploads' => true,
+                'digital_objects' => false,
+                'atom_base' => false,
+                'plugins' => true,
+                'framework' => true,
+                'fuseki' => false,
+            ],
+        };
+    }
+
+    /**
+     * Get available presets for UI
+     */
+    public function getAvailablePresets(): array
+    {
+        return [
+            self::PRESET_DB => [
+                'name' => 'Database Only',
+                'description' => 'MySQL database dump only',
+                'icon' => 'bi-database',
+            ],
+            self::PRESET_ATOM_BASE => [
+                'name' => 'AtoM Base',
+                'description' => 'Database + AtoM core files (apps, lib, config)',
+                'icon' => 'bi-box',
+            ],
+            self::PRESET_CONTENT => [
+                'name' => 'Content',
+                'description' => 'Database + Digital objects (uploads/r)',
+                'icon' => 'bi-images',
+            ],
+            self::PRESET_AHG => [
+                'name' => 'AHG Extensions',
+                'description' => 'Database + Framework + AHG Plugins',
+                'icon' => 'bi-puzzle',
+            ],
+            self::PRESET_FULL => [
+                'name' => 'Full Backup',
+                'description' => 'Everything: DB, uploads, AtoM, AHG, Fuseki',
+                'icon' => 'bi-archive',
+            ],
+        ];
+    }
+
     public function createBackup(array $options = []): array
     {
         $backupPath = $this->settings->get('backup_path', '/var/backups/atom');
+        
+        // Ensure backup directory exists
+        if (!is_dir($backupPath)) {
+            mkdir($backupPath, 0755, true);
+        }
+        
         $backupId = date('Y-m-d_H-i-s') . '_' . substr(md5(uniqid()), 0, 8);
         $backupDir = $backupPath . '/' . $backupId;
-
         mkdir($backupDir, 0755, true);
-        $this->log("Starting backup: {$backupId}");
-
+        
+        // Apply preset if specified
+        if (isset($options['preset'])) {
+            $presetConfig = $this->getPresetConfig($options['preset']);
+            $options = array_merge($presetConfig, $options);
+        }
+        
+        $this->log("Starting backup: {$backupId} (preset: " . ($options['preset'] ?? 'custom') . ")");
+        
         $result = [
             'id' => $backupId,
             'path' => $backupDir,
+            'preset' => $options['preset'] ?? 'custom',
             'started_at' => date('Y-m-d H:i:s'),
             'components' => [],
             'status' => 'in_progress',
         ];
-
+        
         try {
             DB::table('backup_history')->insert([
                 'backup_id' => $backupId,
                 'backup_path' => $backupDir,
-                'backup_type' => $options['type'] ?? 'manual',
+                'backup_type' => $options['preset'] ?? 'manual',
                 'status' => 'in_progress',
                 'started_at' => date('Y-m-d H:i:s'),
             ]);
         } catch (\Exception $e) {
             // Continue without history
         }
-
+        
         try {
             // Database
             if ($options['database'] ?? $this->settings->get('include_database', true)) {
                 $result['components']['database'] = $this->backupDatabase($backupDir);
             }
             
-            // Uploads
-            if ($options['uploads'] ?? $this->settings->get('include_uploads', true)) {
+            // Digital Objects only (uploads/r)
+            if ($options['digital_objects'] ?? false) {
+                $result['components']['digital_objects'] = $this->backupDigitalObjects($backupDir);
+            }
+            // Full uploads (if not just digital objects)
+            elseif ($options['uploads'] ?? $this->settings->get('include_uploads', true)) {
                 $result['components']['uploads'] = $this->backupUploads($backupDir);
             }
             
-            // Plugins
+            // AtoM Base
+            if ($options['atom_base'] ?? false) {
+                $result['components']['atom_base'] = $this->backupAtomBase($backupDir);
+            }
+            
+            // AHG Plugins
             if ($options['plugins'] ?? $this->settings->get('include_plugins', true)) {
                 $result['components']['plugins'] = $this->backupPlugins($backupDir);
             }
@@ -136,47 +264,151 @@ class BackupService
             }
             
             // Fuseki / RIC Triplestore
-            if ($options['fuseki'] ?? $this->settings->get('include_fuseki', true)) {
+            if ($options['fuseki'] ?? $this->settings->get('include_fuseki', false)) {
                 $result['components']['fuseki'] = $this->backupFuseki($backupDir);
             }
-
+            
+            // Create final ZIP
+            $zipFile = $this->createZipArchive($backupDir, $backupId, $options);
+            if ($zipFile) {
+                $result['zip_file'] = $zipFile;
+                $result['zip_size'] = filesize($zipFile);
+            }
+            
             $result['status'] = 'completed';
             $result['completed_at'] = date('Y-m-d H:i:s');
             $result['size'] = $this->getDirectorySize($backupDir);
-
+            
             file_put_contents($backupDir . '/manifest.json', json_encode($result, JSON_PRETTY_PRINT));
             $this->log("Backup completed: {$backupId}");
-
+            
             try {
                 DB::table('backup_history')->where('backup_id', $backupId)->update([
                     'status' => 'completed',
                     'size_bytes' => $result['size'],
+                    'zip_path' => $zipFile ?? null,
                     'components' => json_encode($result['components']),
                     'completed_at' => date('Y-m-d H:i:s'),
                 ]);
             } catch (\Exception $e) {
                 // Continue
             }
-
+            
             $this->cleanupOldBackups();
-
+            
         } catch (\Exception $e) {
             $result['status'] = 'failed';
             $result['error'] = $e->getMessage();
-            $this->log("Backup failed: {$backupId} - " . $e->getMessage());
-
+            $this->log("Backup failed: " . $e->getMessage());
+            
             try {
                 DB::table('backup_history')->where('backup_id', $backupId)->update([
                     'status' => 'failed',
                     'error_message' => $e->getMessage(),
                     'completed_at' => date('Y-m-d H:i:s'),
                 ]);
-            } catch (\Exception $ex) {
+            } catch (\Exception $e2) {
                 // Continue
             }
         }
-
+        
         return $result;
+    }
+    
+    /**
+     * Create ZIP archive of backup
+     */
+    private function createZipArchive(string $backupDir, string $backupId, array $options = []): ?string
+    {
+        $backupPath = $this->settings->get('backup_path', '/var/backups/atom');
+        $preset = $options['preset'] ?? 'custom';
+        $zipFileName = "atom_backup_{$preset}_{$backupId}.zip";
+        $zipFile = $backupPath . '/' . $zipFileName;
+        
+        // Use system zip command for better performance
+        $cmd = sprintf(
+            "cd '%s' && zip -r '%s' . -x '*.zip' 2>/dev/null",
+            $backupDir,
+            $zipFile
+        );
+        
+        exec($cmd, $output, $returnCode);
+        
+        if ($returnCode === 0 && file_exists($zipFile)) {
+            $this->log("Created ZIP: {$zipFileName}");
+            return $zipFile;
+        }
+        
+        $this->log("ZIP creation failed");
+        return null;
+    }
+    
+    /**
+     * Backup digital objects only (uploads/r folder)
+     */
+    private function backupDigitalObjects(string $backupDir): array
+    {
+        $atomRoot = BackupSettingsService::getAtomRoot();
+        $uploadsR = $atomRoot . '/uploads/r';
+        
+        if (!is_dir($uploadsR)) {
+            return ['status' => 'skipped', 'reason' => 'uploads/r directory not found'];
+        }
+        
+        $tarFile = $backupDir . '/digital_objects.tar.gz';
+        
+        $cmd = sprintf(
+            "tar -czf '%s' -C '%s' . --warning=no-file-changed 2>/dev/null || true",
+            $tarFile,
+            $uploadsR
+        );
+        exec($cmd, $output, $returnCode);
+        
+        return [
+            'status' => file_exists($tarFile) && filesize($tarFile) > 0 ? 'success' : 'failed',
+            'file' => $tarFile,
+            'size' => file_exists($tarFile) ? filesize($tarFile) : 0,
+            'source' => 'uploads/r',
+        ];
+    }
+    
+    /**
+     * Backup AtoM base installation
+     */
+    private function backupAtomBase(string $backupDir): array
+    {
+        $atomRoot = BackupSettingsService::getAtomRoot();
+        $tarFile = $backupDir . '/atom_base.tar.gz';
+        
+        // Include core AtoM directories, exclude large/generated content
+        $includes = ['apps', 'config', 'data', 'lib', 'vendor'];
+        $excludes = [
+            '--exclude=cache',
+            '--exclude=log',
+            '--exclude=.git',
+            '--exclude=uploads',
+            '--exclude=atom-framework',
+            '--exclude=atom-ahg-plugins',
+        ];
+        
+        $includeArgs = implode(' ', array_map(fn($d) => "'{$d}'", $includes));
+        $excludeArgs = implode(' ', $excludes);
+        
+        $cmd = sprintf(
+            "tar -czf '%s' -C '%s' %s %s --warning=no-file-changed 2>/dev/null || true",
+            $tarFile,
+            $atomRoot,
+            $excludeArgs,
+            $includeArgs
+        );
+        exec($cmd, $output, $returnCode);
+        
+        return [
+            'status' => file_exists($tarFile) && filesize($tarFile) > 0 ? 'success' : 'failed',
+            'file' => $tarFile,
+            'size' => file_exists($tarFile) ? filesize($tarFile) : 0,
+            'includes' => $includes,
+        ];
     }
 
     private function backupDatabase(string $backupDir): array
@@ -185,14 +417,13 @@ class BackupService
         if (!is_dir($dbDir)) {
             mkdir($dbDir, 0755, true);
         }
-
+        
         $host = $this->settings->get('db_host', 'localhost');
         $database = $this->settings->get('db_name', 'archive');
         $username = $this->settings->get('db_user', 'root');
         $password = $this->settings->get('db_password', '');
         $port = $this->settings->get('db_port', 3306);
-        $compression = $this->settings->get('compression_level', 6);
-
+        
         $sqlFile = $dbDir . '/' . $database . '.sql';
         $errorFile = $dbDir . '/mysqldump_errors.log';
         
@@ -211,147 +442,24 @@ class BackupService
             $sqlFile,
             $errorFile
         );
-
-        $this->log("Starting mysqldump for database: {$database}");
         
         exec($cmd, $output, $returnCode);
-
-        $errors = '';
-        if (file_exists($errorFile)) {
-            $errors = trim(file_get_contents($errorFile));
-            if (empty($errors) || strpos($errors, 'Warning') !== false) {
-                @unlink($errorFile);
-            }
-        }
-
-        if (!file_exists($sqlFile)) {
-            throw new \Exception("Database backup failed: SQL file not created. Error: " . $errors);
-        }
-
-        $sqlSize = filesize($sqlFile);
         
-        if ($sqlSize < 1000) {
-            $content = file_get_contents($sqlFile);
-            throw new \Exception("Database backup incomplete. Size: {$sqlSize} bytes");
+        $errorContent = file_exists($errorFile) ? trim(file_get_contents($errorFile)) : '';
+        
+        if (!file_exists($sqlFile) || filesize($sqlFile) === 0) {
+            throw new \Exception("Database backup failed: SQL file not created. Error: " . $errorContent);
         }
-
-        $this->log("mysqldump completed. SQL file size: " . round($sqlSize / 1024 / 1024, 2) . " MB");
-
-        exec("gzip -{$compression} '{$sqlFile}'");
-
-        if (!file_exists($sqlFile . '.gz')) {
-            throw new \Exception("Failed to compress SQL file");
-        }
-
-        $gzSize = filesize($sqlFile . '.gz');
-        $this->log("Compressed to: " . round($gzSize / 1024 / 1024, 2) . " MB");
-
+        
+        // Compress
+        $gzFile = $sqlFile . '.gz';
+        $cmd = sprintf("gzip -f '%s'", $sqlFile);
+        exec($cmd, $output, $returnCode);
+        
         return [
             'status' => 'success',
-            'file' => $sqlFile . '.gz',
-            'size' => $gzSize,
-            'uncompressed_size' => $sqlSize,
-        ];
-    }
-
-    /**
-     * Backup Fuseki triplestore (RIC data)
-     */
-    private function backupFuseki(string $backupDir): array
-    {
-        $fusekiUrl = $this->settings->get('fuseki_url', 'http://localhost:3030');
-        $dataset = $this->settings->get('fuseki_dataset', 'ric');
-        $dataPath = $this->settings->get('fuseki_data_path', '/var/lib/fuseki/databases');
-        
-        $fusekiDir = $backupDir . '/fuseki';
-        if (!is_dir($fusekiDir)) {
-            mkdir($fusekiDir, 0755, true);
-        }
-
-        $this->log("Starting Fuseki backup for dataset: {$dataset}");
-
-        // Method 1: Try HTTP export via Graph Store Protocol
-        $exportFile = $fusekiDir . '/' . $dataset . '.nq';
-        $exportUrl = rtrim($fusekiUrl, '/') . '/' . $dataset . '/data';
-        
-        $curlCmd = sprintf(
-            "curl -s -f -H 'Accept: application/n-quads' '%s' > '%s' 2>/dev/null",
-            $exportUrl,
-            $exportFile
-        );
-        
-        exec($curlCmd, $output, $returnCode);
-        
-        if ($returnCode === 0 && file_exists($exportFile) && filesize($exportFile) > 0) {
-            $size = filesize($exportFile);
-            $this->log("Fuseki HTTP export successful: " . round($size / 1024, 2) . " KB");
-            
-            exec("gzip -6 '{$exportFile}'");
-            
-            return [
-                'status' => 'success',
-                'method' => 'http_export',
-                'file' => $exportFile . '.gz',
-                'size' => file_exists($exportFile . '.gz') ? filesize($exportFile . '.gz') : 0,
-                'format' => 'n-quads',
-            ];
-        }
-
-        $this->log("HTTP export failed (code {$returnCode}), trying file backup...");
-        @unlink($exportFile);
-
-        // Method 2: File copy of TDB2 data
-        $datasetPath = $dataPath . '/' . $dataset;
-        
-        if (!is_dir($datasetPath)) {
-            $altPaths = [
-                '/opt/fuseki/run/databases/' . $dataset,
-                '/var/fuseki/databases/' . $dataset,
-                $dataPath . '/Data-' . $dataset,
-                '/usr/share/fuseki/run/databases/' . $dataset,
-            ];
-            
-            foreach ($altPaths as $altPath) {
-                if (is_dir($altPath)) {
-                    $datasetPath = $altPath;
-                    $this->log("Found Fuseki data at: {$altPath}");
-                    break;
-                }
-            }
-        }
-
-        if (!is_dir($datasetPath)) {
-            $this->log("Fuseki dataset directory not found");
-            return [
-                'status' => 'skipped',
-                'reason' => "Fuseki dataset not found. Tried: {$datasetPath}",
-            ];
-        }
-
-        $tarFile = $fusekiDir . '/' . $dataset . '_tdb2.tar.gz';
-        $cmd = sprintf(
-            "tar -czf '%s' -C '%s' . 2>/dev/null",
-            $tarFile,
-            $datasetPath
-        );
-        
-        exec($cmd, $output, $returnCode);
-
-        if ($returnCode === 0 && file_exists($tarFile)) {
-            $size = filesize($tarFile);
-            $this->log("Fuseki file backup successful: " . round($size / 1024 / 1024, 2) . " MB");
-            
-            return [
-                'status' => 'success',
-                'method' => 'file_copy',
-                'file' => $tarFile,
-                'size' => $size,
-            ];
-        }
-
-        return [
-            'status' => 'failed',
-            'reason' => 'Both HTTP export and file copy failed',
+            'file' => basename($gzFile),
+            'size' => file_exists($gzFile) ? filesize($gzFile) : 0,
         ];
     }
 
@@ -382,7 +490,35 @@ class BackupService
 
     private function backupPlugins(string $backupDir): array
     {
-        $atomRoot = $this->settings->getAtomRoot();
+        $atomRoot = BackupSettingsService::getAtomRoot();
+        
+        // Back up atom-ahg-plugins directory (the actual source, not symlinks)
+        $ahgPluginsDir = $atomRoot . '/atom-ahg-plugins';
+        $tarFile = $backupDir . '/ahg-plugins.tar.gz';
+        
+        if (!is_dir($ahgPluginsDir)) {
+            // Fallback to old method if atom-ahg-plugins doesn't exist
+            return $this->backupPluginsLegacy($backupDir);
+        }
+        
+        $cmd = sprintf(
+            "tar -czf '%s' -C '%s' . --exclude='.git' --exclude='vendor' --warning=no-file-changed 2>/dev/null || true",
+            $tarFile,
+            $ahgPluginsDir
+        );
+        exec($cmd, $output, $returnCode);
+        
+        return [
+            'status' => file_exists($tarFile) && filesize($tarFile) > 0 ? 'success' : 'failed',
+            'file' => $tarFile,
+            'size' => file_exists($tarFile) ? filesize($tarFile) : 0,
+            'source' => 'atom-ahg-plugins',
+        ];
+    }
+    
+    private function backupPluginsLegacy(string $backupDir): array
+    {
+        $atomRoot = BackupSettingsService::getAtomRoot();
         $pluginsDir = $atomRoot . '/plugins';
         $tarFile = $backupDir . '/plugins.tar.gz';
 
@@ -409,6 +545,7 @@ class BackupService
             'status' => $returnCode === 0 ? 'success' : 'failed',
             'file' => $tarFile,
             'size' => file_exists($tarFile) ? filesize($tarFile) : 0,
+            'source' => 'plugins (legacy)',
         ];
     }
 
