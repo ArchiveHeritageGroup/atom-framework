@@ -48,7 +48,7 @@ class LibraryCoverService
             $extension = $this->getExtensionFromMime($mimeType);
             
             // Generate filename
-            $filename = 'cover_' . $informationObjectId . '_' . time() . '.' . $extension;
+            $filename = 'cover-' . $informationObjectId . '-' . time() . '.' . $extension;
 
             // Get information object for slug
             $io = DB::table('information_object')
