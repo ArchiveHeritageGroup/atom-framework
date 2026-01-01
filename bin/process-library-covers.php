@@ -5,7 +5,7 @@
  * Run via cron every minute
  */
 
-define('ATOM_ROOT', '/usr/share/nginx/archive');
+define('ATOM_ROOT', dirname(dirname(__DIR__)));
 
 // Bootstrap AtoM
 require_once ATOM_ROOT . '/config/ProjectConfiguration.class.php';
