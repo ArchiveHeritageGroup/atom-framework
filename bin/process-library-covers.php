@@ -10,7 +10,11 @@ define('ATOM_ROOT', dirname(dirname(__DIR__)));
 // Bootstrap AtoM
 require_once ATOM_ROOT . '/config/ProjectConfiguration.class.php';
 $configuration = ProjectConfiguration::getApplicationConfiguration('qubit', 'cli', false);
-sfContext::createInstance($configuration);
+$context = sfContext::createInstance($configuration);
+
+// Set culture for ElasticSearch serialization
+sfConfig::set('sf_default_culture', 'en');
+$context->user->setCulture('en');
 
 // Bootstrap framework
 require_once ATOM_ROOT . '/atom-framework/bootstrap.php';
