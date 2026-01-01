@@ -6507,3 +6507,17 @@ CREATE TABLE IF NOT EXISTS atom_migration (
   batch INT NOT NULL DEFAULT 1,
   executed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+-- Library cover queue for async processing
+CREATE TABLE IF NOT EXISTS atom_library_cover_queue (
+  id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  information_object_id INT UNSIGNED NOT NULL,
+  isbn VARCHAR(20) NOT NULL,
+  status ENUM('pending', 'processing', 'completed', 'failed') DEFAULT 'pending',
+  attempts TINYINT DEFAULT 0,
+  error_message TEXT,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  processed_at TIMESTAMP NULL,
+  INDEX idx_status (status),
+  INDEX idx_io_id (information_object_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
