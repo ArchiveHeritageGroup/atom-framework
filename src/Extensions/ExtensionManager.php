@@ -218,6 +218,9 @@ class ExtensionManager implements ExtensionManagerContract
                 'status' => 'pending_removal',
                 'disabled_at' => date('Y-m-d H:i:s'),
             ]);
+        
+        // Remove from Symfony setting_i18n plugins array (legacy GUI)
+        $this->updateSymfonyPlugins($machineName, false);
 
         // Log action
         $this->repository->logAction($machineName, 'uninstalled', $extension->id, null, [
