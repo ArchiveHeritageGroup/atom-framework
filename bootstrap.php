@@ -97,7 +97,7 @@ register_shutdown_function(function() {
         $username = $user->isAuthenticated() ? ($user->getAttribute('username') ?? 'unknown') : 'anonymous';
         
         \Illuminate\Database\Capsule\Manager::table('ahg_audit_log')->insert([
-            'uuid' => (string) \Illuminate\Support\Str::uuid(),
+            'uuid' => bin2hex(random_bytes(16)),
             'user_id' => $userId,
             'username' => $username,
             'action' => $action,
