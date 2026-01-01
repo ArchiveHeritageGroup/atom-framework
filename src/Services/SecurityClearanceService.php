@@ -105,6 +105,18 @@ class SecurityClearanceService
     /**
      * Log action
      */
+
+    /**
+     * Get classification for an information object
+     */
+    public static function getObjectClassification(int $objectId): ?object
+    {
+        return DB::table('security_classification_object')
+            ->join('security_classification', 'security_classification_object.classification_id', '=', 'security_classification.id')
+            ->where('security_classification_object.object_id', $objectId)
+            ->select('security_classification.*')
+            ->first();
+    }
     private static function log(string $action, string $message, array $context = []): void
     {
         try {
