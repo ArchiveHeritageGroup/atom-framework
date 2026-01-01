@@ -205,10 +205,19 @@ class ExtensionManager implements ExtensionManagerContract
             $this->runSymfonyTask($extension->uninstall_task);
         }
 
-        // Update status
+        // Update status in atom_extension
         $this->repository->update($extension->id, [
             'status' => 'pending_removal',
         ]);
+        
+        // Also disable in atom_plugin (for Symfony plugin loading)
+        DB::table('atom_plugin')
+            ->where('name', $machineName)
+            ->update([
+                'is_enabled' => 0,
+                'status' => 'pending_removal',
+                'disabled_at' => date('Y-m-d H:i:s'),
+            ]);
 
         // Log action
         $this->repository->logAction($machineName, 'uninstalled', $extension->id, null, [
