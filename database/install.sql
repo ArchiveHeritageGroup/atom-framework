@@ -932,6 +932,7 @@ CREATE TABLE IF NOT EXISTS `atom_plugin` (
   `is_enabled` tinyint(1) DEFAULT '0',
   `is_core` tinyint(1) DEFAULT '0',
   `is_locked` tinyint(1) DEFAULT '0',
+  `status` enum('installed','enabled','disabled','pending_removal') DEFAULT 'enabled',
   `load_order` int DEFAULT '100',
   `plugin_path` varchar(500) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `settings` json DEFAULT NULL,
