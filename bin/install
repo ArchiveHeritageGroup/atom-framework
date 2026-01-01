@@ -155,7 +155,7 @@ if echo "$CURRENT_PLUGINS" | grep -q "ahgThemeB5Plugin"; then
     echo -e "  ${YELLOW}→${NC} Plugins already configured"
 else
     # Add all required plugins
-    mysql -h "$DB_HOST" -u "$DB_USER" -p"$DB_PASS" "$DB_NAME" -e "UPDATE setting_i18n SET value = 'a:14:{i:0;s:10:\"sfDcPlugin\";i:1;s:18:\"arDominionB5Plugin\";i:2;s:16:\"ahgThemeB5Plugin\";i:3;s:26:\"ahgSecurityClearancePlugin\";i:4;s:11:\"sfEacPlugin\";i:5;s:11:\"sfEadPlugin\";i:6;s:13:\"sfIsaarPlugin\";i:7;s:12:\"sfIsadPlugin\";i:8;s:12:\"arDacsPlugin\";i:9;s:12:\"sfIsdfPlugin\";i:10;s:14:\"sfIsdiahPlugin\";i:11;s:12:\"sfModsPlugin\";i:12;s:11:\"sfRadPlugin\";i:13;s:12:\"sfSkosPlugin\";}' WHERE id = 1;"
+    mysql -h "$DB_HOST" -u "$DB_USER" -p"$DB_PASS" "$DB_NAME" -e "UPDATE setting_i18n SET value = 'a:15:{i:0;s:10:\"sfDcPlugin\";i:1;s:18:\"arDominionB5Plugin\";i:2;s:16:\"ahgThemeB5Plugin\";i:3;s:26:\"ahgSecurityClearancePlugin\";i:4;s:11:\"sfEacPlugin\";i:5;s:11:\"sfEadPlugin\";i:6;s:13:\"sfIsaarPlugin\";i:7;s:12:\"sfIsadPlugin\";i:8;s:12:\"arDacsPlugin\";i:9;s:12:\"sfIsdfPlugin\";i:10;s:14:\"sfIsdiahPlugin\";i:11;s:12:\"sfModsPlugin\";i:12;s:11:\"sfRadPlugin\";i:13;s:12:\"sfSkosPlugin\";i:14;s:16:\"ahgDisplayPlugin\";}' WHERE id = 1;"
     echo -e "  ${GREEN}✓${NC} Enabled core plugins (Dominion, AHG Theme, Security)"
 fi
 
@@ -175,7 +175,7 @@ echo ""
 echo -e "${BLUE}Step 6b: Loading plugin data...${NC}"
 
 # List of AHG plugins with data files
-AHG_DATA_PLUGINS="ahgThemeB5Plugin ahgLibraryPlugin ahgSecurityClearancePlugin ahgDAMPlugin ahgAuditTrailPlugin ahgResearchPlugin ahgMuseumPlugin ahgGalleryPlugin"
+AHG_DATA_PLUGINS="ahgThemeB5Plugin ahgDisplayPlugin ahgLibraryPlugin ahgSecurityClearancePlugin ahgDAMPlugin ahgAuditTrailPlugin ahgResearchPlugin ahgMuseumPlugin ahgGalleryPlugin"
 
 for plugin in $AHG_DATA_PLUGINS; do
     DATA_SQL="${PLUGINS_DIR}/${plugin}/data/install.sql"
@@ -213,11 +213,13 @@ echo -e "${BLUE}Step 6c: Enabling required plugins...${NC}"
 mysql -h "$DB_HOST" -u "$DB_USER" -p"$DB_PASS" "$DB_NAME" -e "
 INSERT INTO atom_plugin (name, class_name, is_enabled, is_core, is_locked, load_order, category, created_at, updated_at) VALUES
 ('ahgThemeB5Plugin', 'ahgThemeB5PluginConfiguration', 0, 1, 1, 10, 'theme', NOW(), NOW()),
-('ahgSecurityClearancePlugin', 'ahgSecurityClearancePluginConfiguration', 1, 1, 1, 20, 'ahg', NOW(), NOW())
+('ahgSecurityClearancePlugin', 'ahgSecurityClearancePluginConfiguration', 1, 1, 1, 20, 'ahg', NOW(), NOW()),
+('ahgDisplayPlugin', 'ahgDisplayPluginConfiguration', 1, 1, 1, 30, 'ahg', NOW(), NOW())
 ON DUPLICATE KEY UPDATE is_core = 1, is_locked = 1, updated_at = NOW();
 "
 echo -e "  ${GREEN}✓${NC} ahgThemeB5Plugin enabled (locked)"
 echo -e "  ${GREEN}✓${NC} ahgSecurityClearancePlugin enabled (locked)"
+echo -e "  ${GREEN}✓${NC} ahgDisplayPlugin enabled (locked)"
 
 
 # Step 7: Generate Install Log
