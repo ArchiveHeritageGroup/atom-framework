@@ -6478,7 +6478,7 @@ CREATE TABLE IF NOT EXISTS atom_migration (
   migration VARCHAR(255) NOT NULL UNIQUE,
   batch INT NOT NULL DEFAULT 1,
   executed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- Library cover queue for async processing
 CREATE TABLE IF NOT EXISTS atom_library_cover_queue (
@@ -6492,4 +6492,19 @@ CREATE TABLE IF NOT EXISTS atom_library_cover_queue (
   processed_at TIMESTAMP NULL,
   INDEX idx_status (status),
   INDEX idx_io_id (information_object_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Security Classification Object relationship
+CREATE TABLE IF NOT EXISTS security_classification_object (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    object_id INT NOT NULL,
+    classification_id BIGINT UNSIGNED NOT NULL,
+    assigned_by INT,
+    assigned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    notes TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_sco_object (object_id),
+    INDEX idx_sco_classification (classification_id),
+    UNIQUE KEY unique_object_classification (object_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
