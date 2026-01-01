@@ -6481,7 +6481,7 @@ INSERT IGNORE INTO term (id, taxonomy_id, source_culture) VALUES
 (1704, 34, 'en'),
 (1759, 34, 'en');
 
-INSERT INTO term_i18n (id, culture, name) VALUES
+INSERT IGNORE INTO term_i18n (id, culture, name) VALUES
 (1700, 'en', 'Book'),
 (1701, 'en', 'Monograph'),
 (1702, 'en', 'Periodical'),
