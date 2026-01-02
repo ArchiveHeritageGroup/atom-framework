@@ -283,7 +283,7 @@ echo ""
 # Patch QubitMetadataRoute for GLAM sector support
 # =============================================================================
 echo "Patching QubitMetadataRoute for GLAM sectors..."
-ROUTE_FILE="${ATOM_DIR}/lib/routing/QubitMetadataRoute.class.php"
+ROUTE_FILE="${ATOM_ROOT}/lib/routing/QubitMetadataRoute.class.php"
 if [ -f "$ROUTE_FILE" ]; then
     # Add GLAM plugins to METADATA_PLUGINS if not already there
     if ! grep -q "'library' => 'ahgLibraryPlugin'" "$ROUTE_FILE"; then
