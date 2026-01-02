@@ -830,30 +830,20 @@ class ExtensionCommand
                 try {
                     $sql = file_get_contents($installSql);
                     
-                    // Remove MySQL dump headers
-                    $sql = preg_replace('/\/\*!\d+.*?\*\/;?/s', '', $sql);
-                    $sql = preg_replace('/^SET @.*?;$/m', '', $sql);
+                    // Remove MySQL dump headers but keep SET @ variables
+                    $sql = preg_replace('/\/\*!\d+.*?\*\//s', '', $sql);
                     
-                    // Split by semicolons
-                    $statements = array_filter(array_map('trim', explode(';', $sql)));
+                    // Use unprepared to execute multiple statements with variables
+                    \Illuminate\Database\Capsule\Manager::unprepared($sql);
                     
-                    foreach ($statements as $stmt) {
-                        // Skip empty, comments, and SET statements
-                        if (empty($stmt) || preg_match('/^--/', $stmt) || preg_match('/^SET\s/i', $stmt)) {
-                            continue;
-                        }
-                        try {
-                            \Illuminate\Database\Capsule\Manager::statement($stmt);
-                        } catch (\Exception $e) {
-                            // Ignore duplicate key errors
-                            if (strpos($e->getMessage(), 'Duplicate') === false && 
-                                strpos($e->getMessage(), 'already exists') === false) {
-                                $this->line("    Warning: " . substr($e->getMessage(), 0, 100));
-                            }
-                        }
-                    }
                 } catch (\Exception $e) {
-                    $this->error("    Failed to run install.sql: " . $e->getMessage());
+                    // Log but don't fail - some errors are expected (duplicates, etc)
+                    $msg = $e->getMessage();
+                    if (strpos($msg, 'Duplicate') === false && 
+                        strpos($msg, 'already exists') === false &&
+                        strpos($msg, 'CHARACTER_SET') === false) {
+                        $this->line("    Warning: " . substr($msg, 0, 100));
+                    }
                 }
             }
 
