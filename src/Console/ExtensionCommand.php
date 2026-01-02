@@ -669,7 +669,7 @@ class ExtensionCommand
             $this->warning('  Update:  php bin/atom extension:update <name>  |  extension:update --all');
         }
         if (!empty($localNotEnabled)) {
-            $this->line('  Enable:  php bin/atom extension:enable <machine_name>');
+            $this->line('  Enable:  php bin/atom extension:install <machine_name>');
         }
         if (!empty($remoteAvailable)) {
             $this->line('  Install: php bin/atom extension:install <machine_name>');
