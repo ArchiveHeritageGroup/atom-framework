@@ -14,6 +14,14 @@ require_once __DIR__.'/../vendor/symfony2/src/Symfony/Component/ClassLoader/Univ
 require_once __DIR__.'/../lib/QubitApcUniversalClassLoader.php';
 require_once __DIR__.'/../vendor/composer/autoload.php';
 
+// Load AHG extended routing class (GLAM sector support)
+// Must load parent classes first
+require_once __DIR__.'/../lib/routing/QubitRoute.class.php';
+require_once __DIR__.'/../lib/routing/QubitMetadataRoute.class.php';
+if (file_exists(__DIR__.'/../atom-framework/lib/AhgMetadataRoute.class.php')) {
+    require_once __DIR__.'/../atom-framework/lib/AhgMetadataRoute.class.php';
+}
+
 class ProjectConfiguration extends sfProjectConfiguration
 {
     public function setup()

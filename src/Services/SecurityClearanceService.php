@@ -111,9 +111,9 @@ class SecurityClearanceService
      */
     public static function getObjectClassification(int $objectId): ?object
     {
-        return DB::table('security_classification_object')
-            ->join('security_classification', 'security_classification_object.classification_id', '=', 'security_classification.id')
-            ->where('security_classification_object.object_id', $objectId)
+        return DB::table('object_security_classification')
+            ->join('security_classification', 'object_security_classification.classification_id', '=', 'security_classification.id')
+            ->where('object_security_classification.object_id', $objectId)
             ->select('security_classification.*')
             ->first();
     }
