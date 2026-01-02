@@ -828,22 +828,37 @@ class ExtensionCommand
             if ($installSql) {
                 $this->line("    Running install.sql...");
                 try {
-                    $sql = file_get_contents($installSql);
+                    // Get database config
+                    $config = \Illuminate\Database\Capsule\Manager::connection()->getConfig();
+                    $host = $config['host'] ?? 'localhost';
+                    $database = $config['database'] ?? '';
+                    $username = $config['username'] ?? '';
+                    $password = $config['password'] ?? '';
                     
-                    // Remove MySQL dump headers but keep SET @ variables
-                    $sql = preg_replace('/\/\*!\d+.*?\*\//s', '', $sql);
+                    // Build mysql command
+                    $cmd = sprintf(
+                        'mysql -h %s -u %s %s %s < %s 2>&1',
+                        escapeshellarg($host),
+                        escapeshellarg($username),
+                        $password ? '-p' . escapeshellarg($password) : '',
+                        escapeshellarg($database),
+                        escapeshellarg($installSql)
+                    );
                     
-                    // Use unprepared to execute multiple statements with variables
-                    \Illuminate\Database\Capsule\Manager::unprepared($sql);
+                    $output = [];
+                    $returnCode = 0;
+                    exec($cmd, $output, $returnCode);
                     
-                } catch (\Exception $e) {
-                    // Log but don't fail - some errors are expected (duplicates, etc)
-                    $msg = $e->getMessage();
-                    if (strpos($msg, 'Duplicate') === false && 
-                        strpos($msg, 'already exists') === false &&
-                        strpos($msg, 'CHARACTER_SET') === false) {
-                        $this->line("    Warning: " . substr($msg, 0, 100));
+                    if ($returnCode !== 0) {
+                        foreach ($output as $line) {
+                            if (strpos($line, 'Duplicate') === false && 
+                                strpos($line, 'already exists') === false) {
+                                $this->line("    Warning: " . $line);
+                            }
+                        }
                     }
+                } catch (\Exception $e) {
+                    $this->line("    Warning: " . substr($e->getMessage(), 0, 100));
                 }
             }
 
