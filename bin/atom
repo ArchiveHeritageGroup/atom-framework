@@ -62,6 +62,9 @@ switch ($module) {
         showHelp();
         exit(0);
 
+    case 'update':
+        exit(runFullUpdate($remaining));
+
     default:
         echo "\033[31mUnknown command: {$module}\033[0m\n";
         showHelp();
@@ -326,12 +329,67 @@ function insertDefaultSettings(): void
     }
 }
 
+
+function runFullUpdate(array $args): int
+{
+    $frameworkOnly = in_array('-f', $args) || in_array('--framework', $args);
+    $pluginsOnly = in_array('-p', $args) || in_array('--plugins', $args);
+    $updateBoth = !$frameworkOnly && !$pluginsOnly;
+
+    echo "\n";
+    echo "\033[36mAHG Update\033[0m\n";
+    echo str_repeat('━', 50) . "\n\n";
+
+    $atomRoot = ATOM_ROOT;
+    $frameworkPath = FRAMEWORK_ROOT;
+    $pluginsPath = $atomRoot . '/atom-ahg-plugins';
+
+    // Update framework
+    if ($updateBoth || $frameworkOnly) {
+        echo "\033[33m→ Updating framework...\033[0m\n";
+        if (is_dir($frameworkPath . '/.git')) {
+            $output = shell_exec("cd " . escapeshellarg($frameworkPath) . " && git pull origin main 2>&1");
+            echo "  " . trim($output) . "\n";
+        } else {
+            echo "  \033[31mNot a git repository\033[0m\n";
+        }
+    }
+
+    // Update plugins
+    if ($updateBoth || $pluginsOnly) {
+        echo "\033[33m→ Updating plugins...\033[0m\n";
+        if (is_dir($pluginsPath . '/.git')) {
+            $output = shell_exec("cd " . escapeshellarg($pluginsPath) . " && git pull origin main 2>&1");
+            echo "  " . trim($output) . "\n";
+        } else {
+            echo "  \033[31mNot a git repository: " . $pluginsPath . "\033[0m\n";
+        }
+    }
+
+    // Clear cache
+    echo "\033[33m→ Clearing cache...\033[0m\n";
+    $cacheDir = $atomRoot . '/cache';
+    if (is_dir($cacheDir)) {
+        exec("rm -rf " . escapeshellarg($cacheDir) . "/*");
+        echo "  \033[32m✓ Cache cleared\033[0m\n";
+    }
+
+    echo "\n" . str_repeat('━', 50) . "\n";
+    echo "\033[32m✓ Update complete.\033[0m\n\n";
+    echo "  Restart PHP: \033[33msudo systemctl restart php8.3-fpm\033[0m\n\n";
+
+    return 0;
+}
+
 function showHelp(): void
 {
     echo <<<HELP
 \033[1mAtoM Framework CLI\033[0m
 
 Usage: php bin/atom <command> [options]
+
+\033[33mGeneral Commands:\033[0m
+  update                Pull latest code for framework & plugins
 
 \033[33mFramework Commands:\033[0m
   framework:install     Install/upgrade framework tables
