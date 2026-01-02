@@ -278,7 +278,9 @@ echo "  2. Test the site"
 echo ""
 echo "To switch themes, go to Admin → Themes"
 echo ""
-
+else
+    echo "Warning: QubitMetadataRoute.class.php not found"
+fi
 # =============================================================================
 # Patch QubitMetadataRoute for GLAM sector support
 # =============================================================================
@@ -286,13 +288,15 @@ echo "Patching QubitMetadataRoute for GLAM sectors..."
 ROUTE_FILE="${ATOM_ROOT}/lib/routing/QubitMetadataRoute.class.php"
 if [ -f "$ROUTE_FILE" ]; then
     # Add GLAM plugins to METADATA_PLUGINS if not already there
-    if ! grep -q "'library' => 'ahgLibraryPlugin'" "$ROUTE_FILE"; then
-        sed -i "/'isdf' => 'sfIsdfPlugin',/a\\        'museum' => 'ahgMuseumPlugin',\\n        'dam' => 'ahgDAMPlugin',\\n        'gallery' => 'ahgGalleryPlugin',\\n        'library' => 'ahgLibraryPlugin'," "$ROUTE_FILE"
+    if ! grep -q "ahgLibraryPlugin" "$ROUTE_FILE"; then
+        sed -i "/'isdf' => 'sfIsdfPlugin',/a\        'library' => 'ahgLibraryPlugin'," "$ROUTE_FILE"
+        sed -i "/'isdf' => 'sfIsdfPlugin',/a\        'gallery' => 'ahgGalleryPlugin'," "$ROUTE_FILE"
+        sed -i "/'isdf' => 'sfIsdfPlugin',/a\        'dam' => 'ahgDAMPlugin'," "$ROUTE_FILE"
+        sed -i "/'isdf' => 'sfIsdfPlugin',/a\        'museum' => 'ahgMuseumPlugin'," "$ROUTE_FILE"
         echo "  Added GLAM plugins to METADATA_PLUGINS"
     fi
-    
-    # Add GLAM to getActionParameter allowed values if not already there
-    if ! grep -q "'museum', 'dam', 'gallery', 'library'" "$ROUTE_FILE"; then
+    # Add GLAM to getActionParameter allowed values
+    if ! grep -q "museum.*dam.*gallery.*library" "$ROUTE_FILE"; then
         sed -i "s/\['isad', 'dc', 'mods', 'rad', 'ead', 'dacs'\]/['isad', 'dc', 'mods', 'rad', 'ead', 'dacs', 'museum', 'dam', 'gallery', 'library']/" "$ROUTE_FILE"
         echo "  Added GLAM to getActionParameter allowed values"
     fi
