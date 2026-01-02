@@ -25,6 +25,7 @@ class ExtensionCommand
         'restore' => 'Restore pending deletion',
         'cleanup' => 'Process pending deletions',
         'discover' => 'Discover extensions & check for updates',
+        'upgrade' => 'Upgrade plugin (run install.sql, update DB version)',
         'update' => 'Update an extension',
         'audit' => 'Show audit log',
     ];
@@ -55,6 +56,8 @@ class ExtensionCommand
                 'restore' => $this->restore($args),
                 'cleanup' => $this->cleanup($args),
                 'discover' => $this->discover($args),
+                'upgrade' => $this->upgrade($args),
+                'upgrade' => $this->upgrade($args),
                 'update' => $this->update($args),
                 'audit' => $this->audit($args),
                 'help', '--help', '-h' => $this->showHelp(),
@@ -548,6 +551,7 @@ class ExtensionCommand
 
         // Separate into categories
         $updates = [];
+        $localUpgrades = [];  // File version > DB version (after git pull)
         $enabledList = [];
         $localNotEnabled = [];
         $remoteAvailable = [];
@@ -559,24 +563,54 @@ class ExtensionCommand
             $remoteVersion = $remoteByName[$machineName]['version'] ?? null;
             $isRemoteOnly = ($ext['source'] ?? '') === 'remote';
 
+            // Get file version from extension.json
+            $fileVersion = $ext['version'] ?? '0.0.0';
+            $dbVersion = $installedVersions[$machineName] ?? '0.0.0';
+            
             if ($isRemoteOnly) {
                 // Only on GitHub
                 $remoteAvailable[$machineName] = $ext;
             } elseif ($hasLocal && $isEnabled) {
                 // Enabled in AtoM
-                if ($remoteVersion && version_compare($remoteVersion, $localVersion, '>')) {
+                // Check if file version > DB version (needs upgrade after git pull)
+                if (version_compare($fileVersion, $dbVersion, '>')) {
+                    $localUpgrades[$machineName] = $ext;
+                    $localUpgrades[$machineName]['db_version'] = $dbVersion;
+                    $localUpgrades[$machineName]['file_version'] = $fileVersion;
+                } elseif ($remoteVersion && version_compare($remoteVersion, $fileVersion, '>')) {
                     $updates[$machineName] = $ext;
-                    $updates[$machineName]['local_version'] = $localVersion;
+                    $updates[$machineName]['local_version'] = $fileVersion;
                     $updates[$machineName]['remote_version'] = $remoteVersion;
                 } else {
                     $enabledList[$machineName] = $ext;
-                    $enabledList[$machineName]['local_version'] = $localVersion;
+                    $enabledList[$machineName]['local_version'] = $fileVersion;
                 }
             } elseif ($hasLocal) {
                 // Local but not enabled
                 $localNotEnabled[$machineName] = $ext;
                 $localNotEnabled[$machineName]['local_version'] = $localVersion;
             }
+        }
+
+        // Display local upgrades needed (file > DB, after git pull)
+        if (!empty($localUpgrades)) {
+            $this->line('');
+            $this->warning('⚡ UPGRADE NEEDED (run install.sql):');
+            $this->line('───────────────────────────────────────────────────────────────────────────────');
+            $this->line(sprintf('  %-30s %-12s %-12s %s', 'Name', 'DB Ver', 'File Ver', 'Machine Name'));
+            $this->line('───────────────────────────────────────────────────────────────────────────────');
+
+            foreach ($localUpgrades as $machineName => $ext) {
+                $name = $ext['name'] ?? $machineName;
+                $this->line(sprintf("  %-30s %-12s \033[33m%-12s\033[0m %s",
+                    $this->truncate($name, 30),
+                    $ext['db_version'],
+                    $ext['file_version'],
+                    $machineName
+                ));
+            }
+            $this->line('');
+            $this->line('  Run: php bin/atom extension:upgrade <name>  or  extension:upgrade --all');
         }
 
         // Display updates available
@@ -656,7 +690,8 @@ class ExtensionCommand
         // Summary
         $this->line('');
         $this->line('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-        $this->line(sprintf('  Updates: %d  |  Enabled: %d  |  Local: %d  |  Remote: %d',
+        $this->line(sprintf('  Upgrades: %d  |  Updates: %d  |  Enabled: %d  |  Local: %d  |  Remote: %d',
+            count($localUpgrades),
             count($updates),
             count($enabledList),
             count($localNotEnabled),
@@ -678,7 +713,161 @@ class ExtensionCommand
 
         return 0;
     }
-    protected function update(array $args): int
+    /**
+     * Upgrade plugin - run install.sql and update DB version
+     */
+    protected function upgrade(array $args): int
+    {
+        $name = $args[0] ?? null;
+        $upgradeAll = in_array('--all', $args);
+
+        if (!$name && !$upgradeAll) {
+            $this->error('Usage: php bin/atom extension:upgrade <machine_name>');
+            $this->line('       php bin/atom extension:upgrade --all');
+            return 1;
+        }
+
+        $this->line('');
+        $pluginsPath = rtrim($this->manager->getSetting('extensions_path', null, '/usr/share/nginx/atom/atom-ahg-plugins'), '/');
+        
+        // Also check plugins directory for symlinks
+        $atomRoot = getenv('ATOM_ROOT') ?: '/usr/share/nginx/atom';
+        $pluginsDir = $atomRoot . '/plugins';
+
+        // Get list of plugins to upgrade
+        $toUpgrade = [];
+
+        if ($upgradeAll) {
+            // Find all plugins with file version > DB version
+            $local = $this->manager->discover(true);
+            
+            // Get DB versions
+            $dbVersions = [];
+            try {
+                $rows = \Illuminate\Database\Capsule\Manager::table('atom_plugin')
+                    ->whereNotNull('version')
+                    ->pluck('version', 'name')
+                    ->toArray();
+                $dbVersions = $rows;
+            } catch (\Exception $e) {}
+
+            foreach ($local as $plugin) {
+                $machineName = $plugin['machine_name'] ?? '';
+                $fileVersion = $plugin['version'] ?? '0.0.0';
+                $dbVersion = $dbVersions[$machineName] ?? '0.0.0';
+                
+                if (version_compare($fileVersion, $dbVersion, '>')) {
+                    $toUpgrade[$machineName] = [
+                        'name' => $plugin['name'] ?? $machineName,
+                        'file_version' => $fileVersion,
+                        'db_version' => $dbVersion,
+                        'path' => $plugin['path'] ?? null,
+                    ];
+                }
+            }
+        } else {
+            // Single plugin
+            $local = $this->manager->discover(true);
+            $found = null;
+            foreach ($local as $plugin) {
+                if (($plugin['machine_name'] ?? '') === $name) {
+                    $found = $plugin;
+                    break;
+                }
+            }
+            
+            if (!$found) {
+                $this->error("Plugin not found: {$name}");
+                return 1;
+            }
+            
+            $dbVersion = '0.0.0';
+            try {
+                $dbVersion = \Illuminate\Database\Capsule\Manager::table('atom_plugin')
+                    ->where('name', $name)
+                    ->value('version') ?? '0.0.0';
+            } catch (\Exception $e) {}
+            
+            $toUpgrade[$name] = [
+                'name' => $found['name'] ?? $name,
+                'file_version' => $found['version'] ?? '0.0.0',
+                'db_version' => $dbVersion,
+                'path' => $found['path'] ?? null,
+            ];
+        }
+
+        if (empty($toUpgrade)) {
+            $this->info('All plugins are up to date.');
+            return 0;
+        }
+
+        $this->info('Upgrading ' . count($toUpgrade) . ' plugin(s)...');
+        $this->line('');
+
+        foreach ($toUpgrade as $machineName => $info) {
+            $this->line("  Upgrading {$machineName}...");
+            $this->line("    {$info['db_version']} → {$info['file_version']}");
+
+            // Find install.sql
+            $installSql = null;
+            $paths = [
+                $info['path'] . '/data/install.sql',
+                $pluginsPath . '/' . $machineName . '/data/install.sql',
+                $pluginsDir . '/' . $machineName . '/data/install.sql',
+            ];
+            
+            foreach ($paths as $path) {
+                if ($path && file_exists($path)) {
+                    $installSql = $path;
+                    break;
+                }
+            }
+
+            if ($installSql) {
+                $this->line("    Running install.sql...");
+                try {
+                    $sql = file_get_contents($installSql);
+                    // Split by semicolons but be careful with stored procedures
+                    $statements = array_filter(array_map('trim', explode(';', $sql)));
+                    
+                    foreach ($statements as $stmt) {
+                        if (!empty($stmt) && !preg_match('/^--/', $stmt)) {
+                            try {
+                                \Illuminate\Database\Capsule\Manager::statement($stmt);
+                            } catch (\Exception $e) {
+                                // Ignore duplicate key errors, etc
+                                if (strpos($e->getMessage(), 'Duplicate') === false) {
+                                    $this->line("    Warning: " . $e->getMessage());
+                                }
+                            }
+                        }
+                    }
+                } catch (\Exception $e) {
+                    $this->error("    Failed to run install.sql: " . $e->getMessage());
+                }
+            }
+
+            // Update version in atom_plugin
+            try {
+                \Illuminate\Database\Capsule\Manager::table('atom_plugin')
+                    ->where('name', $machineName)
+                    ->update(['version' => $info['file_version']]);
+                $this->line("    ✓ Updated DB version to {$info['file_version']}");
+            } catch (\Exception $e) {
+                $this->error("    Failed to update version: " . $e->getMessage());
+            }
+
+            $this->line('');
+        }
+
+        $this->info('Upgrade complete.');
+        $this->line('  Clear cache: rm -rf cache/* && sudo systemctl restart php8.3-fpm');
+        $this->line('');
+
+        return 0;
+    }
+
+        protected function update(array $args): int
     {
         $name = $args[0] ?? null;
         $updateAll = in_array('--all', $args);
