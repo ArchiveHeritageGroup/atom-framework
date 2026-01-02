@@ -264,23 +264,6 @@ INSTALL_LOG="${ATOM_ROOT}/install_$(date +%Y%m%d_%H%M%S).log"
 
 echo -e "  ${GREEN}✓${NC} Install log created: $INSTALL_LOG"
 cat "$INSTALL_LOG"
-
-# Complete
-# =============================================================================
-echo ""
-echo -e "${GREEN}=============================================="
-echo "  Installation Complete!"
-echo "==============================================${NC}"
-echo ""
-echo "Next steps:"
-echo "  1. Restart PHP-FPM: sudo systemctl restart php8.3-fpm"
-echo "  2. Test the site"
-echo ""
-echo "To switch themes, go to Admin → Themes"
-echo ""
-else
-    echo "Warning: QubitMetadataRoute.class.php not found"
-fi
 # =============================================================================
 # Patch QubitMetadataRoute for GLAM sector support
 # =============================================================================
@@ -301,6 +284,20 @@ if [ -f "$ROUTE_FILE" ]; then
         echo "  Added GLAM to getActionParameter allowed values"
     fi
     echo "QubitMetadataRoute patched successfully"
+
 else
     echo "Warning: QubitMetadataRoute.class.php not found"
 fi
+# Complete
+# =============================================================================
+echo ""
+echo -e "${GREEN}=============================================="
+echo "  Installation Complete!"
+echo "==============================================${NC}"
+echo ""
+echo "Next steps:"
+echo "  1. Restart PHP-FPM: sudo systemctl restart php8.3-fpm"
+echo "  2. Test the site"
+echo ""
+echo "To switch themes, go to Admin → Themes"
+echo ""
