@@ -31,30 +31,25 @@ class ExtensionManager implements ExtensionManagerContract
         if (!is_dir($this->pluginsPath)) {
             return $extensions;
         }
-        
-        // Get list of plugins enabled in atom_plugin table
+
         $enabledInAtomPlugin = [];
         try {
             $rows = DB::table('atom_plugin')->where('is_enabled', 1)->pluck('name')->toArray();
             $enabledInAtomPlugin = array_flip($rows);
-        } catch (\Exception $e) {
-            // Table may not exist
-        }
-        
+        } catch (\Exception $e) {}
+
         $dirs = glob($this->pluginsPath . '/*Plugin', GLOB_ONLYDIR);
         foreach ($dirs as $dir) {
             $manifestPath = $dir . '/extension.json';
             if (file_exists($manifestPath)) {
                 $manifest = $this->loadManifest($manifestPath);
                 if ($manifest) {
-                    // Skip themes
                     if (!$includeThemes && (!empty($manifest["is_theme"]) || ($manifest["category"] ?? "") === "theme")) {
                         continue;
                     }
                     $manifest['path'] = $dir;
                     $machineName = $manifest['machine_name'] ?? basename($dir);
-                    // Check both atom_extension and atom_plugin tables
-                    $manifest['is_registered'] = $this->repository->exists($machineName) 
+                    $manifest['is_registered'] = $this->repository->exists($machineName)
                         || isset($enabledInAtomPlugin[$machineName]);
                     $extensions->push($manifest);
                 }
@@ -63,65 +58,104 @@ class ExtensionManager implements ExtensionManagerContract
         return $extensions;
     }
 
-    /**
-     * Get all registered extensions from database
-     */
     public function all(): Collection
     {
         return $this->repository->all();
     }
 
-    /**
-     * Get extensions by status
-     */
     public function getByStatus(string $status): Collection
     {
         return $this->repository->getByStatus($status);
     }
 
-    /**
-     * Find extension by machine name
-     */
     public function find(string $machineName): ?array
     {
         $extension = $this->repository->findByMachineName($machineName);
-        
         if (!$extension) {
             return null;
         }
 
         $result = (array)$extension;
-        
-        // Decode JSON fields
         foreach (['theme_support', 'dependencies', 'optional_dependencies', 'tables_created', 'shared_tables', 'helpers'] as $field) {
             if (!empty($result[$field])) {
                 $result[$field] = json_decode($result[$field], true);
             }
         }
-
         return $result;
     }
 
     /**
-     * Install an extension
+     * Get dependencies from extension.json
      */
-    public function install(string $machineName): bool
+    public function getDependencies(string $machineName): array
     {
-        // Check if already installed
+        $manifest = $this->findManifest($machineName);
+        return $manifest['dependencies'] ?? [];
+    }
+
+    /**
+     * Get dependents from extension.json
+     */
+    public function getDependents(string $machineName): array
+    {
+        $manifest = $this->findManifest($machineName);
+        return $manifest['dependents'] ?? [];
+    }
+
+    /**
+     * Scan ALL plugins to find who depends on the given plugin
+     */
+    public function findAllDependents(string $machineName): array
+    {
+        $dependents = [];
+        $dirs = glob($this->pluginsPath . '/*Plugin', GLOB_ONLYDIR);
+        
+        foreach ($dirs as $dir) {
+            $manifestPath = $dir . '/extension.json';
+            if (file_exists($manifestPath)) {
+                $manifest = $this->loadManifest($manifestPath);
+                if ($manifest) {
+                    $deps = $manifest['dependencies'] ?? [];
+                    if (in_array($machineName, $deps)) {
+                        $dependents[] = $manifest['machine_name'] ?? basename($dir);
+                    }
+                }
+            }
+        }
+        return $dependents;
+    }
+
+    /**
+     * Install an extension (with dependency chain)
+     */
+    public function install(string $machineName, bool $installDependencies = true): bool
+    {
         if ($this->isInstalled($machineName)) {
             throw new \RuntimeException("Extension '{$machineName}' is already installed.");
         }
 
-        // Find manifest
         $manifest = $this->findManifest($machineName);
         if (!$manifest) {
             throw new \RuntimeException("Extension '{$machineName}' not found or missing extension.json");
         }
 
-        // Check dependencies
+        // Install dependencies first
+        if ($installDependencies) {
+            $dependencies = $manifest['dependencies'] ?? [];
+            foreach ($dependencies as $dep) {
+                if (!$this->isInstalled($dep)) {
+                    echo "  Installing dependency: {$dep}\n";
+                    $this->install($dep, true);
+                }
+                if (!$this->isEnabled($dep)) {
+                    echo "  Enabling dependency: {$dep}\n";
+                    $this->enable($dep, false);
+                }
+            }
+        }
+
         $this->checkDependencies($manifest);
 
-        // Create database record
         $id = $this->repository->create([
             'machine_name' => $machineName,
             'display_name' => $manifest['name'] ?? $machineName,
@@ -145,12 +179,10 @@ class ExtensionManager implements ExtensionManagerContract
             'installed_at' => date('Y-m-d H:i:s'),
         ]);
 
-        // Run install task if defined
         if (!empty($manifest['install_task'])) {
             $this->runSymfonyTask($manifest['install_task']);
         }
 
-        // Run install SQL if defined
         if (!empty($manifest["install_sql"])) {
             $sqlPath = $this->pluginsPath . "/" . $machineName . "/" . $manifest["install_sql"];
             if (file_exists($sqlPath)) {
@@ -158,7 +190,6 @@ class ExtensionManager implements ExtensionManagerContract
             }
         }
 
-        // Log action
         $this->repository->logAction($machineName, 'installed', $id, null, [
             'version' => $manifest['version'] ?? '1.0.0',
         ]);
@@ -172,17 +203,25 @@ class ExtensionManager implements ExtensionManagerContract
     public function uninstall(string $machineName, bool $backup = true): bool
     {
         $extension = $this->repository->findByMachineName($machineName);
-        
         if (!$extension) {
             throw new \RuntimeException("Extension '{$machineName}' is not installed.");
         }
 
-        // Backup if requested
+        // Check for enabled dependents
+        $dependents = $this->findAllDependents($machineName);
+        $enabledDependents = array_filter($dependents, fn($dep) => $this->isEnabled($dep));
+        
+        if (!empty($enabledDependents)) {
+            throw new \RuntimeException(
+                "Cannot uninstall '{$machineName}': These plugins depend on it: " . 
+                implode(', ', $enabledDependents) . ". Disable them first."
+            );
+        }
+
         if ($backup) {
             $this->dataHandler->backup($machineName, $extension);
         }
 
-        // Queue tables for deletion
         $tables = json_decode($extension->tables_created ?? '[]', true);
         $gracePeriod = (int)$this->repository->getSetting('grace_period_days', null, 30);
         $deleteAfter = new \DateTime("+{$gracePeriod} days");
@@ -190,56 +229,40 @@ class ExtensionManager implements ExtensionManagerContract
         foreach ($tables as $table) {
             $recordCount = $this->dataHandler->getTableRecordCount($table);
             $backupPath = $backup ? $this->dataHandler->getBackupPath($machineName) : null;
-            
-            $this->repository->queueForDeletion(
-                $machineName,
-                $table,
-                $recordCount,
-                $backupPath,
-                $deleteAfter
-            );
+            $this->repository->queueForDeletion($machineName, $table, $recordCount, $backupPath, $deleteAfter);
         }
 
-        // Run uninstall task if defined
         if (!empty($extension->uninstall_task)) {
             $this->runSymfonyTask($extension->uninstall_task);
         }
 
-        // Update status in atom_extension
-        $this->repository->update($extension->id, [
-            'status' => 'pending_removal',
-        ]);
-        
-        // Also disable in atom_plugin (for Symfony plugin loading)
+        $this->repository->update($extension->id, ['status' => 'pending_removal']);
+
         DB::table('atom_plugin')
             ->where('name', $machineName)
-            ->update([
-                'is_enabled' => 0,
-                'status' => 'pending_removal',
-                'disabled_at' => date('Y-m-d H:i:s'),
-            ]);
-        
-        // Remove from Symfony setting_i18n plugins array (legacy GUI)
-        $this->updateSymfonyPlugins($machineName, false);
+            ->update(['is_enabled' => 0, 'status' => 'pending_removal', 'disabled_at' => date('Y-m-d H:i:s')]);
 
-        // Log action
+        $this->updateSymfonyPlugins($machineName, false);
         $this->repository->logAction($machineName, 'uninstalled', $extension->id, null, [
-            'backup' => $backup,
-            'grace_period_days' => $gracePeriod,
+            'backup' => $backup, 'grace_period_days' => $gracePeriod,
         ]);
 
         return true;
     }
 
     /**
-     * Enable an extension
+     * Enable an extension (auto-enables dependencies)
      */
-    public function enable(string $machineName): bool
+    public function enable(string $machineName, bool $enableDependencies = true): bool
     {
         $extension = $this->repository->findByMachineName($machineName);
-        
+
         if (!$extension) {
-            throw new \RuntimeException("Extension '{$machineName}' is not installed.");
+            $plugin = DB::table('atom_plugin')->where('name', $machineName)->first();
+            if (!$plugin) {
+                throw new \RuntimeException("Extension '{$machineName}' is not installed.");
+            }
+            return $this->enableInAtomPlugin($machineName, $enableDependencies);
         }
 
         if ($extension->status === 'enabled') {
@@ -250,6 +273,27 @@ class ExtensionManager implements ExtensionManagerContract
             throw new \RuntimeException("Cannot enable extension pending removal. Use restore first.");
         }
 
+        // Enable dependencies first
+        if ($enableDependencies) {
+            $dependencies = $this->getDependencies($machineName);
+            foreach ($dependencies as $dep) {
+                if (!$this->isEnabled($dep)) {
+                    echo "  Enabling dependency: {$dep}\n";
+                    $this->enable($dep, true);
+                }
+            }
+        }
+
+        // Verify dependencies are enabled
+        $dependencies = $this->getDependencies($machineName);
+        foreach ($dependencies as $dep) {
+            if (!$this->isEnabled($dep)) {
+                throw new \RuntimeException(
+                    "Cannot enable '{$machineName}': Required dependency '{$dep}' is not enabled."
+                );
+            }
+        }
+
         $this->repository->update($extension->id, [
             'status' => 'enabled',
             'enabled_at' => date('Y-m-d H:i:s'),
@@ -257,7 +301,10 @@ class ExtensionManager implements ExtensionManagerContract
 
         $this->repository->logAction($machineName, 'enabled', $extension->id);
 
-	// Register in atom_plugin for Symfony plugin loading
+        $manifest = $this->findManifest($machineName);
+        $loadOrder = $manifest['load_order'] ?? 100;
+        $category = $manifest['category'] ?? 'ahg';
+        
         try {
             DB::table('atom_plugin')->updateOrInsert(
                 ['name' => $machineName],
@@ -265,33 +312,99 @@ class ExtensionManager implements ExtensionManagerContract
                     'class_name' => $machineName . 'Configuration',
                     'is_enabled' => 1,
                     'is_core' => 0,
-                    'load_order' => 100,
-                    'category' => 'ahg',
+                    'load_order' => $loadOrder,
+                    'category' => $category,
                     'updated_at' => date('Y-m-d H:i:s'),
                 ]
             );
-        } catch (\Exception $e) {
-            // Silently continue if atom_plugin table doesn't exist
-        }
+        } catch (\Exception $e) {}
 
         $this->updateSymfonyPlugins($machineName, true);
-
         return true;
     }
 
     /**
-     * Disable an extension
+     * Enable plugin in atom_plugin table only
      */
-    public function disable(string $machineName): bool
+    protected function enableInAtomPlugin(string $machineName, bool $enableDependencies = true): bool
+    {
+        if ($enableDependencies) {
+            $dependencies = $this->getDependencies($machineName);
+            foreach ($dependencies as $dep) {
+                if (!$this->isEnabled($dep)) {
+                    echo "  Enabling dependency: {$dep}\n";
+                    $this->enable($dep, true);
+                }
+            }
+        }
+
+        $dependencies = $this->getDependencies($machineName);
+        foreach ($dependencies as $dep) {
+            if (!$this->isEnabled($dep)) {
+                throw new \RuntimeException(
+                    "Cannot enable '{$machineName}': Required dependency '{$dep}' is not enabled."
+                );
+            }
+        }
+
+        $manifest = $this->findManifest($machineName);
+        $loadOrder = $manifest['load_order'] ?? 100;
+        $category = $manifest['category'] ?? 'ahg';
+
+        DB::table('atom_plugin')->updateOrInsert(
+            ['name' => $machineName],
+            [
+                'class_name' => $machineName . 'Configuration',
+                'is_enabled' => 1,
+                'is_core' => 0,
+                'load_order' => $loadOrder,
+                'category' => $category,
+                'updated_at' => date('Y-m-d H:i:s'),
+            ]
+        );
+
+        $this->updateSymfonyPlugins($machineName, true);
+        return true;
+    }
+
+    /**
+     * Disable an extension (auto-disables dependents)
+     */
+    public function disable(string $machineName, bool $disableDependents = true): bool
     {
         $extension = $this->repository->findByMachineName($machineName);
-        
+
         if (!$extension) {
-            throw new \RuntimeException("Extension '{$machineName}' is not installed.");
+            $plugin = DB::table('atom_plugin')->where('name', $machineName)->first();
+            if (!$plugin) {
+                throw new \RuntimeException("Extension '{$machineName}' is not installed.");
+            }
+            return $this->disableInAtomPlugin($machineName, $disableDependents);
         }
 
         if ($extension->status === 'disabled') {
             return true;
+        }
+
+        // Disable dependents first
+        if ($disableDependents) {
+            $dependents = $this->findAllDependents($machineName);
+            foreach ($dependents as $dep) {
+                if ($this->isEnabled($dep)) {
+                    echo "  Disabling dependent: {$dep}\n";
+                    $this->disable($dep, true);
+                }
+            }
+        } else {
+            $dependents = $this->findAllDependents($machineName);
+            $enabledDependents = array_filter($dependents, fn($dep) => $this->isEnabled($dep));
+            
+            if (!empty($enabledDependents)) {
+                throw new \RuntimeException(
+                    "Cannot disable '{$machineName}': These plugins depend on it: " . 
+                    implode(', ', $enabledDependents) . ". Use --cascade to disable them too."
+                );
+            }
         }
 
         $this->repository->update($extension->id, [
@@ -301,84 +414,83 @@ class ExtensionManager implements ExtensionManagerContract
 
         $this->repository->logAction($machineName, 'disabled', $extension->id);
 
-        // Update atom_plugin table
         try {
-            DB::table('atom_plugin')
-                ->where('name', $machineName)
-                ->update(['is_enabled' => 0]);
-        } catch (\Exception $e) {
-            // Silently continue
-        }
+            DB::table('atom_plugin')->where('name', $machineName)->update(['is_enabled' => 0]);
+        } catch (\Exception $e) {}
 
-        // Update Symfony setting_i18n plugins array
         $this->updateSymfonyPlugins($machineName, false);
-
         return true;
     }
 
     /**
-     * Restore a pending deletion
+     * Disable plugin in atom_plugin table only
      */
+    protected function disableInAtomPlugin(string $machineName, bool $disableDependents = true): bool
+    {
+        if ($disableDependents) {
+            $dependents = $this->findAllDependents($machineName);
+            foreach ($dependents as $dep) {
+                if ($this->isEnabled($dep)) {
+                    echo "  Disabling dependent: {$dep}\n";
+                    $this->disable($dep, true);
+                }
+            }
+        } else {
+            $dependents = $this->findAllDependents($machineName);
+            $enabledDependents = array_filter($dependents, fn($dep) => $this->isEnabled($dep));
+            
+            if (!empty($enabledDependents)) {
+                throw new \RuntimeException(
+                    "Cannot disable '{$machineName}': These plugins depend on it: " . implode(', ', $enabledDependents)
+                );
+            }
+        }
+
+        DB::table('atom_plugin')->where('name', $machineName)->update(['is_enabled' => 0, 'disabled_at' => date('Y-m-d H:i:s')]);
+        $this->updateSymfonyPlugins($machineName, false);
+        return true;
+    }
+
     public function restore(string $machineName): bool
     {
         $extension = $this->repository->findByMachineName($machineName);
-        
         if (!$extension) {
             throw new \RuntimeException("Extension '{$machineName}' not found.");
         }
-
         if ($extension->status !== 'pending_removal') {
             throw new \RuntimeException("Extension '{$machineName}' is not pending removal.");
         }
 
-        // Cancel pending deletions
         $this->repository->cancelPendingDeletion($machineName);
-
-        // Restore to disabled state
-        $this->repository->update($extension->id, [
-            'status' => 'disabled',
-        ]);
-
+        $this->repository->update($extension->id, ['status' => 'disabled']);
         $this->repository->logAction($machineName, 'backup_restored', $extension->id);
-
         return true;
     }
 
-    /**
-     * Check if extension is installed
-     */
     public function isInstalled(string $machineName): bool
     {
-        return $this->repository->exists($machineName);
+        if ($this->repository->exists($machineName)) {
+            return true;
+        }
+        $plugin = DB::table('atom_plugin')->where('name', $machineName)->first();
+        return $plugin !== null;
     }
 
-    /**
-     * Check if extension is enabled
-     */
     public function isEnabled(string $machineName): bool
     {
-        // Check atom_extension table first (new extension system)
         $extension = $this->repository->findByMachineName($machineName);
         if ($extension) {
             return $extension->status === 'enabled';
         }
-        
-        // Fall back to atom_plugin table (Symfony plugin system)
         $plugin = DB::table('atom_plugin')->where('name', $machineName)->first();
         return $plugin && $plugin->is_enabled == 1;
     }
 
-    /**
-     * Get extension setting
-     */
     public function getSetting(string $key, ?int $extensionId = null, $default = null)
     {
         return $this->repository->getSetting($key, $extensionId, $default);
     }
 
-    /**
-     * Set extension setting
-     */
     public function setSetting(string $key, $value, ?int $extensionId = null): bool
     {
         $type = match(true) {
@@ -387,21 +499,14 @@ class ExtensionManager implements ExtensionManagerContract
             is_array($value) => 'json',
             default => 'string',
         };
-
         return $this->repository->setSetting($key, $value, $extensionId, $type);
     }
 
-    /**
-     * Get audit log
-     */
     public function getAuditLog(?string $machineName = null, int $limit = 50): Collection
     {
         return $this->repository->getAuditLog($machineName, $limit);
     }
 
-    /**
-     * Process pending deletions (called by cron)
-     */
     public function processPendingDeletions(): array
     {
         $results = ['processed' => 0, 'failed' => 0, 'errors' => []];
@@ -419,61 +524,61 @@ class ExtensionManager implements ExtensionManagerContract
                 $results['errors'][] = $e->getMessage();
             }
         }
-
         return $results;
+    }
+
+    /**
+     * Get full dependency tree for display
+     */
+    public function getDependencyTree(string $machineName): array
+    {
+        $manifest = $this->findManifest($machineName);
+        if (!$manifest) {
+            return [];
+        }
+        return [
+            'name' => $machineName,
+            'dependencies' => $manifest['dependencies'] ?? [],
+            'dependents' => $this->findAllDependents($machineName),
+            'optional' => $manifest['optional']['extensions'] ?? [],
+        ];
     }
 
     // ==========================================
     // Protected Methods
     // ==========================================
 
-    /**
-     * Load extension manifest
-     */
     protected function loadManifest(string $path): ?array
     {
         if (isset($this->manifestCache[$path])) {
             return $this->manifestCache[$path];
         }
-
         if (!file_exists($path)) {
             return null;
         }
-
         $content = file_get_contents($path);
         $manifest = json_decode($content, true);
-
         if (json_last_error() !== JSON_ERROR_NONE) {
             return null;
         }
-
         $this->manifestCache[$path] = $manifest;
         return $manifest;
     }
 
-    /**
-     * Find manifest for extension
-     */
     protected function findManifest(string $machineName): ?array
     {
         $path = $this->pluginsPath . '/' . $machineName . '/extension.json';
         return $this->loadManifest($path);
     }
 
-    /**
-     * Check extension dependencies
-     */
     protected function checkDependencies(array $manifest): void
     {
         $dependencies = $manifest['dependencies'] ?? [];
-
         foreach ($dependencies as $dep) {
             if (!$this->isEnabled($dep)) {
                 throw new \RuntimeException("Required dependency '{$dep}' is not installed or enabled.");
             }
         }
-
-        // Check PHP version
         if (!empty($manifest['requires']['php'])) {
             $required = ltrim($manifest['requires']['php'], '>=<');
             if (version_compare(PHP_VERSION, $required, '<')) {
@@ -482,41 +587,28 @@ class ExtensionManager implements ExtensionManagerContract
         }
     }
 
-    /**
-     * Run a Symfony task
-     */
     protected function runSymfonyTask(string $task): void
     {
         $atomPath = dirname($this->pluginsPath);
         $command = "cd {$atomPath} && php symfony {$task} 2>&1";
         exec($command, $output, $returnCode);
-
         if ($returnCode !== 0) {
             throw new \RuntimeException("Task '{$task}' failed: " . implode("\n", $output));
         }
     }
 
-    /**
-     * Run SQL file for extension installation
-     */
     protected function runSqlFile(string $sqlPath): void
     {
         $sql = file_get_contents($sqlPath);
         if (empty($sql)) {
             return;
         }
-        
-        // Get database config
         $configPath = dirname($this->pluginsPath) . '/config/config.php';
         if (!file_exists($configPath)) {
-            error_log("runSqlFile: config.php not found");
             return;
         }
-        
         $config = require $configPath;
         $params = $config['all']['propel']['param'] ?? [];
-        
-        // Parse DSN
         $dsn = $params['dsn'] ?? '';
         $dsnParts = [];
         $dsnWithoutDriver = preg_replace('/^[a-z]+:/', '', $dsn);
@@ -526,7 +618,6 @@ class ExtensionManager implements ExtensionManagerContract
                 $dsnParts[trim($key)] = trim($value);
             }
         }
-        
         try {
             $pdo = new \PDO(
                 sprintf('mysql:host=%s;port=%d;dbname=%s;charset=utf8mb4',
@@ -538,80 +629,51 @@ class ExtensionManager implements ExtensionManagerContract
                 $params['password'] ?? '',
                 [\PDO::ATTR_ERRMODE => \PDO::ERRMODE_EXCEPTION]
             );
-            
             $pdo->exec($sql);
-            
         } catch (\Exception $e) {
             error_log("runSqlFile ERROR: " . $e->getMessage());
         }
     }
 
-    /**
-     * Update Symfony setting_i18n plugins array
-     */
     private function updateSymfonyPlugins(string $machineName, bool $add): void
     {
         try {
-            $row = DB::table('setting_i18n')
-                ->where('id', 1)
-                ->where('culture', 'en')
-                ->first();
-            
+            $row = DB::table('setting_i18n')->where('id', 1)->where('culture', 'en')->first();
             if (!$row || empty($row->value)) {
                 return;
             }
-            
             $plugins = @unserialize($row->value);
             if (!is_array($plugins)) {
                 return;
             }
-            
             $key = array_search($machineName, $plugins);
-            
             if ($add && $key === false) {
                 $plugins[] = $machineName;
-                DB::table('setting_i18n')
-                    ->where('id', 1)
-                    ->where('culture', 'en')
-                    ->update(['value' => serialize($plugins)]);
+                DB::table('setting_i18n')->where('id', 1)->where('culture', 'en')->update(['value' => serialize($plugins)]);
             } elseif (!$add && $key !== false) {
                 unset($plugins[$key]);
                 $plugins = array_values($plugins);
-                DB::table('setting_i18n')
-                    ->where('id', 1)
-                    ->where('culture', 'en')
-                    ->update(['value' => serialize($plugins)]);
+                DB::table('setting_i18n')->where('id', 1)->where('culture', 'en')->update(['value' => serialize($plugins)]);
             }
-        } catch (\Exception $e) {
-            // Silently continue if setting_i18n doesn't exist
-        }
+        } catch (\Exception $e) {}
     }
 
-    /**
-     * Update extension version in database
-     */
     public function updateVersion(string $machineName, string $newVersion): bool
     {
         $extension = $this->repository->findByMachineName($machineName);
-        
         if (!$extension) {
             throw new \RuntimeException("Extension '{$machineName}' is not installed.");
         }
-        
         return $this->repository->update($extension->id, [
             'version' => $newVersion,
             'updated_at' => date('Y-m-d H:i:s'),
         ]);
     }
 
-    /**
-     * Log audit entry
-     */
     public function logAudit(string $machineName, string $action, ?array $details = null): void
     {
         $extension = $this->repository->findByMachineName($machineName);
         $extensionId = $extension ? $extension->id : null;
-        
         $this->repository->logAction($machineName, $action, $extensionId, null, $details);
-	}
+    }
 }

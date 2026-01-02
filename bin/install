@@ -175,7 +175,7 @@ echo ""
 echo -e "${BLUE}Step 6b: Loading plugin data...${NC}"
 
 # List of AHG plugins with data files
-AHG_DATA_PLUGINS="ahgThemeB5Plugin ahgDisplayPlugin ahgLibraryPlugin ahgSecurityClearancePlugin ahgDAMPlugin ahgAuditTrailPlugin ahgResearchPlugin ahgMuseumPlugin ahgGalleryPlugin"
+AHG_DATA_PLUGINS="ahgThemeB5Plugin ahgDisplayPlugin ahgLibraryPlugin ahgSecurityClearancePlugin ahgDAMPlugin ahgAuditTrailPlugin ahgResearchPlugin ahgSpectrumPlugin ahgMuseumPlugin ahgGalleryPlugin ahgConditionPlugin ahgGrapPlugin ahgDonorAgreementPlugin ahgAccessRequestPlugin ahgRightsPlugin ahgExtendedRightsPlugin"
 
 for plugin in $AHG_DATA_PLUGINS; do
     DATA_SQL="${PLUGINS_DIR}/${plugin}/data/install.sql"
