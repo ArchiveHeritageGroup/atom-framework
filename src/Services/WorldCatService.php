@@ -206,14 +206,14 @@ class WorldCatService
         $authors = [];
         if (!empty($book['authors'])) {
             foreach ($book['authors'] as $author) {
-                $authors[] = $author['name'];
+                $authors[] = ['name' => $author['name'], 'url' => $author['url'] ?? '']; 
             }
         }
 
         $subjects = [];
         if (!empty($book['subjects'])) {
             foreach ($book['subjects'] as $subject) {
-                $subjects[] = $subject['name'];
+                $subjects[] = ['name' => $subject['name'], 'url' => $subject['url'] ?? '']; 
             }
         }
 

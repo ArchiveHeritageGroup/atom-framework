@@ -98,7 +98,7 @@ class IsbnMetadataMapper
 
         if (!empty($metadata['authors'])) {
             $preview['creators'] = is_array($metadata['authors'])
-                ? implode('; ', array_map([$this, 'cleanName'], $metadata['authors']))
+                ? implode('; ', array_map(function($a) { return $this->cleanName(is_array($a) ? ($a['name'] ?? '') : $a); }, $metadata['authors']))
                 : $this->cleanName($metadata['authors']);
         }
 
