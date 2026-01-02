@@ -829,18 +829,26 @@ class ExtensionCommand
                 $this->line("    Running install.sql...");
                 try {
                     $sql = file_get_contents($installSql);
-                    // Split by semicolons but be careful with stored procedures
+                    
+                    // Remove MySQL dump headers
+                    $sql = preg_replace('/\/\*!\d+.*?\*\/;?/s', '', $sql);
+                    $sql = preg_replace('/^SET @.*?;$/m', '', $sql);
+                    
+                    // Split by semicolons
                     $statements = array_filter(array_map('trim', explode(';', $sql)));
                     
                     foreach ($statements as $stmt) {
-                        if (!empty($stmt) && !preg_match('/^--/', $stmt)) {
-                            try {
-                                \Illuminate\Database\Capsule\Manager::statement($stmt);
-                            } catch (\Exception $e) {
-                                // Ignore duplicate key errors, etc
-                                if (strpos($e->getMessage(), 'Duplicate') === false) {
-                                    $this->line("    Warning: " . $e->getMessage());
-                                }
+                        // Skip empty, comments, and SET statements
+                        if (empty($stmt) || preg_match('/^--/', $stmt) || preg_match('/^SET\s/i', $stmt)) {
+                            continue;
+                        }
+                        try {
+                            \Illuminate\Database\Capsule\Manager::statement($stmt);
+                        } catch (\Exception $e) {
+                            // Ignore duplicate key errors
+                            if (strpos($e->getMessage(), 'Duplicate') === false && 
+                                strpos($e->getMessage(), 'already exists') === false) {
+                                $this->line("    Warning: " . substr($e->getMessage(), 0, 100));
                             }
                         }
                     }
