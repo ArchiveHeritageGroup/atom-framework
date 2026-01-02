@@ -556,7 +556,7 @@ class ExtensionCommand
         $remoteAvailable = [];
 
         foreach ($all as $machineName => $ext) {
-            $hasLocal = isset($installedVersions[$machineName]);
+            $hasLocal = ($ext['source'] ?? '') === 'local';
             $isEnabled = isset($enabledPlugins[$machineName]);
             $localVersion = $installedVersions[$machineName] ?? null;
             $remoteVersion = $remoteByName[$machineName]['version'] ?? null;
