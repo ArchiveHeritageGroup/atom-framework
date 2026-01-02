@@ -505,7 +505,6 @@ class ExtensionCommand
         // Also get versions from atom_plugin table (primary source)
         try {
             $plugins = \Illuminate\Database\Capsule\Manager::table('atom_plugin')
-                ->whereNotNull('version')
                 ->pluck('version', 'name')
                 ->toArray();
             foreach ($plugins as $name => $version) {
@@ -515,14 +514,14 @@ class ExtensionCommand
             // Table may not exist
         }
 
-        // Also include local plugins with extension.json
-        $pluginsPath = $this->manager->getSetting('extensions_path', null, '/usr/share/nginx/atom/plugins');
-        foreach ($local as $plugin) {
-            $name = $plugin['machine_name'] ?? '';
-            if ($name && !isset($installedVersions[$name])) {
-                $installedVersions[$name] = $plugin['version'] ?? '0.0.0';
-            }
-        }
+        // Track which plugins are in DB (even with NULL version)
+        $pluginsInDb = [];
+        try {
+            $pluginsInDb = \Illuminate\Database\Capsule\Manager::table('atom_plugin')
+                ->pluck('name')
+                ->toArray();
+            $pluginsInDb = array_flip($pluginsInDb);
+        } catch (\Exception $e) {}
 
         // Merge lists
         $all = [];
@@ -565,7 +564,10 @@ class ExtensionCommand
 
             // Get file version from extension.json
             $fileVersion = $ext['version'] ?? '0.0.0';
-            $dbVersion = $installedVersions[$machineName] ?? '0.0.0';
+            // DB version: null means never set, treat as '0.0.0' for comparison
+            $dbVersion = isset($installedVersions[$machineName]) && $installedVersions[$machineName] !== null 
+                ? $installedVersions[$machineName] 
+                : '0.0.0';
             
             if ($isRemoteOnly) {
                 // Only on GitHub
