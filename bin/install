@@ -181,7 +181,7 @@ for plugin in $AHG_DATA_PLUGINS; do
     DATA_SQL="${PLUGINS_DIR}/${plugin}/data/install.sql"
     if [ -f "$DATA_SQL" ]; then
         echo -e "  ${YELLOW}→${NC} Loading data for $plugin..."
-        mysql -h "$DB_HOST" -u "$DB_USER" -p"$DB_PASS" "$DB_NAME" < "$DATA_SQL" 2>&1 || true || true
+        mysql -h "$DB_HOST" -u "$DB_USER" -p"$DB_PASS" "$DB_NAME" < "$DATA_SQL" 2>&1 || true
         if [ $? -eq 0 ]; then
             echo -e "  ${GREEN}✓${NC} $plugin data loaded"
         else
