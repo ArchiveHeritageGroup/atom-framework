@@ -928,7 +928,7 @@ CREATE TABLE IF NOT EXISTS `atom_plugin` (
   `version` varchar(50) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `description` text COLLATE utf8mb4_unicode_ci,
   `author` varchar(255) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
-  `category` varchar(100) COLLATE utf8mb4_unicode_ci DEFAULT 'general',
+  `category` varchar(100) COLLATE utf8mb4_unicode_ci DEFAULT 'ahg',
   `is_enabled` tinyint(1) DEFAULT '0',
   `is_core` tinyint(1) DEFAULT '0',
   `is_locked` tinyint(1) DEFAULT '0',
