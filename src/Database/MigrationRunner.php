@@ -243,14 +243,19 @@ class MigrationRunner
         require_once $file;
 
         // Try to determine class name from file
-        $className = pathinfo($file, PATHINFO_FILENAME);
+        $fileName = pathinfo($file, PATHINFO_FILENAME);
+        $parts = explode('_', $fileName);
         
-        // Convert filename to class name (e.g., 2025_01_01_create_tables -> CreateTables)
-        $parts = explode('_', $className);
-        // Remove date prefix if present
-        if (count($parts) > 3 && is_numeric($parts[0])) {
+        // Remove date prefix if present (format: YYYY_MM_DD or YYYYMMDD)
+        // Only strip if first part is 4-digit year
+        if (count($parts) > 3 && strlen($parts[0]) === 4 && is_numeric($parts[0]) && (int)$parts[0] > 2000) {
+            // Date prefix like 2025_01_01_...
             $parts = array_slice($parts, 3);
+        } elseif (count($parts) > 1 && is_numeric($parts[0]) && strlen($parts[0]) <= 3) {
+            // Sequence prefix like 020_...
+            $parts = array_slice($parts, 1);
         }
+        
         $className = str_replace(' ', '', ucwords(implode(' ', $parts)));
 
         // Try namespaced class first
@@ -269,7 +274,7 @@ class MigrationRunner
         }
 
         if (!$migrationClass) {
-            throw new \Exception("Could not find migration class for: {$name}");
+            throw new \Exception("Could not find migration class for: {$name} (tried: " . implode(', ', $possibleClasses) . ")");
         }
 
         // Check for static up() or instance up()
@@ -280,6 +285,11 @@ class MigrationRunner
             } else {
                 $instance = new $migrationClass();
                 $instance->up();
+            }
+        } else {
+            throw new \Exception("Migration class {$migrationClass} must have an up() method");
+        }
+    }
             }
         } else {
             throw new \Exception("Migration class {$migrationClass} must have an up() method");
