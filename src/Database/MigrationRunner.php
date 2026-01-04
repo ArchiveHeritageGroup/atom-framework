@@ -251,6 +251,10 @@ class MigrationRunner
         if (count($parts) > 3 && strlen($parts[0]) === 4 && is_numeric($parts[0]) && (int)$parts[0] > 2000) {
             // Date prefix like 2025_01_01_...
             $parts = array_slice($parts, 3);
+            // Also strip sequence number if present (like 000001)
+            if (count($parts) > 0 && is_numeric($parts[0])) {
+                $parts = array_slice($parts, 1);
+            }
         } elseif (count($parts) > 1 && is_numeric($parts[0]) && strlen($parts[0]) <= 3) {
             // Sequence prefix like 020_...
             $parts = array_slice($parts, 1);
