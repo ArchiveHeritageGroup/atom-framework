@@ -6528,3 +6528,28 @@ VALUES
 ('ahgSecurityClearancePlugin', 'Security Clearance', '1.0.0', 'Security classification system for records', 'enabled', 'system', NOW(), NOW(), NOW()),
 ('ahgDisplayPlugin', 'Display Mode Manager', '1.0.0', 'Display mode switching for GLAM sectors', 'enabled', 'system', NOW(), NOW(), NOW())
 ON DUPLICATE KEY UPDATE protection_level = 'system';
+
+-- Level of Description Sector Data
+-- Archive levels
+INSERT IGNORE INTO level_of_description_sector (term_id, sector, display_order) VALUES
+(434, 'archive', 10), (236, 'archive', 20), (237, 'archive', 30), (238, 'archive', 40),
+(239, 'archive', 50), (240, 'archive', 60), (241, 'archive', 70), (242, 'archive', 80), (299, 'archive', 90);
+
+-- DAM levels
+INSERT IGNORE INTO level_of_description_sector (term_id, sector, display_order) VALUES
+(1753, 'dam', 10), (1754, 'dam', 20), (1755, 'dam', 30), (1756, 'dam', 40),
+(1161, 'dam', 50), (1757, 'dam', 60), (1758, 'dam', 70);
+
+-- Gallery levels
+INSERT IGNORE INTO level_of_description_sector (term_id, sector, display_order) VALUES
+(1750, 'gallery', 10), (1753, 'gallery', 20), (512, 'gallery', 40);
+
+-- Library levels
+INSERT IGNORE INTO level_of_description_sector (term_id, sector, display_order) VALUES
+(1700, 'library', 10), (1701, 'library', 20), (1702, 'library', 30), (1703, 'library', 40),
+(1759, 'library', 45), (1704, 'library', 50), (1161, 'library', 60);
+
+-- Museum levels
+INSERT IGNORE INTO level_of_description_sector (term_id, sector, display_order) VALUES
+(1757, 'museum', 10), (1751, 'museum', 20), (1750, 'museum', 30),
+(512, 'museum', 40), (500, 'museum', 50), (1752, 'museum', 60);
