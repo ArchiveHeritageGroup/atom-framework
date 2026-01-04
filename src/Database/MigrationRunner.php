@@ -1,7 +1,5 @@
 <?php
-
 namespace AtomFramework\Database;
-
 use Illuminate\Database\Capsule\Manager as DB;
 
 class MigrationRunner
@@ -13,8 +11,6 @@ class MigrationRunner
     public function __construct()
     {
         $this->frameworkMigrationsPath = dirname(__DIR__, 2) . '/database/migrations';
-        
-        // Detect plugins path based on environment
         $atomRoot = dirname(__DIR__, 3);
         if (is_dir($atomRoot . '/atom-ahg-plugins')) {
             $this->pluginsPath = $atomRoot . '/atom-ahg-plugins';
@@ -29,7 +25,6 @@ class MigrationRunner
     public function migrate(): array
     {
         $this->ensureMigrationsTable();
-
         $executed = $this->getExecutedMigrations();
         $pending = $this->getPendingMigrations($executed);
         $results = [];
@@ -41,10 +36,9 @@ class MigrationRunner
                 $results[] = ['migration' => $migration['name'], 'status' => 'success'];
             } catch (\Exception $e) {
                 $results[] = ['migration' => $migration['name'], 'status' => 'failed', 'error' => $e->getMessage()];
-                break; // Stop on first failure
+                break;
             }
         }
-
         return $results;
     }
 
@@ -54,7 +48,6 @@ class MigrationRunner
     public function status(): array
     {
         $this->ensureMigrationsTable();
-
         $executed = $this->getExecutedMigrations();
         $all = $this->getAllMigrations();
         $status = [];
@@ -63,17 +56,14 @@ class MigrationRunner
             $status[] = [
                 'migration' => $migration['name'],
                 'source' => $migration['source'],
+                'type' => $migration['type'] ?? 'sql',
                 'executed' => in_array($migration['name'], $executed),
                 'executed_at' => $this->getExecutedAt($migration['name'])
             ];
         }
-
         return $status;
     }
 
-    /**
-     * Ensure migrations tracking table exists
-     */
     protected function ensureMigrationsTable(): void
     {
         $sql = "CREATE TABLE IF NOT EXISTS {$this->migrationsTable} (
@@ -81,18 +71,26 @@ class MigrationRunner
             migration VARCHAR(255) NOT NULL UNIQUE,
             executed_at DATETIME DEFAULT CURRENT_TIMESTAMP
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
-
         DB::statement($sql);
     }
 
-    /**
-     * Get list of already executed migrations
-     */
     protected function getExecutedMigrations(): array
     {
-        return DB::table($this->migrationsTable)
-            ->pluck('migration')
-            ->toArray();
+        return DB::table($this->migrationsTable)->pluck('migration')->toArray();
+    }
+
+    protected function getExecutedAt(string $name): ?string
+    {
+        $record = DB::table($this->migrationsTable)->where('migration', $name)->first();
+        return $record->executed_at ?? null;
+    }
+
+    protected function recordMigration(string $name): void
+    {
+        DB::table($this->migrationsTable)->insert([
+            'migration' => $name,
+            'executed_at' => date('Y-m-d H:i:s')
+        ]);
     }
 
     /**
@@ -102,49 +100,57 @@ class MigrationRunner
     {
         $migrations = [];
 
-        // Framework migrations
-        $frameworkFiles = glob($this->frameworkMigrationsPath . '/*.sql');
-        foreach ($frameworkFiles as $file) {
+        // Framework migrations - SQL files
+        foreach (glob($this->frameworkMigrationsPath . '/*.sql') as $file) {
             $migrations[] = [
                 'name' => pathinfo($file, PATHINFO_FILENAME),
                 'path' => $file,
-                'source' => 'framework'
+                'source' => 'framework',
+                'type' => 'sql'
+            ];
+        }
+
+        // Framework migrations - PHP files
+        foreach (glob($this->frameworkMigrationsPath . '/*.php') as $file) {
+            $migrations[] = [
+                'name' => pathinfo($file, PATHINFO_FILENAME),
+                'path' => $file,
+                'source' => 'framework',
+                'type' => 'php'
             ];
         }
 
         // Plugin migrations
         if (!empty($this->pluginsPath) && is_dir($this->pluginsPath)) {
-            $pluginDirs = glob($this->pluginsPath . '/ahg*Plugin', GLOB_ONLYDIR);
-            
-            foreach ($pluginDirs as $pluginDir) {
+            foreach (glob($this->pluginsPath . '/ahg*Plugin', GLOB_ONLYDIR) as $pluginDir) {
                 $pluginName = basename($pluginDir);
                 $migrationsDir = $pluginDir . '/data/migrations';
                 
                 if (is_dir($migrationsDir)) {
-                    $pluginFiles = glob($migrationsDir . '/*.sql');
-                    
-                    foreach ($pluginFiles as $file) {
-                        $baseName = pathinfo($file, PATHINFO_FILENAME);
-                        // Prefix with plugin name to avoid conflicts
+                    foreach (glob($migrationsDir . '/*.sql') as $file) {
                         $migrations[] = [
-                            'name' => $pluginName . ':' . $baseName,
+                            'name' => $pluginName . ':' . pathinfo($file, PATHINFO_FILENAME),
                             'path' => $file,
-                            'source' => $pluginName
+                            'source' => $pluginName,
+                            'type' => 'sql'
+                        ];
+                    }
+                    foreach (glob($migrationsDir . '/*.php') as $file) {
+                        $migrations[] = [
+                            'name' => $pluginName . ':' . pathinfo($file, PATHINFO_FILENAME),
+                            'path' => $file,
+                            'source' => $pluginName,
+                            'type' => 'php'
                         ];
                     }
                 }
             }
         }
 
-        // Sort by name
         usort($migrations, fn($a, $b) => strcmp($a['name'], $b['name']));
-        
         return $migrations;
     }
 
-    /**
-     * Get pending migrations
-     */
     protected function getPendingMigrations(array $executed): array
     {
         $all = $this->getAllMigrations();
@@ -152,42 +158,18 @@ class MigrationRunner
     }
 
     /**
-     * Validate migration is safe (no destructive operations)
+     * Validate SQL migration is safe
      */
-    protected function validateMigration(string $sql, string $name): void
+    protected function validateSqlMigration(string $sql, string $name): void
     {
-        $dangerous = [
-            'DROP TABLE',
-            'DROP DATABASE',
-            'TRUNCATE TABLE',
-            'DELETE FROM' => false, // Allow DELETE with WHERE
-        ];
-        
-        $upperSql = strtoupper($sql);
-        
-        // Check for DROP statements
         if (preg_match('/DROP\s+(TABLE|DATABASE|INDEX)/i', $sql)) {
-            throw new \Exception(
-                "Migration '{$name}' contains DROP statement. " .
-                "Migrations must be non-destructive. Use CREATE TABLE IF NOT EXISTS, " .
-                "ALTER TABLE, INSERT IGNORE, or UPDATE instead."
-            );
+            throw new \Exception("Migration '{$name}' contains DROP statement.");
         }
-        
-        // Check for TRUNCATE
         if (preg_match('/TRUNCATE\s+TABLE/i', $sql)) {
-            throw new \Exception(
-                "Migration '{$name}' contains TRUNCATE statement. " .
-                "Migrations must preserve existing data."
-            );
+            throw new \Exception("Migration '{$name}' contains TRUNCATE statement.");
         }
-        
-        // DELETE without WHERE is dangerous
         if (preg_match('/DELETE\s+FROM\s+\w+\s*;/i', $sql)) {
-            throw new \Exception(
-                "Migration '{$name}' contains DELETE without WHERE clause. " .
-                "Always specify conditions for DELETE statements."
-            );
+            throw new \Exception("Migration '{$name}' contains DELETE without WHERE.");
         }
     }
 
@@ -197,81 +179,136 @@ class MigrationRunner
     protected function runMigration(array $migration): void
     {
         $file = $migration['path'];
-
         if (!file_exists($file)) {
             throw new \Exception("Migration file not found: {$file}");
         }
 
+        $type = $migration['type'] ?? 'sql';
+
+        if ($type === 'php') {
+            $this->runPhpMigration($file, $migration['name']);
+        } else {
+            $this->runSqlMigration($file, $migration['name']);
+        }
+    }
+
+    /**
+     * Run SQL migration
+     */
+    protected function runSqlMigration(string $file, string $name): void
+    {
         $sql = file_get_contents($file);
+        $this->validateSqlMigration($sql, $name);
         
-        // Validate migration is safe
-        $this->validateMigration($sql, $migration['name']);
-
-        // Parse and run statements
         $statements = $this->parseSqlStatements($sql);
-
         foreach ($statements as $statement) {
             if (!empty(trim($statement))) {
-                DB::unprepared($statement);
+                try {
+                    DB::unprepared($statement);
+                } catch (\Exception $e) {
+                    // Ignore safe errors (column/table already exists, etc.)
+                    $safeErrors = [
+                        '42S21', // Column already exists
+                        '42S01', // Table already exists
+                        '42000', // Duplicate key name
+                        '1060',  // Duplicate column name
+                        '1061',  // Duplicate key name
+                        '1050',  // Table already exists
+                    ];
+                    
+                    $isSafe = false;
+                    foreach ($safeErrors as $code) {
+                        if (strpos($e->getMessage(), $code) !== false || 
+                            strpos($e->getMessage(), 'already exists') !== false ||
+                            strpos($e->getMessage(), 'Duplicate') !== false) {
+                            $isSafe = true;
+                            break;
+                        }
+                    }
+                    
+                    if (!$isSafe) {
+                        throw $e;
+                    }
+                    // Safe error - continue with next statement
+                }
             }
         }
     }
 
     /**
+     * Run PHP migration
+     */
+    protected function runPhpMigration(string $file, string $name): void
+    {
+        require_once $file;
+
+        // Try to determine class name from file
+        $className = pathinfo($file, PATHINFO_FILENAME);
+        
+        // Convert filename to class name (e.g., 2025_01_01_create_tables -> CreateTables)
+        $parts = explode('_', $className);
+        // Remove date prefix if present
+        if (count($parts) > 3 && is_numeric($parts[0])) {
+            $parts = array_slice($parts, 3);
+        }
+        $className = str_replace(' ', '', ucwords(implode(' ', $parts)));
+
+        // Try namespaced class first
+        $possibleClasses = [
+            "\\AtomExtensions\\Migrations\\{$className}",
+            "\\AtomFramework\\Migrations\\{$className}",
+            $className
+        ];
+
+        $migrationClass = null;
+        foreach ($possibleClasses as $class) {
+            if (class_exists($class)) {
+                $migrationClass = $class;
+                break;
+            }
+        }
+
+        if (!$migrationClass) {
+            throw new \Exception("Could not find migration class for: {$name}");
+        }
+
+        // Check for static up() or instance up()
+        if (method_exists($migrationClass, 'up')) {
+            $reflection = new \ReflectionMethod($migrationClass, 'up');
+            if ($reflection->isStatic()) {
+                $migrationClass::up();
+            } else {
+                $instance = new $migrationClass();
+                $instance->up();
+            }
+        } else {
+            throw new \Exception("Migration class {$migrationClass} must have an up() method");
+        }
+    }
+
+    /**
      * Parse SQL file into individual statements
-     * Handles SET variables, INSERT, and complex statements
      */
     protected function parseSqlStatements(string $sql): array
     {
         $statements = [];
         $current = '';
         $lines = explode("\n", $sql);
-        
+
         foreach ($lines as $line) {
             $trimmed = trim($line);
-            
-            // Skip empty lines and comments
             if (empty($trimmed) || str_starts_with($trimmed, '--')) {
                 continue;
             }
-            
             $current .= $line . "\n";
-            
-            // Check if statement is complete (ends with ;)
             if (str_ends_with($trimmed, ';')) {
                 $statements[] = trim($current);
                 $current = '';
             }
         }
-        
-        // Add any remaining content
         if (!empty(trim($current))) {
             $statements[] = trim($current);
         }
-        
         return $statements;
-    }
-
-    /**
-     * Record migration as executed
-     */
-    protected function recordMigration(string $migration): void
-    {
-        DB::table($this->migrationsTable)->insert([
-            'migration' => $migration,
-            'executed_at' => date('Y-m-d H:i:s')
-        ]);
-    }
-
-    /**
-     * Get when a migration was executed
-     */
-    protected function getExecutedAt(string $migration): ?string
-    {
-        $record = DB::table($this->migrationsTable)
-            ->where('migration', $migration)
-            ->first();
-
-        return $record->executed_at ?? null;
     }
 }
