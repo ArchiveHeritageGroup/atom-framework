@@ -6532,3 +6532,183 @@ ON DUPLICATE KEY UPDATE protection_level = 'system';
 -- NOTE: GLAM/DAM Level of Description terms and sector mappings are NOT included here.
 -- They are created by the PHP migration: 020_extended_levels_of_description.php
 -- This ensures proper ID assignment on each installation.
+
+-- =====================================================
+-- GLAM/DAM Level of Description Terms
+-- Uses SQL variables to auto-generate IDs
+-- =====================================================
+
+-- Get starting ID (above any existing)
+SET @base_id = (SELECT COALESCE(MAX(id), 2000) + 1 FROM object);
+
+-- Museum: Object
+INSERT INTO object (id, class_name, created_at, updated_at) VALUES (@base_id, 'QubitTerm', NOW(), NOW());
+INSERT INTO term (id, taxonomy_id, source_culture, class_name) VALUES (@base_id, 34, 'en', 'QubitTerm');
+INSERT INTO term_i18n (id, culture, name) VALUES (@base_id, 'en', 'Object');
+INSERT IGNORE INTO slug (object_id, slug) VALUES (@base_id, 'object-level');
+SET @id_object = @base_id;
+SET @base_id = @base_id + 1;
+
+-- Museum: Installation
+INSERT INTO object (id, class_name, created_at, updated_at) VALUES (@base_id, 'QubitTerm', NOW(), NOW());
+INSERT INTO term (id, taxonomy_id, source_culture, class_name) VALUES (@base_id, 34, 'en', 'QubitTerm');
+INSERT INTO term_i18n (id, culture, name) VALUES (@base_id, 'en', 'Installation');
+INSERT IGNORE INTO slug (object_id, slug) VALUES (@base_id, 'installation');
+SET @id_installation = @base_id;
+SET @base_id = @base_id + 1;
+
+-- Museum: Artwork
+INSERT INTO object (id, class_name, created_at, updated_at) VALUES (@base_id, 'QubitTerm', NOW(), NOW());
+INSERT INTO term (id, taxonomy_id, source_culture, class_name) VALUES (@base_id, 34, 'en', 'QubitTerm');
+INSERT INTO term_i18n (id, culture, name) VALUES (@base_id, 'en', 'Artwork');
+INSERT IGNORE INTO slug (object_id, slug) VALUES (@base_id, 'artwork');
+SET @id_artwork = @base_id;
+SET @base_id = @base_id + 1;
+
+-- Museum: Artifact
+INSERT INTO object (id, class_name, created_at, updated_at) VALUES (@base_id, 'QubitTerm', NOW(), NOW());
+INSERT INTO term (id, taxonomy_id, source_culture, class_name) VALUES (@base_id, 34, 'en', 'QubitTerm');
+INSERT INTO term_i18n (id, culture, name) VALUES (@base_id, 'en', 'Artifact');
+INSERT IGNORE INTO slug (object_id, slug) VALUES (@base_id, 'artifact');
+SET @id_artifact = @base_id;
+SET @base_id = @base_id + 1;
+
+-- Museum: Specimen
+INSERT INTO object (id, class_name, created_at, updated_at) VALUES (@base_id, 'QubitTerm', NOW(), NOW());
+INSERT INTO term (id, taxonomy_id, source_culture, class_name) VALUES (@base_id, 34, 'en', 'QubitTerm');
+INSERT INTO term_i18n (id, culture, name) VALUES (@base_id, 'en', 'Specimen');
+INSERT IGNORE INTO slug (object_id, slug) VALUES (@base_id, 'specimen');
+SET @id_specimen = @base_id;
+SET @base_id = @base_id + 1;
+
+-- Museum/DAM: 3D Model
+INSERT INTO object (id, class_name, created_at, updated_at) VALUES (@base_id, 'QubitTerm', NOW(), NOW());
+INSERT INTO term (id, taxonomy_id, source_culture, class_name) VALUES (@base_id, 34, 'en', 'QubitTerm');
+INSERT INTO term_i18n (id, culture, name) VALUES (@base_id, 'en', '3D Model');
+INSERT IGNORE INTO slug (object_id, slug) VALUES (@base_id, '3d-model');
+SET @id_3dmodel = @base_id;
+SET @base_id = @base_id + 1;
+
+-- Library/DAM: Document
+INSERT INTO object (id, class_name, created_at, updated_at) VALUES (@base_id, 'QubitTerm', NOW(), NOW());
+INSERT INTO term (id, taxonomy_id, source_culture, class_name) VALUES (@base_id, 34, 'en', 'QubitTerm');
+INSERT INTO term_i18n (id, culture, name) VALUES (@base_id, 'en', 'Document');
+INSERT IGNORE INTO slug (object_id, slug) VALUES (@base_id, 'document');
+SET @id_document = @base_id;
+SET @base_id = @base_id + 1;
+
+-- Library: Book
+INSERT INTO object (id, class_name, created_at, updated_at) VALUES (@base_id, 'QubitTerm', NOW(), NOW());
+INSERT INTO term (id, taxonomy_id, source_culture, class_name) VALUES (@base_id, 34, 'en', 'QubitTerm');
+INSERT INTO term_i18n (id, culture, name) VALUES (@base_id, 'en', 'Book');
+INSERT IGNORE INTO slug (object_id, slug) VALUES (@base_id, 'book');
+SET @id_book = @base_id;
+SET @base_id = @base_id + 1;
+
+-- Library: Monograph
+INSERT INTO object (id, class_name, created_at, updated_at) VALUES (@base_id, 'QubitTerm', NOW(), NOW());
+INSERT INTO term (id, taxonomy_id, source_culture, class_name) VALUES (@base_id, 34, 'en', 'QubitTerm');
+INSERT INTO term_i18n (id, culture, name) VALUES (@base_id, 'en', 'Monograph');
+INSERT IGNORE INTO slug (object_id, slug) VALUES (@base_id, 'monograph');
+SET @id_monograph = @base_id;
+SET @base_id = @base_id + 1;
+
+-- Library: Periodical
+INSERT INTO object (id, class_name, created_at, updated_at) VALUES (@base_id, 'QubitTerm', NOW(), NOW());
+INSERT INTO term (id, taxonomy_id, source_culture, class_name) VALUES (@base_id, 34, 'en', 'QubitTerm');
+INSERT INTO term_i18n (id, culture, name) VALUES (@base_id, 'en', 'Periodical');
+INSERT IGNORE INTO slug (object_id, slug) VALUES (@base_id, 'periodical');
+SET @id_periodical = @base_id;
+SET @base_id = @base_id + 1;
+
+-- Library: Journal
+INSERT INTO object (id, class_name, created_at, updated_at) VALUES (@base_id, 'QubitTerm', NOW(), NOW());
+INSERT INTO term (id, taxonomy_id, source_culture, class_name) VALUES (@base_id, 34, 'en', 'QubitTerm');
+INSERT INTO term_i18n (id, culture, name) VALUES (@base_id, 'en', 'Journal');
+INSERT IGNORE INTO slug (object_id, slug) VALUES (@base_id, 'journal');
+SET @id_journal = @base_id;
+SET @base_id = @base_id + 1;
+
+-- Library: Manuscript
+INSERT INTO object (id, class_name, created_at, updated_at) VALUES (@base_id, 'QubitTerm', NOW(), NOW());
+INSERT INTO term (id, taxonomy_id, source_culture, class_name) VALUES (@base_id, 34, 'en', 'QubitTerm');
+INSERT INTO term_i18n (id, culture, name) VALUES (@base_id, 'en', 'Manuscript');
+INSERT IGNORE INTO slug (object_id, slug) VALUES (@base_id, 'manuscript');
+SET @id_manuscript = @base_id;
+SET @base_id = @base_id + 1;
+
+-- Library: Article
+INSERT INTO object (id, class_name, created_at, updated_at) VALUES (@base_id, 'QubitTerm', NOW(), NOW());
+INSERT INTO term (id, taxonomy_id, source_culture, class_name) VALUES (@base_id, 34, 'en', 'QubitTerm');
+INSERT INTO term_i18n (id, culture, name) VALUES (@base_id, 'en', 'Article');
+INSERT IGNORE INTO slug (object_id, slug) VALUES (@base_id, 'article');
+SET @id_article = @base_id;
+SET @base_id = @base_id + 1;
+
+-- DAM: Photograph
+INSERT INTO object (id, class_name, created_at, updated_at) VALUES (@base_id, 'QubitTerm', NOW(), NOW());
+INSERT INTO term (id, taxonomy_id, source_culture, class_name) VALUES (@base_id, 34, 'en', 'QubitTerm');
+INSERT INTO term_i18n (id, culture, name) VALUES (@base_id, 'en', 'Photograph');
+INSERT IGNORE INTO slug (object_id, slug) VALUES (@base_id, 'photograph');
+SET @id_photograph = @base_id;
+SET @base_id = @base_id + 1;
+
+-- DAM: Audio
+INSERT INTO object (id, class_name, created_at, updated_at) VALUES (@base_id, 'QubitTerm', NOW(), NOW());
+INSERT INTO term (id, taxonomy_id, source_culture, class_name) VALUES (@base_id, 34, 'en', 'QubitTerm');
+INSERT INTO term_i18n (id, culture, name) VALUES (@base_id, 'en', 'Audio');
+INSERT IGNORE INTO slug (object_id, slug) VALUES (@base_id, 'audio');
+SET @id_audio = @base_id;
+SET @base_id = @base_id + 1;
+
+-- DAM: Video
+INSERT INTO object (id, class_name, created_at, updated_at) VALUES (@base_id, 'QubitTerm', NOW(), NOW());
+INSERT INTO term (id, taxonomy_id, source_culture, class_name) VALUES (@base_id, 34, 'en', 'QubitTerm');
+INSERT INTO term_i18n (id, culture, name) VALUES (@base_id, 'en', 'Video');
+INSERT IGNORE INTO slug (object_id, slug) VALUES (@base_id, 'video');
+SET @id_video = @base_id;
+SET @base_id = @base_id + 1;
+
+-- DAM: Image
+INSERT INTO object (id, class_name, created_at, updated_at) VALUES (@base_id, 'QubitTerm', NOW(), NOW());
+INSERT INTO term (id, taxonomy_id, source_culture, class_name) VALUES (@base_id, 34, 'en', 'QubitTerm');
+INSERT INTO term_i18n (id, culture, name) VALUES (@base_id, 'en', 'Image');
+INSERT IGNORE INTO slug (object_id, slug) VALUES (@base_id, 'image');
+SET @id_image = @base_id;
+SET @base_id = @base_id + 1;
+
+-- DAM: Dataset
+INSERT INTO object (id, class_name, created_at, updated_at) VALUES (@base_id, 'QubitTerm', NOW(), NOW());
+INSERT INTO term (id, taxonomy_id, source_culture, class_name) VALUES (@base_id, 34, 'en', 'QubitTerm');
+INSERT INTO term_i18n (id, culture, name) VALUES (@base_id, 'en', 'Dataset');
+INSERT IGNORE INTO slug (object_id, slug) VALUES (@base_id, 'dataset');
+SET @id_dataset = @base_id;
+
+-- =====================================================
+-- Level of Description Sector Mappings
+-- =====================================================
+
+-- Archive levels (standard AtoM IDs)
+INSERT IGNORE INTO level_of_description_sector (term_id, sector, display_order) VALUES
+(434, 'archive', 10), (236, 'archive', 20), (237, 'archive', 30), (238, 'archive', 40),
+(239, 'archive', 50), (240, 'archive', 60), (241, 'archive', 70), (242, 'archive', 80), (299, 'archive', 90);
+
+-- Museum levels
+INSERT IGNORE INTO level_of_description_sector (term_id, sector, display_order) VALUES
+(@id_3dmodel, 'museum', 10), (@id_artifact, 'museum', 20), (@id_artwork, 'museum', 30),
+(@id_installation, 'museum', 40), (@id_object, 'museum', 50), (@id_specimen, 'museum', 60);
+
+-- Library levels
+INSERT IGNORE INTO level_of_description_sector (term_id, sector, display_order) VALUES
+(@id_book, 'library', 10), (@id_monograph, 'library', 20), (@id_periodical, 'library', 30),
+(@id_journal, 'library', 40), (@id_article, 'library', 45), (@id_manuscript, 'library', 50),
+(@id_document, 'library', 60);
+
+-- Gallery levels
+INSERT IGNORE INTO level_of_description_sector (term_id, sector, display_order) VALUES
+(@id_artwork, 'gallery', 10), (@id_photograph, 'gallery', 20), (@id_installation, 'gallery', 40);
+
+-- DAM levels
+INSERT IGNORE INTO level_of_description_sector (term_id, sector, display_order) VALUES
+(@id_photograph, 'dam', 10), (@id_audio, 'dam', 20), (@id_video, 'dam', 30),
+(@id_image, 'dam', 40), (@id_document, 'dam', 50), (@id_3dmodel, 'dam', 60), (@id_dataset, 'dam', 70);
