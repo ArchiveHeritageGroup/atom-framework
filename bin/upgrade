@@ -57,6 +57,26 @@ if (file_exists($migrationFile)) {
     }
 }
 
+// Run level of description migration
+echo "\n→ Migrating levels of description...\n";
+try {
+    require_once __DIR__ . '/../src/Migrations/ExtendedLevelsOfDescription.php';
+    $results = \AtomExtensions\Migrations\ExtendedLevelsOfDescription::up();
+    
+    if (!empty($results['created'])) {
+        echo "  Created: " . implode(', ', $results['created']) . "\n";
+    }
+    if (!empty($results['sectors_added'])) {
+        echo "  Sectors: " . count($results['sectors_added']) . " mappings added\n";
+    }
+    if (!empty($results['skipped'])) {
+        echo "  Existing: " . count($results['skipped']) . " levels\n";
+    }
+    echo "✓ Levels migrated.\n";
+} catch (Exception $e) {
+    echo "⚠ Level migration: " . $e->getMessage() . "\n";
+}
+
 // Patch ProjectConfiguration.class.php to load framework
 echo "\n→ Checking ProjectConfiguration...\n";
 $projectConfig = $atomRoot . '/config/ProjectConfiguration.class.php';

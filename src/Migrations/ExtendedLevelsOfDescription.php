@@ -7,141 +7,157 @@ use Illuminate\Database\Capsule\Manager as DB;
 
 /**
  * Extended Levels of Description Migration.
- * 
+ *
  * Adds GLAM sector-specific levels: Museum, Library, Gallery, DAM.
+ * Uses NAME-based lookups, not hardcoded IDs.
  */
 class ExtendedLevelsOfDescription
 {
     public const TAXONOMY_ID = 34; // LEVEL_OF_DESCRIPTION_ID
-    
-    // New level IDs (starting from 500 to avoid conflicts)
+
+    // Level definitions - NO hardcoded IDs
     public const LEVELS = [
-        // Museum
-        ['id' => 500, 'name' => 'Object', 'sector' => 'museum', 'order' => 10],
-        ['id' => 501, 'name' => 'Artwork', 'sector' => 'museum,gallery', 'order' => 20],
-        ['id' => 502, 'name' => 'Artifact', 'sector' => 'museum', 'order' => 30],
-        ['id' => 503, 'name' => 'Specimen', 'sector' => 'museum', 'order' => 40],
+        // Museum/Gallery
+        ['name' => 'Object', 'slug' => 'object-level', 'sectors' => ['museum']],
+        ['name' => 'Installation', 'slug' => 'installation', 'sectors' => ['museum', 'gallery']],
+        ['name' => 'Artwork', 'slug' => 'artwork', 'sectors' => ['museum', 'gallery']],
+        ['name' => 'Artifact', 'slug' => 'artifact', 'sectors' => ['museum']],
+        ['name' => 'Specimen', 'slug' => 'specimen', 'sectors' => ['museum']],
+        ['name' => '3D Model', 'slug' => '3d-model', 'sectors' => ['museum', 'dam']],
         // Library
-        ['id' => 504, 'name' => 'Book', 'sector' => 'library', 'order' => 10],
-        ['id' => 505, 'name' => 'Journal', 'sector' => 'library', 'order' => 20],
-        ['id' => 506, 'name' => 'Periodical', 'sector' => 'library', 'order' => 30],
-        ['id' => 507, 'name' => 'Article', 'sector' => 'library', 'order' => 40],
-        ['id' => 508, 'name' => 'Manuscript', 'sector' => 'library,archive', 'order' => 50],
-        // Gallery
-        ['id' => 509, 'name' => 'Photograph', 'sector' => 'gallery,dam', 'order' => 10],
-        ['id' => 510, 'name' => 'Print', 'sector' => 'gallery', 'order' => 20],
-        ['id' => 511, 'name' => 'Sculpture', 'sector' => 'gallery,museum', 'order' => 30],
-        ['id' => 512, 'name' => 'Installation', 'sector' => 'gallery', 'order' => 40],
-        // DAM (Digital Asset Management)
-        ['id' => 513, 'name' => 'Audio', 'sector' => 'dam', 'order' => 10],
-        ['id' => 514, 'name' => 'Video', 'sector' => 'dam', 'order' => 20],
-        ['id' => 515, 'name' => 'Image', 'sector' => 'dam', 'order' => 30],
-        ['id' => 516, 'name' => '3D Model', 'sector' => 'dam', 'order' => 40],
-        ['id' => 517, 'name' => 'Document', 'sector' => 'dam,library', 'order' => 50],
-        ['id' => 518, 'name' => 'Dataset', 'sector' => 'dam', 'order' => 60],
+        ['name' => 'Document', 'slug' => 'document', 'sectors' => ['library', 'dam']],
+        ['name' => 'Book', 'slug' => 'book', 'sectors' => ['library']],
+        ['name' => 'Monograph', 'slug' => 'monograph', 'sectors' => ['library']],
+        ['name' => 'Periodical', 'slug' => 'periodical', 'sectors' => ['library']],
+        ['name' => 'Journal', 'slug' => 'journal', 'sectors' => ['library']],
+        ['name' => 'Manuscript', 'slug' => 'manuscript', 'sectors' => ['library']],
+        ['name' => 'Article', 'slug' => 'article', 'sectors' => ['library']],
+        // DAM
+        ['name' => 'Photograph', 'slug' => 'photograph', 'sectors' => ['dam', 'gallery']],
+        ['name' => 'Audio', 'slug' => 'audio', 'sectors' => ['dam']],
+        ['name' => 'Video', 'slug' => 'video', 'sectors' => ['dam']],
+        ['name' => 'Image', 'slug' => 'image', 'sectors' => ['dam']],
+        ['name' => 'Dataset', 'slug' => 'dataset', 'sectors' => ['dam']],
     ];
-    
-    // MIME type to level mapping for auto-detection
-    public const MIME_MAPPING = [
-        'image/jpeg' => 509,      // Photograph
-        'image/png' => 515,       // Image
-        'image/gif' => 515,       // Image
-        'image/tiff' => 509,      // Photograph
-        'image/webp' => 515,      // Image
-        'audio/mpeg' => 513,      // Audio
-        'audio/wav' => 513,       // Audio
-        'audio/ogg' => 513,       // Audio
-        'audio/flac' => 513,      // Audio
-        'video/mp4' => 514,       // Video
-        'video/webm' => 514,      // Video
-        'video/quicktime' => 514, // Video
-        'video/x-msvideo' => 514, // Video
-        'application/pdf' => 517, // Document
-        'model/gltf+json' => 516, // 3D Model
-        'model/gltf-binary' => 516, // 3D Model
-        'model/obj' => 516,       // 3D Model
-        'model/stl' => 516,       // 3D Model
+
+    // Sector display order by NAME
+    public const SECTOR_ORDER = [
+        'archive' => [
+            'Record group' => 10, 'Fonds' => 20, 'Subfonds' => 30, 'Collection' => 40,
+            'Series' => 50, 'Subseries' => 60, 'File' => 70, 'Item' => 80, 'Part' => 90
+        ],
+        'museum' => [
+            '3D Model' => 10, 'Artifact' => 20, 'Artwork' => 30,
+            'Installation' => 40, 'Object' => 50, 'Specimen' => 60
+        ],
+        'library' => [
+            'Book' => 10, 'Monograph' => 20, 'Periodical' => 30, 'Journal' => 40,
+            'Article' => 45, 'Manuscript' => 50, 'Document' => 60
+        ],
+        'gallery' => [
+            'Artwork' => 10, 'Photograph' => 20, 'Installation' => 40
+        ],
+        'dam' => [
+            'Photograph' => 10, 'Audio' => 20, 'Video' => 30, 'Image' => 40,
+            'Document' => 50, '3D Model' => 60, 'Dataset' => 70
+        ],
     ];
 
     public static function up(): array
     {
-        $results = ['created' => [], 'skipped' => [], 'errors' => []];
-        
+        $results = ['created' => [], 'skipped' => [], 'sectors_added' => [], 'errors' => []];
+
         // Create sector mapping table if not exists
         self::createSectorTable();
-        
+
         foreach (self::LEVELS as $level) {
             try {
-                // Check if term already exists
-                $exists = DB::table('term')
-                    ->where('id', $level['id'])
-                    ->exists();
+                // Find term by name in taxonomy 34
+                $termId = self::findOrCreateTerm($level, $results);
                 
-                if ($exists) {
-                    $results['skipped'][] = $level['name'];
-                    continue;
+                if ($termId) {
+                    // Ensure sector mappings
+                    self::ensureSectorMappings($termId, $level['name'], $level['sectors'], $results);
                 }
-                
-                // Check if object exists
-                $objectExists = DB::table('object')
-                    ->where('id', $level['id'])
-                    ->exists();
-                
-                if (!$objectExists) {
-                    // Create object record first
-                    DB::table('object')->insert([
-                        'id' => $level['id'],
-                        'class_name' => 'QubitTerm',
-                        'created_at' => date('Y-m-d H:i:s'),
-                        'updated_at' => date('Y-m-d H:i:s'),
-                    ]);
-                }
-                
-                // Create term
-                DB::table('term')->insert([
-                    'id' => $level['id'],
-                    'taxonomy_id' => self::TAXONOMY_ID,
-                    'source_culture' => 'en',
-                ]);
-                
-                // Create term_i18n
-                DB::table('term_i18n')->insert([
-                    'id' => $level['id'],
-                    'culture' => 'en',
-                    'name' => $level['name'],
-                ]);
-                
-                // Create slug
-                $slug = strtolower(str_replace([' ', '_'], '-', $level['name']));
-                DB::table('slug')->insert([
-                    'object_id' => $level['id'],
-                    'slug' => $slug,
-                ]);
-                
-                // Add sector mapping
-                $sectors = explode(',', $level['sector']);
-                foreach ($sectors as $sector) {
-                    DB::table('level_of_description_sector')->insert([
-                        'term_id' => $level['id'],
-                        'sector' => trim($sector),
-                        'display_order' => $level['order'],
-                    ]);
-                }
-                
-                $results['created'][] = $level['name'];
-                
+
             } catch (\Exception $e) {
-                $results['errors'][] = $level['name'] . ': ' . $e->getMessage();
+                $results['errors'][] = "{$level['name']}: " . $e->getMessage();
             }
         }
-        
-        // Add existing ISAD levels to archive sector
-        self::mapExistingLevelsToSector();
-        
+
+        // Ensure archive levels have sector mappings
+        self::ensureArchiveSectorMappings($results);
+
         return $results;
     }
-    
-    private static function createSectorTable(): void
+
+    protected static function findOrCreateTerm(array $level, array &$results): ?int
+    {
+        // Look up by name
+        $existing = DB::table('term as t')
+            ->join('term_i18n as ti', 't.id', '=', 'ti.id')
+            ->where('t.taxonomy_id', self::TAXONOMY_ID)
+            ->where('ti.culture', 'en')
+            ->where('ti.name', $level['name'])
+            ->first();
+
+        if ($existing) {
+            $results['skipped'][] = $level['name'];
+            return $existing->id;
+        }
+
+        // Create new term - get next available ID
+        $maxId = DB::table('object')->max('id') ?? 0;
+        $newId = max($maxId + 1, 2000); // Start GLAM IDs at 2000+ to avoid conflicts
+
+        // Create object
+        DB::table('object')->insert([
+            'id' => $newId,
+            'class_name' => 'QubitTerm',
+            'created_at' => date('Y-m-d H:i:s'),
+            'updated_at' => date('Y-m-d H:i:s'),
+        ]);
+
+        // Create term
+        DB::table('term')->insert([
+            'id' => $newId,
+            'taxonomy_id' => self::TAXONOMY_ID,
+            'source_culture' => 'en',
+            'class_name' => 'QubitTerm',
+        ]);
+
+        // Create term_i18n
+        DB::table('term_i18n')->insert([
+            'id' => $newId,
+            'culture' => 'en',
+            'name' => $level['name'],
+        ]);
+
+        // Create unique slug
+        $slug = self::createUniqueSlug($level['slug'], $newId);
+        DB::table('slug')->insert([
+            'object_id' => $newId,
+            'slug' => $slug,
+        ]);
+
+        $results['created'][] = $level['name'];
+        return $newId;
+    }
+
+    protected static function createUniqueSlug(string $baseSlug, int $objectId): string
+    {
+        $slug = $baseSlug;
+        $counter = 1;
+        
+        while (DB::table('slug')->where('slug', $slug)->exists()) {
+            $slug = $baseSlug . '-' . $counter;
+            $counter++;
+        }
+        
+        return $slug;
+    }
+
+    protected static function createSectorTable(): void
     {
         $tableExists = DB::select("SHOW TABLES LIKE 'level_of_description_sector'");
         
@@ -151,67 +167,120 @@ class ExtendedLevelsOfDescription
                     id INT AUTO_INCREMENT PRIMARY KEY,
                     term_id INT NOT NULL,
                     sector VARCHAR(50) NOT NULL,
-                    display_order INT DEFAULT 0,
+                    display_order INT DEFAULT 100,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     UNIQUE KEY unique_term_sector (term_id, sector),
-                    INDEX idx_sector (sector),
-                    INDEX idx_term (term_id)
+                    INDEX idx_sector (sector)
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
             ");
         }
     }
-    
-    private static function mapExistingLevelsToSector(): void
+
+    protected static function ensureSectorMappings(int $termId, string $termName, array $sectors, array &$results): void
     {
-        // Map existing ISAD levels to archive sector
-        $existingLevels = [
-            220 => 10,  // Fonds
-            221 => 20,  // Sub-fonds
-            222 => 30,  // Collection
-            223 => 40,  // Series
-            224 => 50,  // Sub-series
-            225 => 60,  // File
-            226 => 70,  // Item
-        ];
-        
-        foreach ($existingLevels as $termId => $order) {
+        foreach ($sectors as $sector) {
+            $order = self::SECTOR_ORDER[$sector][$termName] ?? 100;
+            
             $exists = DB::table('level_of_description_sector')
                 ->where('term_id', $termId)
-                ->where('sector', 'archive')
+                ->where('sector', $sector)
                 ->exists();
-            
+
             if (!$exists) {
-                // Check if term exists before adding
-                $termExists = DB::table('term')->where('id', $termId)->exists();
-                if ($termExists) {
+                DB::table('level_of_description_sector')->insert([
+                    'term_id' => $termId,
+                    'sector' => $sector,
+                    'display_order' => $order,
+                ]);
+                $results['sectors_added'][] = "{$termName} -> {$sector}";
+            }
+        }
+    }
+
+    protected static function ensureArchiveSectorMappings(array &$results): void
+    {
+        // Standard AtoM archive level names
+        $archiveLevels = ['Record group', 'Fonds', 'Subfonds', 'Collection', 'Series', 'Subseries', 'File', 'Item', 'Part'];
+        
+        foreach ($archiveLevels as $levelName) {
+            // Find by name
+            $term = DB::table('term as t')
+                ->join('term_i18n as ti', 't.id', '=', 'ti.id')
+                ->where('t.taxonomy_id', self::TAXONOMY_ID)
+                ->where('ti.culture', 'en')
+                ->where('ti.name', $levelName)
+                ->first();
+
+            if ($term) {
+                $exists = DB::table('level_of_description_sector')
+                    ->where('term_id', $term->id)
+                    ->where('sector', 'archive')
+                    ->exists();
+
+                if (!$exists) {
+                    $order = self::SECTOR_ORDER['archive'][$levelName] ?? 100;
                     DB::table('level_of_description_sector')->insert([
-                        'term_id' => $termId,
+                        'term_id' => $term->id,
                         'sector' => 'archive',
                         'display_order' => $order,
                     ]);
+                    $results['sectors_added'][] = "{$levelName} -> archive";
                 }
             }
         }
     }
-    
+
     public static function down(): array
     {
         $results = ['removed' => [], 'errors' => []];
-        
+
+        // Only remove GLAM levels we created, not archive levels
         foreach (self::LEVELS as $level) {
             try {
-                DB::table('level_of_description_sector')->where('term_id', $level['id'])->delete();
-                DB::table('slug')->where('object_id', $level['id'])->delete();
-                DB::table('term_i18n')->where('id', $level['id'])->delete();
-                DB::table('term')->where('id', $level['id'])->delete();
-                DB::table('object')->where('id', $level['id'])->delete();
-                
+                // Find by name
+                $term = DB::table('term as t')
+                    ->join('term_i18n as ti', 't.id', '=', 'ti.id')
+                    ->where('t.taxonomy_id', self::TAXONOMY_ID)
+                    ->where('ti.culture', 'en')
+                    ->where('ti.name', $level['name'])
+                    ->first();
+
+                if (!$term) {
+                    continue;
+                }
+
+                // Remove sector mappings
+                DB::table('level_of_description_sector')
+                    ->where('term_id', $term->id)
+                    ->delete();
+
+                // Remove slug
+                DB::table('slug')
+                    ->where('object_id', $term->id)
+                    ->delete();
+
+                // Remove term_i18n
+                DB::table('term_i18n')
+                    ->where('id', $term->id)
+                    ->delete();
+
+                // Remove term
+                DB::table('term')
+                    ->where('id', $term->id)
+                    ->delete();
+
+                // Remove object
+                DB::table('object')
+                    ->where('id', $term->id)
+                    ->delete();
+
                 $results['removed'][] = $level['name'];
+
             } catch (\Exception $e) {
-                $results['errors'][] = $level['name'] . ': ' . $e->getMessage();
+                $results['errors'][] = "{$level['name']}: " . $e->getMessage();
             }
         }
-        
+
         return $results;
     }
 }
