@@ -204,7 +204,7 @@ class MigrationRunner
         foreach ($statements as $statement) {
             if (!empty(trim($statement))) {
                 try {
-                    DB::unprepared($statement);
+                    DB::statement($statement);
                 } catch (\Exception $e) {
                     // Ignore safe errors (column/table already exists, etc.)
                     $safeErrors = [
