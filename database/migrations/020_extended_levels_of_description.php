@@ -8,7 +8,8 @@
 
 require_once dirname(__DIR__, 2) . '/src/Migrations/ExtendedLevelsOfDescription.php';
 
-class ExtendedLevelsOfDescriptionMigration
+// Class name must match: remove numbers and underscores, PascalCase
+class ExtendedLevelsOfDescription
 {
     public function up(): array
     {
