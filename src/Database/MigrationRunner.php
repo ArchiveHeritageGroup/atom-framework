@@ -240,6 +240,19 @@ class MigrationRunner
      */
     protected function runPhpMigration(string $file, string $name): void
     {
+        // Check if file returns an anonymous class
+        $content = file_get_contents($file);
+        if (strpos($content, 'return new class') !== false) {
+            // Anonymous class - include and capture return value
+            $migration = require $file;
+            if (is_object($migration) && method_exists($migration, 'up')) {
+                $migration->up();
+                return;
+            }
+            throw new \Exception("Anonymous migration class must have an up() method: {$name}");
+        }
+
+        // Named class - original logic
         require_once $file;
 
         // Try to determine class name from file
@@ -247,16 +260,13 @@ class MigrationRunner
         $parts = explode('_', $fileName);
         
         // Remove date prefix if present (format: YYYY_MM_DD or YYYYMMDD)
-        // Only strip if first part is 4-digit year
         if (count($parts) > 3 && strlen($parts[0]) === 4 && is_numeric($parts[0]) && (int)$parts[0] > 2000) {
-            // Date prefix like 2025_01_01_...
             $parts = array_slice($parts, 3);
             // Also strip sequence number if present (like 000001)
             if (count($parts) > 0 && is_numeric($parts[0])) {
                 $parts = array_slice($parts, 1);
             }
         } elseif (count($parts) > 1 && is_numeric($parts[0]) && strlen($parts[0]) <= 3) {
-            // Sequence prefix like 020_...
             $parts = array_slice($parts, 1);
         }
         
@@ -294,9 +304,6 @@ class MigrationRunner
             throw new \Exception("Migration class {$migrationClass} must have an up() method");
         }
     }
-    /**
-     * Parse SQL file into individual statements
-     */
     protected function parseSqlStatements(string $sql): array
     {
         $statements = [];
