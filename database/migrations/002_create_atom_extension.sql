@@ -49,6 +49,7 @@ CREATE TABLE IF NOT EXISTS atom_extension_audit (
     extension_name VARCHAR(100) NOT NULL,
     action ENUM('installed','enabled','disabled','uninstalled','backup_created','data_deleted','upgraded') NOT NULL,
     performed_by INT,
+    ip_address VARCHAR(45),
     details JSON,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
