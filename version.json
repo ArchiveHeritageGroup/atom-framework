@@ -1,5 +1,5 @@
 {
-    "version": "1.1.80",
+    "version": "1.1.81",
     "date": "2026-01-04",
     "name": "AtoM Framework",
     "description": "Laravel Query Builder integration for AtoM 2.10",

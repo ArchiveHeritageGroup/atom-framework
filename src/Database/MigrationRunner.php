@@ -290,12 +290,6 @@ class MigrationRunner
             throw new \Exception("Migration class {$migrationClass} must have an up() method");
         }
     }
-            }
-        } else {
-            throw new \Exception("Migration class {$migrationClass} must have an up() method");
-        }
-    }
-
     /**
      * Parse SQL file into individual statements
      */
