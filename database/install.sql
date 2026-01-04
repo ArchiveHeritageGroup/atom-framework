@@ -6508,3 +6508,23 @@ CREATE TABLE IF NOT EXISTS security_classification_object (
     INDEX idx_sco_classification (classification_id),
     UNIQUE KEY unique_object_classification (object_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- =============================================================================
+-- SEED DATA: Required AHG Plugins (DO NOT REMOVE)
+-- =============================================================================
+
+-- Required plugins into atom_plugin (for Symfony/AtoM loading)
+INSERT INTO atom_plugin (name, class_name, is_enabled, is_core, is_locked, load_order, category, created_at, updated_at)
+VALUES
+('ahgThemeB5Plugin', 'ahgThemeB5PluginConfiguration', 0, 1, 1, 10, 'theme', NOW(), NOW()),
+('ahgSecurityClearancePlugin', 'ahgSecurityClearancePluginConfiguration', 1, 1, 1, 20, 'ahg', NOW(), NOW()),
+('ahgDisplayPlugin', 'ahgDisplayPluginConfiguration', 1, 1, 1, 30, 'ahg', NOW(), NOW())
+ON DUPLICATE KEY UPDATE is_core = 1, is_locked = 1;
+
+-- Required plugins into atom_extension (for extension manager)
+INSERT INTO atom_extension (machine_name, display_name, version, description, status, protection_level, installed_at, enabled_at, created_at)
+VALUES
+('ahgThemeB5Plugin', 'AHG Bootstrap 5 Theme', '1.0.0', 'AHG Bootstrap 5 theme with enhanced UI', 'enabled', 'system', NOW(), NOW(), NOW()),
+('ahgSecurityClearancePlugin', 'Security Clearance', '1.0.0', 'Security classification system for records', 'enabled', 'system', NOW(), NOW(), NOW()),
+('ahgDisplayPlugin', 'Display Mode Manager', '1.0.0', 'Display mode switching for GLAM sectors', 'enabled', 'system', NOW(), NOW(), NOW())
+ON DUPLICATE KEY UPDATE protection_level = 'system';
