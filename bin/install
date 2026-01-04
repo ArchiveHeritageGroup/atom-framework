@@ -201,7 +201,6 @@ echo -e "${GREEN}✓ Plugin data loaded${NC}"
 # =============================================================================
 echo ""
 echo "→ Running plugin migrations..."
-php bin/atom migrate:run 2>/dev/null || echo "  Migration command not available yet"
 echo ""
 
 # Step 6c: Enable required default plugins
