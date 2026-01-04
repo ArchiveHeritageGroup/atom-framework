@@ -6553,3 +6553,90 @@ INSERT IGNORE INTO level_of_description_sector (term_id, sector, display_order) 
 INSERT IGNORE INTO level_of_description_sector (term_id, sector, display_order) VALUES
 (1757, 'museum', 10), (1751, 'museum', 20), (1750, 'museum', 30),
 (512, 'museum', 40), (500, 'museum', 50), (1752, 'museum', 60);
+
+-- GLAM/DAM Level of Description Terms
+-- These terms extend the base AtoM taxonomy (id=34)
+
+-- Museum/Gallery levels
+INSERT INTO term (id, taxonomy_id, source_culture, class_name) VALUES
+(500, 34, 'en', 'QubitTerm'),
+(512, 34, 'en', 'QubitTerm'),
+(1750, 34, 'en', 'QubitTerm'),
+(1751, 34, 'en', 'QubitTerm'),
+(1752, 34, 'en', 'QubitTerm'),
+(1757, 34, 'en', 'QubitTerm')
+ON DUPLICATE KEY UPDATE taxonomy_id = 34;
+
+INSERT INTO term_i18n (id, culture, name) VALUES
+(500, 'en', 'Object'),
+(512, 'en', 'Installation'),
+(1750, 'en', 'Artwork'),
+(1751, 'en', 'Artifact'),
+(1752, 'en', 'Specimen'),
+(1757, 'en', '3D Model')
+ON DUPLICATE KEY UPDATE name = VALUES(name);
+
+INSERT INTO slug (object_id, slug) VALUES
+(500, 'material-cco'),
+(512, 'technique-cco'),
+(1750, 'artwork'),
+(1751, 'artifact'),
+(1752, 'specimen'),
+(1757, '3d-model')
+ON DUPLICATE KEY UPDATE slug = VALUES(slug);
+
+-- Library levels
+INSERT INTO term (id, taxonomy_id, source_culture, class_name) VALUES
+(1161, 34, 'en', 'QubitTerm'),
+(1700, 34, 'en', 'QubitTerm'),
+(1701, 34, 'en', 'QubitTerm'),
+(1702, 34, 'en', 'QubitTerm'),
+(1703, 34, 'en', 'QubitTerm'),
+(1704, 34, 'en', 'QubitTerm'),
+(1759, 34, 'en', 'QubitTerm')
+ON DUPLICATE KEY UPDATE taxonomy_id = 34;
+
+INSERT INTO term_i18n (id, culture, name) VALUES
+(1161, 'en', 'Document'),
+(1700, 'en', 'Book'),
+(1701, 'en', 'Monograph'),
+(1702, 'en', 'Periodical'),
+(1703, 'en', 'Journal'),
+(1704, 'en', 'Manuscript'),
+(1759, 'en', 'Article')
+ON DUPLICATE KEY UPDATE name = VALUES(name);
+
+INSERT INTO slug (object_id, slug) VALUES
+(1161, 'document'),
+(1700, 'book'),
+(1701, 'monograph'),
+(1702, 'periodical'),
+(1703, 'journal'),
+(1704, 'manuscript'),
+(1759, 'article')
+ON DUPLICATE KEY UPDATE slug = VALUES(slug);
+
+-- DAM levels
+INSERT INTO term (id, taxonomy_id, source_culture, class_name) VALUES
+(1753, 34, 'en', 'QubitTerm'),
+(1754, 34, 'en', 'QubitTerm'),
+(1755, 34, 'en', 'QubitTerm'),
+(1756, 34, 'en', 'QubitTerm'),
+(1758, 34, 'en', 'QubitTerm')
+ON DUPLICATE KEY UPDATE taxonomy_id = 34;
+
+INSERT INTO term_i18n (id, culture, name) VALUES
+(1753, 'en', 'Photograph'),
+(1754, 'en', 'Audio'),
+(1755, 'en', 'Video'),
+(1756, 'en', 'Image'),
+(1758, 'en', 'Dataset')
+ON DUPLICATE KEY UPDATE name = VALUES(name);
+
+INSERT INTO slug (object_id, slug) VALUES
+(1753, 'photograph'),
+(1754, 'audio'),
+(1755, 'video'),
+(1756, 'image'),
+(1758, 'dataset')
+ON DUPLICATE KEY UPDATE slug = VALUES(slug);
