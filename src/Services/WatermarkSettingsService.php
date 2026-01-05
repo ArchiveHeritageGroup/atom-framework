@@ -111,10 +111,13 @@ class WatermarkSettingsService
     public static function getWatermarkConfig(int $objectId): ?array
     {
         // 1. Check security classification (highest priority)
-        $security = DB::table('security_clearance')
-            ->where('object_id', $objectId)
-            ->whereNotNull('watermark_image')
-            ->where('watermark_image', '!=', '')
+        $security = DB::table('object_security_classification as osc')
+            ->join('security_classification as sc', 'osc.classification_id', '=', 'sc.id')
+            ->where('osc.object_id', $objectId)
+            ->where('sc.watermark_required', 1)
+            ->whereNotNull('sc.watermark_image')
+            ->where('sc.watermark_image', '!=', '')
+            ->select('sc.*')
             ->first();
 
         if ($security) {
@@ -124,7 +127,7 @@ class WatermarkSettingsService
                 'image' => $security->watermark_image,
                 'position' => 'repeat',
                 'opacity' => 0.5,
-                'source' => 'security_clearance',
+                'source' => 'object_security_classification',
             ];
         }
 
@@ -261,9 +264,12 @@ class WatermarkSettingsService
         $cache = [];
 
         // Get security classifications
-        $securityObjects = DB::table('security_clearance')
-            ->whereNotNull('watermark_image')
-            ->where('watermark_image', '!=', '')
+        $securityObjects = DB::table('object_security_classification as osc')
+            ->join('security_classification as sc', 'osc.classification_id', '=', 'sc.id')
+            ->where('sc.watermark_required', 1)
+            ->whereNotNull('sc.watermark_image')
+            ->where('sc.watermark_image', '!=', '')
+            ->select('osc.object_id', 'sc.watermark_image')
             ->get();
 
         foreach ($securityObjects as $sec) {
