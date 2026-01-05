@@ -158,25 +158,6 @@ class DerivativeWatermarkService
                 }
             }
         }
-        // 3. Check watermark_type on digital_object
-        $doWatermark = DB::table('digital_object as do')
-            ->join('watermark_type as wt', 'do.watermark_type_id', '=', 'wt.id')
-            ->where('do.object_id', $objectId)
-            ->where('do.watermark_enabled', 1)
-            ->where('wt.active', 1)
-            ->where('wt.code', '!=', 'NONE')
-            ->select('wt.code', 'wt.image_file', 'wt.position', 'wt.opacity')
-            ->first();
-
-        if ($doWatermark && $doWatermark->image_file) {
-            return [
-                'type' => 'selected',
-                'code' => $doWatermark->code,
-                'path' => self::getSystemWatermarkPath() . $doWatermark->image_file,
-                'position' => $doWatermark->position,
-                'opacity' => (float) $doWatermark->opacity,
-            ];
-        }
 
         // 4. Check default watermark setting
         $defaultEnabled = DB::table('watermark_setting')
