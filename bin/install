@@ -221,15 +221,35 @@ echo -e "${BLUE}Step 6c: Enabling required plugins...${NC}"
 
 # Theme and Security are required and cannot be disabled
 mysql -h "$DB_HOST" -u "$DB_USER" -p"$DB_PASS" "$DB_NAME" -e "
-INSERT INTO atom_plugin (name, class_name, is_enabled, is_core, is_locked, load_order, category, created_at, updated_at) VALUES
-('ahgThemeB5Plugin', 'ahgThemeB5PluginConfiguration', 0, 1, 1, 10, 'theme', NOW(), NOW()),
-('ahgSecurityClearancePlugin', 'ahgSecurityClearancePluginConfiguration', 1, 1, 1, 20, 'ahg', NOW(), NOW()),
-('ahgDisplayPlugin', 'ahgDisplayPluginConfiguration', 1, 1, 1, 30, 'ahg', NOW(), NOW())
-ON DUPLICATE KEY UPDATE is_core = 1, is_locked = 1, updated_at = NOW();
+INSERT INTO atom_plugin (name, class_name, version, is_enabled, is_core, is_locked, load_order, category, created_at, updated_at) VALUES
+('ahgThemeB5Plugin', 'ahgThemeB5PluginConfiguration', '1.2.0', 0, 1, 1, 10, 'theme', NOW(), NOW()),
+('ahgSecurityClearancePlugin', 'ahgSecurityClearancePluginConfiguration', '1.0.0', 1, 1, 1, 20, 'ahg', NOW(), NOW()),
+('ahgDisplayPlugin', 'ahgDisplayPluginConfiguration', '1.0.0', 1, 1, 1, 30, 'ahg', NOW(), NOW())
+ON DUPLICATE KEY UPDATE is_core = 1, is_locked = 1, version = VALUES(version), updated_at = NOW();
 "
 echo -e "  ${GREEN}✓${NC} ahgThemeB5Plugin enabled (locked)"
 echo -e "  ${GREEN}✓${NC} ahgSecurityClearancePlugin enabled (locked)"
 echo -e "  ${GREEN}✓${NC} ahgDisplayPlugin enabled (locked)"
+
+# Step 6d: Sync plugin versions from extension.json
+# =============================================================================
+echo ""
+echo -e "${BLUE}Step 6d: Syncing plugin versions...${NC}"
+for plugin_dir in ${ATOM_ROOT}/atom-ahg-plugins/*Plugin; do
+    if [ -d "$plugin_dir" ]; then
+        plugin_name=$(basename "$plugin_dir")
+        manifest="${plugin_dir}/extension.json"
+        if [ -f "$manifest" ]; then
+            version=$(grep -o '"version"[[:space:]]*:[[:space:]]*"[^"]*"' "$manifest" | head -1 | sed 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/')
+            if [ -n "$version" ]; then
+                mysql -h "$DB_HOST" -u "$DB_USER" -p"$DB_PASS" "$DB_NAME" -e "
+                    UPDATE atom_plugin SET version = '$version' WHERE name = '$plugin_name' AND (version IS NULL OR version = '');
+                " 2>/dev/null
+            fi
+        fi
+    fi
+done
+echo -e "  ${GREEN}✓${NC} Plugin versions synced from extension.json"
 
 
 # Step 7: Generate Install Log
