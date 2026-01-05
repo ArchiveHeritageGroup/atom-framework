@@ -6547,3 +6547,102 @@ INSERT INTO `watermark_type` (`code`, `name`, `image_file`, `position`, `opacity
 ('PREVIEW', 'Preview Only', 'preview.png', 'center', 0.40, 1, 8),
 ('RESTRICTED', 'Restricted', 'restricted.png', 'repeat', 0.35, 1, 9)
 ON DUPLICATE KEY UPDATE name=VALUES(name), image_file=VALUES(image_file), position=VALUES(position), opacity=VALUES(opacity);
+
+-- ============================================================
+-- TK Labels (Traditional Knowledge Labels)
+-- ============================================================
+
+-- Table: tk_label_category
+CREATE TABLE IF NOT EXISTS `tk_label_category` (
+  `id` int unsigned NOT NULL AUTO_INCREMENT,
+  `code` varchar(50) NOT NULL,
+  `color` varchar(20) DEFAULT NULL,
+  `sort_order` int DEFAULT 0,
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_tk_cat_code` (`code`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Table: tk_label_category_i18n
+CREATE TABLE IF NOT EXISTS `tk_label_category_i18n` (
+  `id` int unsigned NOT NULL AUTO_INCREMENT,
+  `tk_label_category_id` int unsigned NOT NULL,
+  `culture` varchar(10) NOT NULL DEFAULT 'en',
+  `name` varchar(100) NOT NULL,
+  `description` text,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_tk_cat_i18n` (`tk_label_category_id`, `culture`),
+  CONSTRAINT `fk_tk_cat_i18n` FOREIGN KEY (`tk_label_category_id`) REFERENCES `tk_label_category` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Table: tk_label
+CREATE TABLE IF NOT EXISTS `tk_label` (
+  `id` int unsigned NOT NULL AUTO_INCREMENT,
+  `tk_label_category_id` int unsigned DEFAULT NULL,
+  `code` varchar(20) NOT NULL,
+  `uri` varchar(255) DEFAULT NULL,
+  `icon_url` varchar(500) DEFAULT NULL,
+  `icon_file` varchar(255) DEFAULT NULL,
+  `is_active` tinyint(1) DEFAULT 1,
+  `sort_order` int DEFAULT 0,
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_tk_code` (`code`),
+  KEY `idx_tk_cat` (`tk_label_category_id`),
+  CONSTRAINT `fk_tk_label_cat` FOREIGN KEY (`tk_label_category_id`) REFERENCES `tk_label_category` (`id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Table: tk_label_i18n
+CREATE TABLE IF NOT EXISTS `tk_label_i18n` (
+  `id` int unsigned NOT NULL AUTO_INCREMENT,
+  `tk_label_id` int unsigned NOT NULL,
+  `culture` varchar(10) NOT NULL DEFAULT 'en',
+  `name` varchar(100) NOT NULL,
+  `description` text,
+  `community_protocol` text,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_tk_i18n` (`tk_label_id`, `culture`),
+  CONSTRAINT `fk_tk_label_i18n` FOREIGN KEY (`tk_label_id`) REFERENCES `tk_label` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Default TK Label Categories
+INSERT IGNORE INTO `tk_label_category` (`id`, `code`, `color`, `sort_order`) VALUES
+(1, 'attribution', '#0d6efd', 1),
+(2, 'protocol', '#198754', 2),
+(3, 'provenance', '#ffc107', 3);
+
+INSERT IGNORE INTO `tk_label_category_i18n` (`tk_label_category_id`, `culture`, `name`, `description`) VALUES
+(1, 'en', 'Attribution', 'Labels for proper attribution and credit'),
+(2, 'en', 'Protocol', 'Labels for cultural protocols and restrictions'),
+(3, 'en', 'Provenance', 'Labels for provenance and verification');
+
+-- Default TK Labels
+INSERT IGNORE INTO `tk_label` (`id`, `tk_label_category_id`, `code`, `uri`, `icon_url`, `is_active`, `sort_order`) VALUES
+(1, 1, 'TK-A', 'https://localcontexts.org/label/tk-attribution/', 'https://localcontexts.org/wp-content/uploads/2023/03/TK_Attribution.png', 1, 1),
+(2, 1, 'TK-CL', 'https://localcontexts.org/label/tk-clan/', 'https://localcontexts.org/wp-content/uploads/2023/03/TK_Clan.png', 1, 2),
+(3, 1, 'TK-F', 'https://localcontexts.org/label/tk-family/', 'https://localcontexts.org/wp-content/uploads/2023/03/TK_Family.png', 1, 3),
+(4, 2, 'TK-MC', 'https://localcontexts.org/label/tk-multiple-communities/', 'https://localcontexts.org/wp-content/uploads/2023/03/TK_Men_General.png', 1, 10),
+(5, 2, 'TK-WG', 'https://localcontexts.org/label/tk-women-general/', 'https://localcontexts.org/wp-content/uploads/2023/03/TK_Women_General.png', 1, 11),
+(6, 2, 'TK-SS', 'https://localcontexts.org/label/tk-seasonal/', 'https://localcontexts.org/wp-content/uploads/2023/03/TK_Seasonal.png', 1, 12),
+(7, 2, 'TK-CV', 'https://localcontexts.org/label/tk-community-voice/', NULL, 1, 13),
+(8, 2, 'TK-CS', 'https://localcontexts.org/label/tk-community-use-only/', 'https://localcontexts.org/wp-content/uploads/2023/03/TK_Community_Use_Only.png', 1, 14),
+(9, 2, 'TK-NC', 'https://localcontexts.org/label/tk-non-commercial/', 'https://localcontexts.org/wp-content/uploads/2023/03/TK_NonCommercial.png', 1, 15),
+(10, 3, 'TK-V', 'https://localcontexts.org/label/tk-verified/', 'https://localcontexts.org/wp-content/uploads/2023/03/TK_Verified.png', 1, 20),
+(11, 3, 'TK-CO', 'https://localcontexts.org/label/tk-open-to-commercialization/', NULL, 1, 21),
+(12, 3, 'TK-OC', 'https://localcontexts.org/label/tk-outreach/', NULL, 1, 22);
+
+INSERT IGNORE INTO `tk_label_i18n` (`tk_label_id`, `culture`, `name`, `description`) VALUES
+(1, 'en', 'TK Attribution', 'Corrects historical mistakes in attribution.'),
+(2, 'en', 'TK Clan', 'Material associated with a specific clan.'),
+(3, 'en', 'TK Family', 'Material with family ownership.'),
+(4, 'en', 'TK Multiple Communities', 'Shared across multiple communities.'),
+(5, 'en', 'TK Women General', 'Gender restrictions apply - women.'),
+(6, 'en', 'TK Seasonal', 'Seasonal or time-based restrictions.'),
+(7, 'en', 'TK Community Voice', 'Community protocols apply.'),
+(8, 'en', 'TK Community Use Only', 'For community use only.'),
+(9, 'en', 'TK Non-Commercial', 'Not for commercial use.'),
+(10, 'en', 'TK Verified', 'Verified by community.'),
+(11, 'en', 'TK-CO', 'Open to commercialization with permission.'),
+(12, 'en', 'TK Open to Commercialization', 'Approved for outreach activities.');
