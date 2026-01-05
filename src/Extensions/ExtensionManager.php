@@ -154,6 +154,7 @@ class ExtensionManager implements ExtensionManagerContract
             }
         }
 
+        $this->checkPhpExtensions($manifest);
         $this->checkDependencies($manifest);
 
         $id = $this->repository->create([
@@ -573,7 +574,38 @@ class ExtensionManager implements ExtensionManagerContract
         return $this->loadManifest($path);
     }
 
-    protected function checkDependencies(array $manifest): void
+    /**
+     * Check required PHP extensions
+     */
+    protected function checkPhpExtensions(array $manifest): void
+    {
+        $required = $manifest['requires']['php_extensions'] ?? [];
+        if (empty($required)) {
+            return;
+        }
+        
+        $missing = [];
+        foreach ($required as $ext) {
+            if (!extension_loaded($ext)) {
+                $missing[] = $ext;
+            }
+        }
+        
+        if (!empty($missing)) {
+            $extList = implode(', ', $missing);
+            $installCmds = [];
+            foreach ($missing as $ext) {
+                $installCmds[] = "sudo apt-get install php" . PHP_MAJOR_VERSION . "." . PHP_MINOR_VERSION . "-{$ext}";
+            }
+            throw new \RuntimeException(
+                "Missing required PHP extensions: {$extList}\n" .
+                "Install with:\n  " . implode("\n  ", $installCmds) . "\n" .
+                "Then: sudo systemctl restart php" . PHP_MAJOR_VERSION . "." . PHP_MINOR_VERSION . "-fpm"
+            );
+        }
+    }
+
+        protected function checkDependencies(array $manifest): void
     {
         $dependencies = $manifest['dependencies'] ?? [];
         foreach ($dependencies as $dep) {
