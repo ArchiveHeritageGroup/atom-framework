@@ -7,8 +7,9 @@
 return new class {
     public function up(): void
     {
-        $atomRoot = sfConfig::get('sf_root_dir');
-        $frameworkPath = $atomRoot . '/atom-framework';
+        // Get paths relative to framework location
+        $frameworkPath = dirname(dirname(__DIR__));
+        $atomRoot = dirname($frameworkPath);
         $sourceDir = $frameworkPath . '/dist/images/watermarks';
         $targetDir = $atomRoot . '/images/watermarks';
         
@@ -36,11 +37,11 @@ return new class {
         if (function_exists('posix_getpwnam')) {
             $www = posix_getpwnam('www-data');
             if ($www) {
-                chown($targetDir, $www['uid']);
-                chgrp($targetDir, $www['gid']);
+                @chown($targetDir, $www['uid']);
+                @chgrp($targetDir, $www['gid']);
                 foreach (glob($targetDir . '/*') as $f) {
-                    chown($f, $www['uid']);
-                    chgrp($f, $www['gid']);
+                    @chown($f, $www['uid']);
+                    @chgrp($f, $www['gid']);
                 }
             }
         }
