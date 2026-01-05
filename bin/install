@@ -142,6 +142,17 @@ else
     echo -e "  ${YELLOW}⚠${NC} AHG theme dist folder not found"
 fi
 
+
+# Copy watermark images
+WATERMARK_DIR="${ATOM_ROOT}/images/watermarks"
+if [ -d "${FRAMEWORK_PATH}/dist/images/watermarks" ]; then
+    mkdir -p ${WATERMARK_DIR}
+    cp -f ${FRAMEWORK_PATH}/dist/images/watermarks/* ${WATERMARK_DIR}/ 2>/dev/null
+    chown -R www-data:www-data ${WATERMARK_DIR}
+    echo -e "  ${GREEN}✓${NC} Copied watermark images"
+else
+    echo -e "  ${YELLOW}⚠${NC} Watermark images not found"
+fi
 # =============================================================================
 # Step 5: Enable themes in setting_i18n
 # =============================================================================
