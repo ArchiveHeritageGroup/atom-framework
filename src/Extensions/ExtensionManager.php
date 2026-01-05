@@ -355,6 +355,8 @@ class ExtensionManager implements ExtensionManagerContract
             ['name' => $machineName],
             [
                 'class_name' => $machineName . 'Configuration',
+                'version' => $manifest['version'] ?? '1.0.0',
+                'description' => $manifest['description'] ?? null,
                 'is_enabled' => 1,
                 'is_core' => 0,
                 'load_order' => $loadOrder,

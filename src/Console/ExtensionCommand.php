@@ -590,7 +590,7 @@ class ExtensionCommand
             } elseif ($hasLocal) {
                 // Local but not enabled
                 $localNotEnabled[$machineName] = $ext;
-                $localNotEnabled[$machineName]['local_version'] = $localVersion;
+                $localNotEnabled[$machineName]['local_version'] = $fileVersion;
             }
         }
 
