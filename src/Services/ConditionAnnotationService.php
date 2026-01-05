@@ -193,7 +193,7 @@ class ConditionAnnotationService
             // Generate filenames
             $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
             $filename = sprintf('condition_%d_%s.%s', $conditionCheckId, uniqid(), $ext);
-            $uploadDir = \sfConfig::get('sf_upload_dir') . '/condition_photos';
+            $uploadDir = $this->getUploadPath();
 
             if (!is_dir($uploadDir)) {
                 mkdir($uploadDir, 0755, true);
@@ -358,7 +358,7 @@ class ConditionAnnotationService
             }
 
             // Delete files
-            $uploadDir = \sfConfig::get('sf_upload_dir') . '/condition_photos';
+            $uploadDir = $this->getUploadPath();
             if ($photo->filename) {
                 $filepath = $uploadDir . '/' . $photo->filename;
                 if (file_exists($filepath)) {
@@ -423,5 +423,25 @@ class ConditionAnnotationService
             ]);
             return false;
         }
+    }
+
+    /**
+     * Get upload path from settings or default
+     */
+    protected function getUploadPath(): string
+    {
+        try {
+            $result = \Illuminate\Database\Capsule\Manager::table('ahg_settings')
+                ->where('setting_key', 'photo_upload_path')
+                ->value('setting_value');
+            
+            if ($result && !empty(trim($result))) {
+                return rtrim($result, '/');
+            }
+        } catch (\Exception $e) {
+            // Fall back to default
+        }
+        
+        return \sfConfig::get('sf_root_dir') . '/uploads/condition_photos';
     }
 }
