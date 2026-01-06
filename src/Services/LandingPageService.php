@@ -148,7 +148,7 @@ class LandingPageService
     /**
      * Add block to page
      */
-    public function addBlock(int $pageId, int $blockTypeId, ?array $config = null, ?int $userId = null): array
+    public function addBlock(int $pageId, int $blockTypeId, ?array $config = null, ?int $userId = null, array $options = []): array
     {
         $blockType = $this->repository->getBlockTypeById($blockTypeId);
         if (!$blockType) {
@@ -158,12 +158,20 @@ class LandingPageService
         // Merge with default config
         $finalConfig = array_merge($blockType->default_config, $config ?? []);
 
+        $blockData = [
+            'page_id' => $pageId,
+            'block_type_id' => $blockTypeId,
+            'config' => $finalConfig
+        ];
+
+        // Add parent block info for nested blocks
+        if (!empty($options['parent_block_id'])) {
+            $blockData['parent_block_id'] = $options['parent_block_id'];
+            $blockData['column_slot'] = $options['column_slot'] ?? null;
+        }
+
         try {
-            $blockId = $this->repository->createBlock([
-                'page_id' => $pageId,
-                'block_type_id' => $blockTypeId,
-                'config' => $finalConfig
-            ]);
+            $blockId = $this->repository->createBlock($blockData);
 
             $this->repository->logAudit('block_added', $pageId, $blockId, 
                 ['type' => $blockType->machine_name], $userId);
@@ -728,8 +736,6 @@ class LandingPageService
                 return $this->enrichBlockData($child);
             });
         }
-        // Load child blocks for column layouts
-        $block = $this->loadChildBlocks($block);
         return $block;
     }
 }
