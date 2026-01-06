@@ -10,7 +10,7 @@ class MigrateCommand
     public function __construct()
     {
         $this->runner = new MigrationRunner();
-        $this->atomRoot = dirname(dirname(dirname(dirname(__DIR__))));
+        $this->atomRoot = dirname(dirname(dirname(__DIR__)));
     }
     
     public function run(array $args): int
