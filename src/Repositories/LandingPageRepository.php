@@ -243,9 +243,16 @@ class LandingPageRepository
             $query->where('atom_landing_block.is_visible', 1);
         }
 
-        return $query->get()->map(function ($block) {
+        $repo = $this;
+        return $query->get()->map(function ($block) use ($repo) {
             $block->config = json_decode($block->config, true) ?? [];
             $block->config_schema = json_decode($block->config_schema, true) ?? [];
+            // Load child blocks for column layouts
+            if (in_array($block->machine_name, ['row_2_col', 'row_3_col', 'row_1_col'])) {
+                $block->child_blocks = $repo->getChildBlocks($block->id);
+            } else {
+                $block->child_blocks = collect([]);
+            }
             return $block;
         });
     }
