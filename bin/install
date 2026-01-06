@@ -1,6 +1,6 @@
 #!/bin/bash
 # =============================================================================
-# AtoM Framework Installer v2.3
+# AtoM Framework Installer v2.4
 # Automates: table creation, symlinks, ProjectConfiguration, dist assets, themes
 # =============================================================================
 
@@ -15,7 +15,7 @@ NC='\033[0m'
 
 echo -e "${GREEN}"
 echo "=============================================="
-echo "  AtoM Framework Installer v2.3"
+echo "  AtoM Framework Installer v2.4"
 echo "=============================================="
 echo -e "${NC}"
 
@@ -49,6 +49,21 @@ mysql_cmd() {
 
 mysql_cmd_file() {
     mysql -h "$DB_HOST" -u "$DB_USER" -p"$DB_PASS" "$DB_NAME" < "$1" 2>/dev/null
+}
+
+# Helper to run SQL file with error reporting
+runSqlFile() {
+    local file="$1"
+    local name="$2"
+    if mysql -h "$DB_HOST" -u "$DB_USER" -p"$DB_PASS" "$DB_NAME" < "$file" 2>&1; then
+        echo -e "  ${GREEN}✓${NC} $name"
+        return 0
+    else
+        local err=$(mysql -h "$DB_HOST" -u "$DB_USER" -p"$DB_PASS" "$DB_NAME" < "$file" 2>&1)
+        echo -e "  ${YELLOW}⚠${NC} $name (warnings)"
+        echo -e "     ${YELLOW}runSqlFile ERROR: $err${NC}"
+        return 0
+    fi
 }
 
 # =============================================================================
@@ -175,21 +190,19 @@ rm -rf ${ATOM_ROOT}/cache/*
 echo -e "  ${GREEN}✓${NC} Cache cleared"
 
 # =============================================================================
-# Step 6b: Load plugin data files
+# Step 6b: Load plugin data files (DYNAMIC - all plugins with install.sql)
 # =============================================================================
 echo ""
 echo -e "${BLUE}Step 6b: Loading plugin data...${NC}"
 
-AHG_DATA_PLUGINS="ahgThemeB5Plugin ahgDisplayPlugin ahgLibraryPlugin ahgSecurityClearancePlugin ahgDAMPlugin ahgAuditTrailPlugin ahgResearchPlugin ahgSpectrumPlugin ahgMuseumPlugin ahgGalleryPlugin ahgConditionPlugin ahgGrapPlugin ahgDonorAgreementPlugin ahgAccessRequestPlugin ahgRightsPlugin ahgExtendedRightsPlugin"
-
-for plugin in $AHG_DATA_PLUGINS; do
-    DATA_SQL="${PLUGINS_DIR}/${plugin}/data/install.sql"
-    if [ -f "$DATA_SQL" ]; then
-        echo -e "  ${YELLOW}→${NC} Loading $plugin..."
-        if mysql_cmd_file "$DATA_SQL"; then
-            echo -e "  ${GREEN}✓${NC} $plugin loaded"
-        else
-            echo -e "  ${YELLOW}⚠${NC} $plugin had warnings (may be expected)"
+# Dynamically find ALL ahg plugins with install.sql
+for plugin_dir in ${PLUGINS_DIR}/ahg*Plugin; do
+    if [ -d "$plugin_dir" ]; then
+        plugin=$(basename "$plugin_dir")
+        DATA_SQL="${plugin_dir}/data/install.sql"
+        if [ -f "$DATA_SQL" ]; then
+            echo -e "  ${YELLOW}→${NC} Installing ${plugin}..."
+            runSqlFile "$DATA_SQL" "$plugin"
         fi
     fi
 done
