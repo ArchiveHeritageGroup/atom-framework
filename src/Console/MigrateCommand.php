@@ -1,22 +1,21 @@
 <?php
-
 namespace AtomFramework\Console;
-
 use AtomFramework\Database\MigrationRunner;
 
 class MigrateCommand
 {
     protected MigrationRunner $runner;
+    protected string $atomRoot;
     
     public function __construct()
     {
         $this->runner = new MigrationRunner();
+        $this->atomRoot = dirname(dirname(dirname(dirname(__DIR__))));
     }
     
     public function run(array $args): int
     {
         $action = $args[0] ?? 'run';
-        
         switch ($action) {
             case 'run':
                 return $this->migrate();
@@ -28,10 +27,56 @@ class MigrateCommand
         }
     }
     
+    protected function pullUpdates(): void
+    {
+        $frameworkPath = $this->atomRoot . '/atom-framework';
+        $pluginsPath = $this->atomRoot . '/atom-ahg-plugins';
+        
+        echo "\033[34mPulling latest updates...\033[0m\n";
+        
+        // Pull framework
+        if (is_dir($frameworkPath . '/.git')) {
+            echo "  → atom-framework: ";
+            $output = [];
+            exec("cd {$frameworkPath} && git pull origin main 2>&1", $output, $code);
+            if ($code === 0) {
+                $lastLine = end($output);
+                if (strpos($lastLine, 'Already up to date') !== false) {
+                    echo "up to date\n";
+                } else {
+                    echo "\033[32mupdated\033[0m\n";
+                }
+            } else {
+                echo "\033[33mfailed (continuing anyway)\033[0m\n";
+            }
+        }
+        
+        // Pull plugins
+        if (is_dir($pluginsPath . '/.git')) {
+            echo "  → atom-ahg-plugins: ";
+            $output = [];
+            exec("cd {$pluginsPath} && git pull origin main 2>&1", $output, $code);
+            if ($code === 0) {
+                $lastLine = end($output);
+                if (strpos($lastLine, 'Already up to date') !== false) {
+                    echo "up to date\n";
+                } else {
+                    echo "\033[32mupdated\033[0m\n";
+                }
+            } else {
+                echo "\033[33mfailed (continuing anyway)\033[0m\n";
+            }
+        }
+        
+        echo "\n";
+    }
+    
     protected function migrate(): int
     {
-        echo "Running migrations...\n";
+        // Pull updates first
+        $this->pullUpdates();
         
+        echo "Running migrations...\n";
         $results = $this->runner->migrate();
         
         if (empty($results)) {
