@@ -7,7 +7,8 @@ use Illuminate\Database\Capsule\Manager as DB;
 return new class {
     public function up(): void
     {
-        $columns = [
+        // privacy_processing_activity columns
+        $processingColumns = [
             'jurisdiction' => "VARCHAR(30) NOT NULL DEFAULT 'popia' AFTER id",
             'description' => "TEXT NULL AFTER name",
             'third_countries' => "JSON NULL AFTER recipients",
@@ -17,14 +18,29 @@ return new class {
             'lawful_basis_code' => "VARCHAR(50) NULL AFTER lawful_basis"
         ];
 
-        foreach ($columns as $column => $definition) {
-            if (!$this->columnExists('privacy_processing_activity', $column)) {
-                try {
-                    DB::statement("ALTER TABLE privacy_processing_activity ADD COLUMN {$column} {$definition}");
-                    echo "  Added column: {$column}\n";
-                } catch (\Exception $e) {
-                    echo "  Column {$column}: " . $e->getMessage() . "\n";
-                }
+        foreach ($processingColumns as $column => $definition) {
+            $this->addColumnIfNotExists('privacy_processing_activity', $column, $definition);
+        }
+
+        // privacy_consent_record columns
+        $consentColumns = [
+            'status' => "VARCHAR(50) NULL DEFAULT 'active'",
+            'withdrawn_date' => "DATE NULL"
+        ];
+
+        foreach ($consentColumns as $column => $definition) {
+            $this->addColumnIfNotExists('privacy_consent_record', $column, $definition);
+        }
+    }
+
+    protected function addColumnIfNotExists(string $table, string $column, string $definition): void
+    {
+        if (!$this->columnExists($table, $column)) {
+            try {
+                DB::statement("ALTER TABLE {$table} ADD COLUMN {$column} {$definition}");
+                echo "  Added {$table}.{$column}\n";
+            } catch (\Exception $e) {
+                echo "  {$table}.{$column}: " . $e->getMessage() . "\n";
             }
         }
     }
