@@ -271,3 +271,52 @@ echo "  2. Test the site"
 echo ""
 echo "To switch themes, go to Admin → Themes"
 echo ""
+
+# =============================================================================
+# Step 10: Copy dist assets (icons)
+# =============================================================================
+echo ""
+echo "Step 10: Copying dist assets..."
+
+# Create dist/icons directory
+mkdir -p "${ATOM_ROOT}/dist/icons"
+
+# Copy icons from theme plugin
+if [ -d "${AHG_PLUGINS}/ahgThemeB5Plugin/dist/icons" ]; then
+    cp -r "${AHG_PLUGINS}/ahgThemeB5Plugin/dist/icons/"* "${ATOM_ROOT}/dist/icons/" 2>/dev/null
+    echo "  ✓ Copied icons to dist/icons/"
+else
+    echo "  ⚠ No icons found in ahgThemeB5Plugin/dist/icons/"
+fi
+
+
+# =============================================================================
+# Step 11: Apply AtoM core patches
+# =============================================================================
+echo ""
+echo "Step 11: Applying AtoM core patches..."
+
+# Copy patched QubitAcl.class.php (Role 99 fix)
+if [ -f "${FRAMEWORK_PATH}/patches/qbAclPlugin/lib/QubitAcl.class.php" ]; then
+    cp -f "${FRAMEWORK_PATH}/patches/qbAclPlugin/lib/QubitAcl.class.php" \
+          "${ATOM_ROOT}/plugins/qbAclPlugin/lib/QubitAcl.class.php"
+    echo "  ✓ Applied QubitAcl patch (Role 99 fix)"
+else
+    echo "  ⚠ QubitAcl patch not found"
+fi
+
+# =============================================================================
+# Step 12: Copy dist assets (icons)
+# =============================================================================
+echo ""
+echo "Step 12: Copying dist assets..."
+
+mkdir -p "${ATOM_ROOT}/dist/icons"
+
+if [ -d "${AHG_PLUGINS}/ahgThemeB5Plugin/dist/icons" ]; then
+    cp -r "${AHG_PLUGINS}/ahgThemeB5Plugin/dist/icons/"* "${ATOM_ROOT}/dist/icons/" 2>/dev/null
+    echo "  ✓ Copied $(ls ${AHG_PLUGINS}/ahgThemeB5Plugin/dist/icons/ | wc -l) icons to dist/icons/"
+else
+    echo "  ⚠ No icons found in ahgThemeB5Plugin/dist/icons/"
+fi
+
