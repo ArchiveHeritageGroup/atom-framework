@@ -2332,6 +2332,86 @@ CREATE TABLE IF NOT EXISTS `level_of_description_sector` (
   KEY `idx_term` (`term_id`)
 ) ENGINE=InnoDB AUTO_INCREMENT=65 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
+
+-- =====================================================
+-- Default Level of Description Sector Mappings
+-- Uses name lookup to handle different term IDs across installations
+-- =====================================================
+
+-- Archive sector (ISAD standard levels)
+INSERT IGNORE INTO level_of_description_sector (term_id, sector, display_order, created_at)
+SELECT t.id, 'archive', 10, NOW() FROM term t JOIN term_i18n ti ON t.id = ti.id AND ti.culture = 'en' WHERE t.taxonomy_id = 34 AND ti.name = 'Record group';
+INSERT IGNORE INTO level_of_description_sector (term_id, sector, display_order, created_at)
+SELECT t.id, 'archive', 20, NOW() FROM term t JOIN term_i18n ti ON t.id = ti.id AND ti.culture = 'en' WHERE t.taxonomy_id = 34 AND ti.name = 'Fonds';
+INSERT IGNORE INTO level_of_description_sector (term_id, sector, display_order, created_at)
+SELECT t.id, 'archive', 30, NOW() FROM term t JOIN term_i18n ti ON t.id = ti.id AND ti.culture = 'en' WHERE t.taxonomy_id = 34 AND ti.name = 'Subfonds';
+INSERT IGNORE INTO level_of_description_sector (term_id, sector, display_order, created_at)
+SELECT t.id, 'archive', 40, NOW() FROM term t JOIN term_i18n ti ON t.id = ti.id AND ti.culture = 'en' WHERE t.taxonomy_id = 34 AND ti.name = 'Collection';
+INSERT IGNORE INTO level_of_description_sector (term_id, sector, display_order, created_at)
+SELECT t.id, 'archive', 50, NOW() FROM term t JOIN term_i18n ti ON t.id = ti.id AND ti.culture = 'en' WHERE t.taxonomy_id = 34 AND ti.name = 'Series';
+INSERT IGNORE INTO level_of_description_sector (term_id, sector, display_order, created_at)
+SELECT t.id, 'archive', 60, NOW() FROM term t JOIN term_i18n ti ON t.id = ti.id AND ti.culture = 'en' WHERE t.taxonomy_id = 34 AND ti.name = 'Subseries';
+INSERT IGNORE INTO level_of_description_sector (term_id, sector, display_order, created_at)
+SELECT t.id, 'archive', 70, NOW() FROM term t JOIN term_i18n ti ON t.id = ti.id AND ti.culture = 'en' WHERE t.taxonomy_id = 34 AND ti.name = 'File';
+INSERT IGNORE INTO level_of_description_sector (term_id, sector, display_order, created_at)
+SELECT t.id, 'archive', 80, NOW() FROM term t JOIN term_i18n ti ON t.id = ti.id AND ti.culture = 'en' WHERE t.taxonomy_id = 34 AND ti.name = 'Item';
+INSERT IGNORE INTO level_of_description_sector (term_id, sector, display_order, created_at)
+SELECT t.id, 'archive', 90, NOW() FROM term t JOIN term_i18n ti ON t.id = ti.id AND ti.culture = 'en' WHERE t.taxonomy_id = 34 AND ti.name = 'Part';
+
+-- Museum sector
+INSERT IGNORE INTO level_of_description_sector (term_id, sector, display_order, created_at)
+SELECT t.id, 'museum', 10, NOW() FROM term t JOIN term_i18n ti ON t.id = ti.id AND ti.culture = 'en' WHERE t.taxonomy_id = 34 AND ti.name = '3D Model';
+INSERT IGNORE INTO level_of_description_sector (term_id, sector, display_order, created_at)
+SELECT t.id, 'museum', 20, NOW() FROM term t JOIN term_i18n ti ON t.id = ti.id AND ti.culture = 'en' WHERE t.taxonomy_id = 34 AND ti.name = 'Artifact';
+INSERT IGNORE INTO level_of_description_sector (term_id, sector, display_order, created_at)
+SELECT t.id, 'museum', 30, NOW() FROM term t JOIN term_i18n ti ON t.id = ti.id AND ti.culture = 'en' WHERE t.taxonomy_id = 34 AND ti.name = 'Artwork';
+INSERT IGNORE INTO level_of_description_sector (term_id, sector, display_order, created_at)
+SELECT t.id, 'museum', 40, NOW() FROM term t JOIN term_i18n ti ON t.id = ti.id AND ti.culture = 'en' WHERE t.taxonomy_id = 34 AND ti.name = 'Installation';
+INSERT IGNORE INTO level_of_description_sector (term_id, sector, display_order, created_at)
+SELECT t.id, 'museum', 50, NOW() FROM term t JOIN term_i18n ti ON t.id = ti.id AND ti.culture = 'en' WHERE t.taxonomy_id = 34 AND ti.name = 'Object';
+INSERT IGNORE INTO level_of_description_sector (term_id, sector, display_order, created_at)
+SELECT t.id, 'museum', 60, NOW() FROM term t JOIN term_i18n ti ON t.id = ti.id AND ti.culture = 'en' WHERE t.taxonomy_id = 34 AND ti.name = 'Specimen';
+
+-- Library sector
+INSERT IGNORE INTO level_of_description_sector (term_id, sector, display_order, created_at)
+SELECT t.id, 'library', 10, NOW() FROM term t JOIN term_i18n ti ON t.id = ti.id AND ti.culture = 'en' WHERE t.taxonomy_id = 34 AND ti.name = 'Book';
+INSERT IGNORE INTO level_of_description_sector (term_id, sector, display_order, created_at)
+SELECT t.id, 'library', 20, NOW() FROM term t JOIN term_i18n ti ON t.id = ti.id AND ti.culture = 'en' WHERE t.taxonomy_id = 34 AND ti.name = 'Monograph';
+INSERT IGNORE INTO level_of_description_sector (term_id, sector, display_order, created_at)
+SELECT t.id, 'library', 30, NOW() FROM term t JOIN term_i18n ti ON t.id = ti.id AND ti.culture = 'en' WHERE t.taxonomy_id = 34 AND ti.name = 'Periodical';
+INSERT IGNORE INTO level_of_description_sector (term_id, sector, display_order, created_at)
+SELECT t.id, 'library', 40, NOW() FROM term t JOIN term_i18n ti ON t.id = ti.id AND ti.culture = 'en' WHERE t.taxonomy_id = 34 AND ti.name = 'Journal';
+INSERT IGNORE INTO level_of_description_sector (term_id, sector, display_order, created_at)
+SELECT t.id, 'library', 45, NOW() FROM term t JOIN term_i18n ti ON t.id = ti.id AND ti.culture = 'en' WHERE t.taxonomy_id = 34 AND ti.name = 'Article';
+INSERT IGNORE INTO level_of_description_sector (term_id, sector, display_order, created_at)
+SELECT t.id, 'library', 50, NOW() FROM term t JOIN term_i18n ti ON t.id = ti.id AND ti.culture = 'en' WHERE t.taxonomy_id = 34 AND ti.name = 'Manuscript';
+INSERT IGNORE INTO level_of_description_sector (term_id, sector, display_order, created_at)
+SELECT t.id, 'library', 60, NOW() FROM term t JOIN term_i18n ti ON t.id = ti.id AND ti.culture = 'en' WHERE t.taxonomy_id = 34 AND ti.name = 'Document';
+
+-- Gallery sector
+INSERT IGNORE INTO level_of_description_sector (term_id, sector, display_order, created_at)
+SELECT t.id, 'gallery', 10, NOW() FROM term t JOIN term_i18n ti ON t.id = ti.id AND ti.culture = 'en' WHERE t.taxonomy_id = 34 AND ti.name = 'Artwork';
+INSERT IGNORE INTO level_of_description_sector (term_id, sector, display_order, created_at)
+SELECT t.id, 'gallery', 20, NOW() FROM term t JOIN term_i18n ti ON t.id = ti.id AND ti.culture = 'en' WHERE t.taxonomy_id = 34 AND ti.name = 'Photograph';
+INSERT IGNORE INTO level_of_description_sector (term_id, sector, display_order, created_at)
+SELECT t.id, 'gallery', 40, NOW() FROM term t JOIN term_i18n ti ON t.id = ti.id AND ti.culture = 'en' WHERE t.taxonomy_id = 34 AND ti.name = 'Installation';
+
+-- DAM sector
+INSERT IGNORE INTO level_of_description_sector (term_id, sector, display_order, created_at)
+SELECT t.id, 'dam', 10, NOW() FROM term t JOIN term_i18n ti ON t.id = ti.id AND ti.culture = 'en' WHERE t.taxonomy_id = 34 AND ti.name = 'Photograph';
+INSERT IGNORE INTO level_of_description_sector (term_id, sector, display_order, created_at)
+SELECT t.id, 'dam', 20, NOW() FROM term t JOIN term_i18n ti ON t.id = ti.id AND ti.culture = 'en' WHERE t.taxonomy_id = 34 AND ti.name = 'Audio';
+INSERT IGNORE INTO level_of_description_sector (term_id, sector, display_order, created_at)
+SELECT t.id, 'dam', 30, NOW() FROM term t JOIN term_i18n ti ON t.id = ti.id AND ti.culture = 'en' WHERE t.taxonomy_id = 34 AND ti.name = 'Video';
+INSERT IGNORE INTO level_of_description_sector (term_id, sector, display_order, created_at)
+SELECT t.id, 'dam', 40, NOW() FROM term t JOIN term_i18n ti ON t.id = ti.id AND ti.culture = 'en' WHERE t.taxonomy_id = 34 AND ti.name = 'Image';
+INSERT IGNORE INTO level_of_description_sector (term_id, sector, display_order, created_at)
+SELECT t.id, 'dam', 50, NOW() FROM term t JOIN term_i18n ti ON t.id = ti.id AND ti.culture = 'en' WHERE t.taxonomy_id = 34 AND ti.name = 'Document';
+INSERT IGNORE INTO level_of_description_sector (term_id, sector, display_order, created_at)
+SELECT t.id, 'dam', 60, NOW() FROM term t JOIN term_i18n ti ON t.id = ti.id AND ti.culture = 'en' WHERE t.taxonomy_id = 34 AND ti.name = '3D Model';
+INSERT IGNORE INTO level_of_description_sector (term_id, sector, display_order, created_at)
+SELECT t.id, 'dam', 70, NOW() FROM term t JOIN term_i18n ti ON t.id = ti.id AND ti.culture = 'en' WHERE t.taxonomy_id = 34 AND ti.name = 'Dataset';
+
 -- Table: library_item
 CREATE TABLE IF NOT EXISTS `library_item` (
   `id` bigint unsigned NOT NULL AUTO_INCREMENT,
