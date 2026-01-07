@@ -296,6 +296,16 @@ class AccessRequestService
                     $expiresAt,
                     "Approved via access request #{$requestId}" . ($notes ? ": {$notes}" : '')
                 );
+            } elseif ($request->request_type === 'researcher' && $request->scope_type === 'renewal') {
+                // Handle researcher renewal
+                $newExpiry = $expiresAt ?: date('Y-m-d', strtotime('+1 year'));
+                DB::table('research_researcher')
+                    ->where('user_id', $request->user_id)
+                    ->update([
+                        'status' => 'approved',
+                        'expires_at' => $newExpiry,
+                        'updated_at' => date('Y-m-d H:i:s'),
+                    ]);
             } else {
                 // Grant object access
                 $scopes = DB::table('access_request_scope')
