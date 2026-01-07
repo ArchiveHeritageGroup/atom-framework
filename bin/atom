@@ -165,7 +165,7 @@ function runFullUpdate(array $args): int
 
     // 1. Update framework
     echo "┌─────────────────────────────────────────────────────────────┐\n";
-    echo "│ Step 1: Updating atom-framework                            │\n";
+    echo "│ Step 1: Updating atom-framework                             │\n";
     echo "└─────────────────────────────────────────────────────────────┘\n";
 
     chdir(FRAMEWORK_ROOT);
@@ -176,7 +176,7 @@ function runFullUpdate(array $args): int
 
     // 2. Update plugins
     echo "\n┌─────────────────────────────────────────────────────────────┐\n";
-    echo "│ Step 2: Updating atom-ahg-plugins                          │\n";
+    echo "│ Step 2: Updating atom-ahg-plugins                           │\n";
     echo "└─────────────────────────────────────────────────────────────┘\n";
 
     $pluginsDir = ATOM_ROOT . '/atom-ahg-plugins';
@@ -193,7 +193,7 @@ function runFullUpdate(array $args): int
 
     // 4. Run migrations
     echo "\n┌─────────────────────────────────────────────────────────────┐\n";
-    echo "│ Step 3: Running migrations                                 │\n";
+    echo "│ Step 3: Running migrations                                  │\n";
     echo "└─────────────────────────────────────────────────────────────┘\n";
 
     require_once FRAMEWORK_ROOT . '/src/Database/MigrationRunner.php';
@@ -203,7 +203,7 @@ function runFullUpdate(array $args): int
 
     // 5. Clear cache
     echo "\n┌─────────────────────────────────────────────────────────────┐\n";
-    echo "│ Step 4: Clearing cache                                     │\n";
+    echo "│ Step 4: Clearing cache                                      │\n";
     echo "└─────────────────────────────────────────────────────────────┘\n";
 
     chdir(ATOM_ROOT);
