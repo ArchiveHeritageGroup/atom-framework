@@ -109,6 +109,11 @@ function runFrameworkInstall(): void
     echo "Installing AtoM Framework...\n";
     echo str_repeat('═', 60) . "\n";
 
+    // Run composer install
+    echo "→ Running composer install...\n";
+    chdir(FRAMEWORK_ROOT);
+    passthru("composer install --no-dev --optimize-autoloader 2>&1");
+
     // Run migrations
     require_once FRAMEWORK_ROOT . '/src/Database/MigrationRunner.php';
     require_once FRAMEWORK_ROOT . '/src/Console/MigrateCommand.php';
@@ -135,9 +140,6 @@ function runFrameworkUpdate(array $args): int
         return 1;
     }
 
-    // Run composer install
-    echo "→ Running composer install...\n";
-    passthru("composer install --no-dev --optimize-autoloader 2>&1", $returnVar);
 
     // Run migrations
     echo "→ Running migrations...\n";
@@ -188,15 +190,10 @@ function runFullUpdate(array $args): int
 
     // 3. Composer install
     echo "\n┌─────────────────────────────────────────────────────────────┐\n";
-    echo "│ Step 3: Composer install                                   │\n";
-    echo "└─────────────────────────────────────────────────────────────┘\n";
-
-    chdir(FRAMEWORK_ROOT);
-    passthru("composer install --no-dev --optimize-autoloader 2>&1");
 
     // 4. Run migrations
     echo "\n┌─────────────────────────────────────────────────────────────┐\n";
-    echo "│ Step 4: Running migrations                                 │\n";
+    echo "│ Step 3: Running migrations                                 │\n";
     echo "└─────────────────────────────────────────────────────────────┘\n";
 
     require_once FRAMEWORK_ROOT . '/src/Database/MigrationRunner.php';
@@ -206,7 +203,7 @@ function runFullUpdate(array $args): int
 
     // 5. Clear cache
     echo "\n┌─────────────────────────────────────────────────────────────┐\n";
-    echo "│ Step 5: Clearing cache                                     │\n";
+    echo "│ Step 4: Clearing cache                                     │\n";
     echo "└─────────────────────────────────────────────────────────────┘\n";
 
     chdir(ATOM_ROOT);
