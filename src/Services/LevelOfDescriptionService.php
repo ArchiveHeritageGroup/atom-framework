@@ -95,13 +95,8 @@ class LevelOfDescriptionService
                 ->where('is_enabled', 1)
                 ->exists();
 
-            if ($enabled) {
-                return true;
-            }
+            return $enabled;
 
-            // Fallback: check if plugin directory exists
-            $pluginPath = \sfConfig::get('sf_plugins_dir') . '/' . $pluginName;
-            return is_dir($pluginPath);
         } catch (\Exception $e) {
             return false;
         }
