@@ -313,6 +313,7 @@ class ExtensionManager implements ExtensionManagerContract
                     'class_name' => $machineName . 'Configuration',
                     'is_enabled' => 1,
                     'is_core' => 0,
+                    'version' => $manifest['version'] ?? null,
                     'load_order' => $loadOrder,
                     'category' => $category,
                     'updated_at' => date('Y-m-d H:i:s'),
