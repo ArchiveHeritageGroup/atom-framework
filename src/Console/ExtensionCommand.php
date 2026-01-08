@@ -388,21 +388,47 @@ class ExtensionCommand
     {
         $name = $args[0] ?? null;
         if (!$name) {
-            $this->error('Usage: php bin/atom extension:disable <machine_name>');
+            $this->error('Usage: php bin/atom extension:disable <machine_name> [--force]');
             return 1;
         }
 
+        $force = in_array('--force', $args) || in_array('-f', $args);
+
         // Check protection level
-        $check = ExtensionProtection::canDisable($name);
-        if (!$check['allowed']) {
-            $this->error($check['reason']);
+        $protection = new ExtensionProtection();
+        $check = $protection->canDisable($name, $force);
+
+        if (!$check['can_disable']) {
+            $this->line('');
+            $this->error("Cannot disable {$name}");
+            $this->line('');
+            $this->warning("Reason: {$check['reason']}");
+
+            if ($check['record_count'] > 0) {
+                $this->line('');
+                $this->line('To disable this plugin, you must first:');
+                $this->line('  1. Export or migrate the existing records');
+                $this->line('  2. Delete the records from the database');
+                $this->line('  3. Then retry the disable command');
+                $this->line('');
+                $this->info('Use --force to override (WARNING: may cause data integrity issues)');
+            }
+
             return 1;
         }
 
         $this->manager->disable($name);
+
         $this->line('');
         $this->success("Extension '{$name}' disabled.");
+
+        if ($check['record_count'] > 0) {
+            $this->line('');
+            $this->warning(sprintf('Note: %s records still exist in the database.', number_format($check['record_count'])));
+        }
+
         $this->line('');
+
         return 0;
     }
 
