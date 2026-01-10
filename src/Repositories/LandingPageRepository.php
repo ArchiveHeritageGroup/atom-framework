@@ -228,12 +228,26 @@ class LandingPageRepository
         $query = DB::table($this->blockTable)
             ->join($this->blockTypeTable, 'atom_landing_block.block_type_id', '=', 'atom_landing_block_type.id')
             ->select([
-                'atom_landing_block.*',
+                'atom_landing_block.id',
+                'atom_landing_block.page_id',
+                'atom_landing_block.block_type_id',
+                'atom_landing_block.title',
+                'atom_landing_block.config',
+                'atom_landing_block.css_classes',
+                'atom_landing_block.container_type',
+                'atom_landing_block.background_color',
+                'atom_landing_block.text_color',
+                'atom_landing_block.padding_top',
+                'atom_landing_block.padding_bottom',
+                'atom_landing_block.position',
+                'atom_landing_block.is_visible',
+                'atom_landing_block.parent_block_id',
+                'atom_landing_block.column_slot',
                 'atom_landing_block_type.machine_name',
                 'atom_landing_block_type.label as type_label',
                 'atom_landing_block_type.icon as type_icon',
                 'atom_landing_block_type.template',
-                'atom_landing_block_type.config_schema'
+                'atom_landing_block_type.config_schema as type_config_schema'
             ])
             ->where('atom_landing_block.page_id', $pageId)
             ->whereNull('atom_landing_block.parent_block_id')
@@ -245,8 +259,9 @@ class LandingPageRepository
 
         $repo = $this;
         return $query->get()->map(function ($block) use ($repo) {
-            $block->config = json_decode($block->config, true) ?? [];
-            $block->config_schema = json_decode($block->config_schema, true) ?? [];
+            $block->config = is_array($block->config) ? $block->config : (json_decode($block->config, true) ?? []);
+            error_log("REPO INSIDE MAP: id=" . $block->id . " config_json=" . json_encode($block->config));
+            $block->config_schema = json_decode($block->type_config_schema ?? "[]", true) ?? [];
             // Load child blocks for column layouts
             if (in_array($block->machine_name, ['row_2_col', 'row_3_col', 'row_1_col'])) {
                 $block->child_blocks = $repo->getChildBlocks($block->id);
@@ -277,8 +292,8 @@ class LandingPageRepository
             ->first();
 
         if ($block) {
-            $block->config = json_decode($block->config, true) ?? [];
-            $block->config_schema = json_decode($block->config_schema, true) ?? [];
+            $block->config = is_array($block->config) ? $block->config : (json_decode($block->config, true) ?? []);
+            $block->config_schema = json_decode($block->type_config_schema ?? "[]", true) ?? [];
             $block->default_config = json_decode($block->default_config, true) ?? [];
         }
 
@@ -555,7 +570,7 @@ class LandingPageRepository
             ->orderBy('atom_landing_block.position', 'asc')
             ->get()
             ->map(function ($block) {
-                $block->config = json_decode($block->config, true) ?? [];
+                $block->config = is_array($block->config) ? $block->config : (json_decode($block->config, true) ?? []);
                 return $block;
             });
     }

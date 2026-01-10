@@ -346,6 +346,7 @@ class LandingPageService
      */
     protected function enrichBlockData(object $block): object
     {
+        error_log("ENRICH DEBUG: block=" . $block->machine_name . " config=" . json_encode($block->config ?? []));
         switch ($block->machine_name) {
             case 'statistics':
                 $block->computed_data = $this->getStatisticsData($block->config);

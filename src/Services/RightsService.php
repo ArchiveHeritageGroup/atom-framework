@@ -29,11 +29,11 @@ class RightsService
     public function getCreativeCommonsLicenses(string $culture = 'en'): Collection
     {
         // Check if i18n table exists, otherwise use main table
-        $hasI18n = DB::getSchemaBuilder()->hasTable('creative_commons_license_i18n');
+        $hasI18n = DB::getSchemaBuilder()->hasTable('rights_cc_license_i18n');
         
         if ($hasI18n) {
-            return DB::table('creative_commons_license as cc')
-                ->join('creative_commons_license_i18n as cc_i18n', 'cc.id', '=', 'cc_i18n.creative_commons_license_id')
+            return DB::table('rights_cc_license as cc')
+                ->join('rights_cc_license_i18n as cc_i18n', 'cc.id', '=', 'cc_i18n.id')
                 ->where('cc_i18n.culture', $culture)
                 ->where('cc.is_active', 1)
                 ->select('cc.id', 'cc.code', 'cc.uri', 'cc_i18n.name')
@@ -42,7 +42,7 @@ class RightsService
         }
         
         // Fallback: no i18n, construct name from code
-        return DB::table('creative_commons_license')
+        return DB::table('rights_cc_license')
             ->where('is_active', 1)
             ->select('id', 'code', 'uri')
             ->orderBy('sort_order')
@@ -196,7 +196,7 @@ class RightsService
 
         $rightsRecord = [
             'rights_statement_id' => $data['rights_statement_id'] ?: null,
-            'creative_commons_license_id' => $data['creative_commons_id'] ?: null,
+            'cc_license_id' => $data['creative_commons_id'] ?: null,
             'rights_holder' => $data['rights_holder'] ?: null,
             'updated_at' => date('Y-m-d H:i:s'),
         ];
