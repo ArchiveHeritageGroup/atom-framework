@@ -1,39 +1,4 @@
-# Composer
 /vendor/
-composer.lock
-
-# IDE
-.idea/
-.vscode/
-*.swp
-*.swo
-*~
-
-# OS
-.DS_Store
-Thumbs.db
-
-# Logs
-*.log
-logs/
-
-# Cache
-cache/
-*.cache
-
-# Environment
+/dist/*.run
+/dist/*.deb
 .env
-.env.local
-.env.*.local
-
-# Backups
-# *.sql - allow database/*.sql
-*.bak
-backups/
-
-# Temp files
-tmp/
-temp/
-*.tmp
-bootstrap.local.php
-!database/*.sql
