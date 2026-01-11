@@ -1,119 +1,162 @@
 #!/bin/bash
 #===============================================================================
-# AtoM AHG Framework - Build Debian Package (.deb)
+# AtoM AHG Framework - Build DEB Packages
+# Creates: Extensions only + Complete (AtoM + Extensions)
 #===============================================================================
-
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 FRAMEWORK_PATH="$(dirname "$SCRIPT_DIR")"
 ATOM_ROOT="$(dirname "$FRAMEWORK_PATH")"
 DIST_DIR="${FRAMEWORK_PATH}/dist"
+BUILD_DIR="/tmp/ahg-deb-build-$$"
 
-# Get version
-VERSION=$(grep '"version"' "${FRAMEWORK_PATH}/version.json" 2>/dev/null | cut -d'"' -f4 || echo "1.0.0")
-PACKAGE_NAME="atom-ahg-framework"
-OUTPUT_FILE="${DIST_DIR}/${PACKAGE_NAME}_${VERSION}_all.deb"
+VERSION=$(php -r "\$j=json_decode(file_get_contents('${FRAMEWORK_PATH}/version.json'),true); echo \$j['version'] ?? '2.0.0';")
+DATE=$(date +%Y-%m-%d)
 
+GREEN='\033[0;32m'
+CYAN='\033[0;36m'
+NC='\033[0m'
+
+log() { echo -e "${GREEN}[✓]${NC} $1"; }
+step() { echo -e "${CYAN}[→]${NC} $1"; }
+
+echo ""
 echo "╔══════════════════════════════════════════════════════════════════╗"
-echo "║  Building Debian Package                                         ║"
+echo "║         AtoM AHG Framework - DEB Package Builder                 ║"
 echo "╚══════════════════════════════════════════════════════════════════╝"
 echo ""
-echo "Package: ${PACKAGE_NAME}"
-echo "Version: ${VERSION}"
-echo "Output:  ${OUTPUT_FILE}"
+echo "  Version: ${VERSION}"
 echo ""
 
-# Check for dpkg-deb
-if ! command -v dpkg-deb &> /dev/null; then
-    echo "Error: dpkg-deb not found. Install with: sudo apt-get install dpkg"
-    exit 1
-fi
+rm -rf "$BUILD_DIR"
+mkdir -p "$BUILD_DIR"
+mkdir -p "$DIST_DIR"
 
-mkdir -p "${DIST_DIR}"
-
-# Create build directory
-BUILD_DIR=$(mktemp -d)
-trap "rm -rf ${BUILD_DIR}" EXIT
-
-INSTALL_DIR="${BUILD_DIR}/usr/share/atom-ahg-framework"
-
-echo "[1/5] Creating directory structure..."
-mkdir -p "${BUILD_DIR}/DEBIAN"
-mkdir -p "${INSTALL_DIR}"
-mkdir -p "${BUILD_DIR}/usr/bin"
-
-echo "[2/5] Copying framework files..."
-rsync -a --exclude='.git' --exclude='vendor' --exclude='dist' \
-    "${FRAMEWORK_PATH}/" "${INSTALL_DIR}/"
-
-echo "[3/5] Copying plugins..."
-if [ -d "${ATOM_ROOT}/atom-ahg-plugins" ]; then
-    mkdir -p "${INSTALL_DIR}/plugins"
-    rsync -a --exclude='.git' \
-        "${ATOM_ROOT}/atom-ahg-plugins/" "${INSTALL_DIR}/plugins/"
-fi
-
-echo "[4/5] Creating control files..."
-
-# Control file
-cat > "${BUILD_DIR}/DEBIAN/control" << CTRLEOF
-Package: ${PACKAGE_NAME}
+#===============================================================================
+# Extensions Only Package
+#===============================================================================
+build_extensions() {
+    step "Building: atom-ahg-extensions (Framework + Plugins only)..."
+    
+    local PKG_NAME="atom-ahg-extensions"
+    local PKG_DIR="${BUILD_DIR}/${PKG_NAME}_${VERSION}_all"
+    
+    mkdir -p "${PKG_DIR}/DEBIAN"
+    mkdir -p "${PKG_DIR}/opt/atom-ahg/framework"
+    mkdir -p "${PKG_DIR}/opt/atom-ahg/plugins"
+    
+    cat > "${PKG_DIR}/DEBIAN/control" << CTRL
+Package: ${PKG_NAME}
 Version: ${VERSION}
 Section: web
 Priority: optional
 Architecture: all
-Depends: php (>= 8.1), php-mysql, php-xml, php-mbstring, mysql-client, git
-Maintainer: The Archive and Heritage Group <support@theahg.co.za>
+Depends: php (>= 8.1), php-mysql, composer, git
+Recommends: nginx, mysql-server, elasticsearch
+Maintainer: The Archive and Heritage Group <info@theahg.co.za>
+Description: AtoM AHG Extensions - Framework + GLAM Plugins
+ Laravel Query Builder integration and GLAM sector plugins for AtoM 2.10.
+ Requires existing AtoM installation.
 Homepage: https://github.com/ArchiveHeritageGroup/atom-framework
-Description: AtoM AHG Framework - Extension system for Access to Memory
- Provides Laravel Query Builder integration, plugin management,
- Bootstrap 5 theme, and additional functionality for AtoM archives.
-CTRLEOF
+CTRL
 
-# Post-install script
-cat > "${BUILD_DIR}/DEBIAN/postinst" << 'POSTEOF'
+    # Copy framework (small - just our code)
+    echo "  Copying framework..."
+    rsync -a --exclude='.git' --exclude='dist' --exclude='vendor' \
+        "${FRAMEWORK_PATH}/" "${PKG_DIR}/opt/atom-ahg/framework/"
+    
+    # Copy plugins
+    if [ -d "${ATOM_ROOT}/atom-ahg-plugins" ]; then
+        echo "  Copying plugins..."
+        rsync -a --exclude='.git' \
+            "${ATOM_ROOT}/atom-ahg-plugins/" "${PKG_DIR}/opt/atom-ahg/plugins/"
+    fi
+    
+    cat > "${PKG_DIR}/DEBIAN/postinst" << 'POSTINST'
 #!/bin/bash
 set -e
 
-ATOM_ROOT="${ATOM_ROOT:-/usr/share/nginx/atom}"
-FRAMEWORK_SRC="/usr/share/atom-ahg-framework"
+# Find AtoM installation
+for path in /usr/share/nginx/archive /usr/share/nginx/atom /var/www/atom; do
+    if [ -f "${path}/symfony" ]; then
+        ATOM_ROOT="$path"
+        break
+    fi
+done
 
-echo "AtoM AHG Framework installed to: ${FRAMEWORK_SRC}"
-echo ""
-echo "To complete installation:"
-echo "  1. cd ${ATOM_ROOT}"
-echo "  2. ln -sf ${FRAMEWORK_SRC} atom-framework"
-echo "  3. cd atom-framework && composer install"
-echo "  4. bash bin/install"
-echo ""
+if [ -z "$ATOM_ROOT" ]; then
+    echo ""
+    echo "╔══════════════════════════════════════════════════════════════╗"
+    echo "║  WARNING: AtoM installation not found!                       ║"
+    echo "║                                                              ║"
+    echo "║  Files installed to /opt/atom-ahg/                           ║"
+    echo "║  Manual setup required:                                      ║"
+    echo "║    ln -s /opt/atom-ahg/framework /path/to/atom/atom-framework║"
+    echo "║    ln -s /opt/atom-ahg/plugins /path/to/atom/atom-ahg-plugins║"
+    echo "║    cd /opt/atom-ahg/framework && bash bin/install            ║"
+    echo "╚══════════════════════════════════════════════════════════════╝"
+    exit 0
+fi
 
-exit 0
-POSTEOF
-chmod 755 "${BUILD_DIR}/DEBIAN/postinst"
+echo "Found AtoM at: ${ATOM_ROOT}"
 
-# Pre-remove script
-cat > "${BUILD_DIR}/DEBIAN/prerm" << 'PRERMEOF'
-#!/bin/bash
-set -e
-echo "Removing AtoM AHG Framework..."
-exit 0
-PRERMEOF
-chmod 755 "${BUILD_DIR}/DEBIAN/prerm"
+# Create symlinks
+ln -sf /opt/atom-ahg/framework "${ATOM_ROOT}/atom-framework"
+ln -sf /opt/atom-ahg/plugins "${ATOM_ROOT}/atom-ahg-plugins"
 
-echo "[5/5] Building package..."
-dpkg-deb --build "${BUILD_DIR}" "${OUTPUT_FILE}"
+# Install composer dependencies
+echo "Installing dependencies..."
+cd /opt/atom-ahg/framework
+composer install --no-dev --quiet 2>/dev/null || true
+
+# Run framework install
+echo "Running framework install..."
+if [ -f /opt/atom-ahg/framework/bin/install ]; then
+    bash /opt/atom-ahg/framework/bin/install --auto 2>/dev/null || true
+fi
+
+# Restart PHP-FPM
+systemctl restart php8.3-fpm 2>/dev/null || systemctl restart php-fpm 2>/dev/null || true
 
 echo ""
 echo "╔══════════════════════════════════════════════════════════════════╗"
-echo "║  Build Complete                                                  ║"
+echo "║  AtoM AHG Extensions installed successfully!                     ║"
+echo "║                                                                  ║"
+echo "║  AtoM Root: ${ATOM_ROOT}                                         ║"
+echo "╚══════════════════════════════════════════════════════════════════╝"
+POSTINST
+    chmod 755 "${PKG_DIR}/DEBIAN/postinst"
+    
+    cat > "${PKG_DIR}/DEBIAN/prerm" << 'PRERM'
+#!/bin/bash
+for path in /usr/share/nginx/archive /usr/share/nginx/atom /var/www/atom; do
+    [ -L "${path}/atom-framework" ] && rm -f "${path}/atom-framework"
+    [ -L "${path}/atom-ahg-plugins" ] && rm -f "${path}/atom-ahg-plugins"
+done
+exit 0
+PRERM
+    chmod 755 "${PKG_DIR}/DEBIAN/prerm"
+    
+    echo "  Building package..."
+    dpkg-deb --build "$PKG_DIR" "${DIST_DIR}/${PKG_NAME}_${VERSION}_all.deb"
+    log "Built: ${PKG_NAME}_${VERSION}_all.deb ($(du -h "${DIST_DIR}/${PKG_NAME}_${VERSION}_all.deb" | cut -f1))"
+}
+
+#===============================================================================
+# Build
+#===============================================================================
+build_extensions
+
+rm -rf "$BUILD_DIR"
+
+echo ""
+echo "╔══════════════════════════════════════════════════════════════════╗"
+echo "║                    PACKAGE BUILT                                 ║"
 echo "╚══════════════════════════════════════════════════════════════════╝"
 echo ""
-echo "Output: ${OUTPUT_FILE}"
-echo "Size:   $(du -h "${OUTPUT_FILE}" | cut -f1)"
+echo "  ${DIST_DIR}/atom-ahg-extensions_${VERSION}_all.deb"
 echo ""
-echo "Install with:"
-echo "  sudo dpkg -i ${OUTPUT_FILE}"
-echo "  # or"
-echo "  sudo apt install ./${OUTPUT_FILE##*/}"
+echo "  Install on server with existing AtoM:"
+echo "    sudo apt install ./atom-ahg-extensions_${VERSION}_all.deb"
 echo ""
