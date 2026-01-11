@@ -1,0 +1,20 @@
+<?php
+
+return array (
+  'all' =>
+  array (
+    'propel' =>
+    array (
+      'class' => 'sfPropelDatabase',
+      'param' =>
+      array (
+        'encoding' => 'utf8mb4',
+        'persistent' => true,
+        'pooling' => true,
+        'dsn' => 'mysql:host=localhost;dbname={{ db_name }};charset=utf8mb4',
+        'username' => '{{ db_user }}',
+        'password' => '{{ db_password }}',
+      ),
+    ),
+  ),
+);

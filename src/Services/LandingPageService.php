@@ -361,6 +361,7 @@ class LandingPageService
                 break;
 
             case 'holdings_list':
+                error_log('ENRICH holdings_list - calling getHoldingsData with config: ' . json_encode($block->config));
                 $block->computed_data = $this->getHoldingsData($block->config);
                 break;
 
@@ -533,7 +534,14 @@ class LandingPageService
     {
         $limit = min($config['limit'] ?? 10, 50);
         $culture = \sfContext::getInstance()->getUser()->getCulture() ?? 'en';
+        $sort = $config['sort'] ?? 'title';
 
+        // Popular this week - based on access_log hits
+        if ($sort === 'hits') {
+            return $this->getPopularThisWeek($limit, $culture);
+        }
+
+        // Standard holdings list
         $query = DB::table('information_object as io')
             ->join('information_object_i18n as i18n', function($join) use ($culture) {
                 $join->on('io.id', '=', 'i18n.id')
@@ -560,6 +568,65 @@ class LandingPageService
         }
 
         return $query->get()->toArray();
+    }
+
+    /**
+     * Get popular items this week (based on access_log)
+     */
+    protected function getPopularThisWeek(int $limit, string $culture): array
+    {
+        $now = date('Y-m-d H:i:s');
+        $draftStatusId = \QubitTerm::PUBLICATION_STATUS_DRAFT_ID;
+
+        // Get popular object IDs with hit counts from access_log
+        $popular = DB::table('access_log')
+            ->leftJoin('status', 'access_log.object_id', '=', 'status.object_id')
+            ->select('access_log.object_id', DB::raw('COUNT(access_log.object_id) as hits'))
+            ->whereRaw('access_date BETWEEN DATE_SUB(?, INTERVAL 1 WEEK) AND ?', [$now, $now])
+            ->where(function($query) use ($draftStatusId) {
+                $query->where('status.status_id', '!=', $draftStatusId)
+                      ->orWhereNull('status.status_id');
+            })
+            ->groupBy('access_log.object_id')
+            ->orderBy('hits', 'desc')
+            ->limit($limit)
+            ->get();
+
+        if ($popular->isEmpty()) {
+            return [];
+        }
+
+        // Get object details for the popular items
+        $objectIds = $popular->pluck('object_id')->toArray();
+        $hitCounts = $popular->pluck('hits', 'object_id')->toArray();
+
+        $items = DB::table('information_object as io')
+            ->join('information_object_i18n as i18n', function($join) use ($culture) {
+                $join->on('io.id', '=', 'i18n.id')
+                     ->where('i18n.culture', '=', $culture);
+            })
+            ->leftJoin('slug', 'io.id', '=', 'slug.object_id')
+            ->whereIn('io.id', $objectIds)
+            ->select([
+                'io.id',
+                'i18n.title',
+                'slug.slug'
+            ])
+            ->get();
+
+        // Add hit counts and sort by popularity
+        $result = [];
+        foreach ($items as $item) {
+            $item->hits = $hitCounts[$item->id] ?? 0;
+            $result[] = $item;
+        }
+
+        // Sort by hits descending
+        usort($result, function($a, $b) {
+            return $b->hits - $a->hits;
+        });
+
+        return $result;
     }
 
     /**

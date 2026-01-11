@@ -261,7 +261,7 @@ class LandingPageRepository
         return $query->get()->map(function ($block) use ($repo) {
             $block->config = is_array($block->config) ? $block->config : (json_decode($block->config, true) ?? []);
             error_log("REPO INSIDE MAP: id=" . $block->id . " config_json=" . json_encode($block->config));
-            $block->config_schema = json_decode($block->type_config_schema ?? "[]", true) ?? [];
+            $block->config_schema = json_decode($block->config_schema ?? "[]", true) ?? [];
             // Load child blocks for column layouts
             if (in_array($block->machine_name, ['row_2_col', 'row_3_col', 'row_1_col'])) {
                 $block->child_blocks = $repo->getChildBlocks($block->id);
@@ -293,7 +293,7 @@ class LandingPageRepository
 
         if ($block) {
             $block->config = is_array($block->config) ? $block->config : (json_decode($block->config, true) ?? []);
-            $block->config_schema = json_decode($block->type_config_schema ?? "[]", true) ?? [];
+            $block->config_schema = json_decode($block->config_schema ?? "[]", true) ?? [];
             $block->default_config = json_decode($block->default_config, true) ?? [];
         }
 

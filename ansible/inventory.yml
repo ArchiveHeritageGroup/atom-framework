@@ -1,0 +1,57 @@
+---
+all:
+  children:
+    atom_servers:
+      children:
+        dev:
+          hosts:
+            atom-dev:
+              ansible_host: 192.168.0.112
+              ansible_user: root
+              install_level: framework_only
+              db_name: archive
+              db_user: root
+              db_password: ""
+              atom_root: /usr/share/nginx/archive
+              site_base_url: https://dev.theahg.co.za
+              
+        test:
+          hosts:
+            atom-test:
+              ansible_host: 192.168.0.154
+              ansible_user: root
+              install_level: framework_only
+              db_name: atom
+              db_user: atom
+              db_password: "AtoM@123"
+              atom_root: /usr/share/nginx/atom
+              site_base_url: https://test.theahg.co.za
+              
+        production:
+          hosts:
+            atom-prod:
+              ansible_host: psis.theahg.co.za
+              ansible_user: root
+              install_level: framework_only
+              atom_root: /usr/share/nginx/atom
+              site_base_url: https://psis.theahg.co.za
+              create_backups: true
+              
+        new_servers:
+          hosts:
+            atom-new:
+              ansible_host: 192.168.0.200
+              ansible_user: root
+              install_level: full
+              db_name: atom
+              db_user: atom
+              db_password: "SecurePassword123!"
+              atom_root: /usr/share/nginx/atom
+              site_title: "New Archive"
+              site_base_url: https://new.theahg.co.za
+
+  vars:
+    ansible_python_interpreter: /usr/bin/python3
+    php_version: "8.3"
+    atom_user: www-data
+    atom_group: www-data

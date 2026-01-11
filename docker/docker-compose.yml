@@ -1,0 +1,151 @@
+version: '3.8'
+
+services:
+  atom:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: atom-ahg
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy
+      elasticsearch:
+        condition: service_healthy
+    environment:
+      - ATOM_MYSQL_DSN=mysql:host=mysql;port=3306;dbname=atom;charset=utf8mb4
+      - ATOM_MYSQL_USERNAME=atom
+      - ATOM_MYSQL_PASSWORD=${MYSQL_PASSWORD:-AtoM@123}
+      - ATOM_ES_HOST=elasticsearch
+      - ATOM_MEMCACHE_HOST=memcached
+      - ATOM_SITE_BASE_URL=${SITE_BASE_URL:-http://localhost:8080}
+    volumes:
+      - atom_uploads:/usr/share/nginx/atom/uploads
+      - atom_cache:/usr/share/nginx/atom/cache
+    ports:
+      - "${HTTP_PORT:-8080}:80"
+    networks:
+      - atom-network
+
+  mysql:
+    image: mysql:8.0
+    container_name: atom-mysql
+    restart: unless-stopped
+    environment:
+      - MYSQL_ROOT_PASSWORD=${MYSQL_ROOT_PASSWORD:-rootpassword}
+      - MYSQL_DATABASE=atom
+      - MYSQL_USER=atom
+      - MYSQL_PASSWORD=${MYSQL_PASSWORD:-AtoM@123}
+    volumes:
+      - mysql_data:/var/lib/mysql
+    ports:
+      - "${MYSQL_PORT:-3306}:3306"
+    networks:
+      - atom-network
+    command: --default-authentication-plugin=mysql_native_password --character-set-server=utf8mb4
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:5.6.16
+    container_name: atom-elasticsearch
+    restart: unless-stopped
+    environment:
+      - cluster.name=atom-cluster
+      - bootstrap.memory_lock=true
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+      - xpack.security.enabled=false
+      - discovery.type=single-node
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    volumes:
+      - elasticsearch_data:/usr/share/elasticsearch/data
+    ports:
+      - "${ES_PORT:-9200}:9200"
+    networks:
+      - atom-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s http://localhost:9200/_cluster/health | grep -vq '\"status\":\"red\"'"]
+      interval: 20s
+      timeout: 10s
+      retries: 5
+
+  memcached:
+    image: memcached:1.6-alpine
+    container_name: atom-memcached
+    restart: unless-stopped
+    networks:
+      - atom-network
+
+  gearmand:
+    image: artefactual/gearmand:1.1.19.1-alpine
+    container_name: atom-gearmand
+    restart: unless-stopped
+    networks:
+      - atom-network
+
+  atom-worker:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: atom-worker
+    restart: unless-stopped
+    depends_on:
+      - atom
+      - gearmand
+    environment:
+      - ATOM_MYSQL_DSN=mysql:host=mysql;port=3306;dbname=atom;charset=utf8mb4
+      - ATOM_MYSQL_USERNAME=atom
+      - ATOM_MYSQL_PASSWORD=${MYSQL_PASSWORD:-AtoM@123}
+    volumes:
+      - atom_uploads:/usr/share/nginx/atom/uploads
+    command: php symfony jobs:worker
+    networks:
+      - atom-network
+
+  fuseki:
+    image: stain/jena-fuseki:4.6.1
+    container_name: atom-fuseki
+    restart: unless-stopped
+    environment:
+      - ADMIN_PASSWORD=${FUSEKI_ADMIN_PASSWORD:-admin123}
+    volumes:
+      - fuseki_data:/fuseki
+    ports:
+      - "${FUSEKI_PORT:-3030}:3030"
+    networks:
+      - atom-network
+    profiles:
+      - ric
+
+  cantaloupe:
+    image: uclalibrary/cantaloupe:5.0.5-1
+    container_name: atom-cantaloupe
+    restart: unless-stopped
+    environment:
+      - CANTALOUPE_ENDPOINT_ADMIN_ENABLED=true
+      - CANTALOUPE_ENDPOINT_ADMIN_SECRET=${CANTALOUPE_ADMIN_SECRET:-secret123}
+    volumes:
+      - atom_uploads:/images:ro
+    ports:
+      - "${CANTALOUPE_PORT:-8182}:8182"
+    networks:
+      - atom-network
+    profiles:
+      - iiif
+
+networks:
+  atom-network:
+    driver: bridge
+
+volumes:
+  mysql_data:
+  elasticsearch_data:
+  atom_uploads:
+  atom_cache:
+  fuseki_data:

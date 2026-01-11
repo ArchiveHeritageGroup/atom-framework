@@ -1,0 +1,257 @@
+---
+# =============================================================================
+# AtoM AHG Framework - Ansible Playbook
+# =============================================================================
+- name: AtoM AHG Framework - Full Installation
+  hosts: atom_servers
+  become: yes
+  vars:
+    atom_version: "2.10"
+    atom_root: "/usr/share/nginx/atom"
+    atom_user: "www-data"
+    atom_group: "www-data"
+    db_name: "atom"
+    db_user: "atom"
+    db_password: "{{ vault_db_password | default('AtoM@123') }}"
+    ahg_github_org: "ArchiveHeritageGroup"
+    framework_repo: "https://github.com/{{ ahg_github_org }}/atom-framework.git"
+    plugins_repo: "https://github.com/{{ ahg_github_org }}/atom-ahg-plugins.git"
+    framework_branch: "main"
+    php_version: "8.3"
+    php_memory_limit: "512M"
+    elasticsearch_version: "5.6.16"
+    elasticsearch_heap_size: "512m"
+    site_base_url: "https://{{ inventory_hostname }}"
+    site_title: "AtoM Archive"
+    install_level: "full"
+    create_backups: true
+
+  handlers:
+    - name: Restart nginx
+      systemd:
+        name: nginx
+        state: restarted
+    - name: Restart php-fpm
+      systemd:
+        name: "php{{ php_version }}-fpm"
+        state: restarted
+    - name: Restart mysql
+      systemd:
+        name: mysql
+        state: restarted
+    - name: Restart elasticsearch
+      systemd:
+        name: elasticsearch
+        state: restarted
+
+  tasks:
+    - name: Pre-flight | Check Ubuntu version
+      assert:
+        that:
+          - ansible_distribution == "Ubuntu"
+          - ansible_distribution_version is version('22.04', '>=')
+        fail_msg: "Requires Ubuntu 22.04+"
+      tags: [preflight]
+
+    - name: Pre-flight | Check if AtoM exists
+      stat:
+        path: "{{ atom_root }}/symfony"
+      register: atom_exists
+      tags: [preflight]
+
+    - name: System | Update apt cache
+      apt:
+        update_cache: yes
+        cache_valid_time: 3600
+      when: install_level == "full"
+      tags: [system]
+
+    - name: System | Install base packages
+      apt:
+        name:
+          - curl
+          - wget
+          - git
+          - unzip
+          - acl
+          - imagemagick
+          - ghostscript
+          - poppler-utils
+          - ffmpeg
+          - openjdk-11-jre-headless
+        state: present
+      when: install_level == "full"
+      tags: [system]
+
+    - name: PHP | Add Ondrej PPA
+      apt_repository:
+        repo: ppa:ondrej/php
+        state: present
+      when: install_level == "full"
+      tags: [php]
+
+    - name: PHP | Install PHP {{ php_version }}
+      apt:
+        name:
+          - "php{{ php_version }}-fpm"
+          - "php{{ php_version }}-cli"
+          - "php{{ php_version }}-curl"
+          - "php{{ php_version }}-mysql"
+          - "php{{ php_version }}-xml"
+          - "php{{ php_version }}-mbstring"
+          - "php{{ php_version }}-zip"
+          - "php{{ php_version }}-gd"
+          - "php{{ php_version }}-intl"
+          - "php{{ php_version }}-opcache"
+          - "php{{ php_version }}-apcu"
+          - "php{{ php_version }}-xsl"
+        state: present
+      when: install_level == "full"
+      notify: Restart php-fpm
+      tags: [php]
+
+    - name: MySQL | Install MySQL 8
+      apt:
+        name:
+          - mysql-server
+          - mysql-client
+          - python3-mysqldb
+        state: present
+      when: install_level == "full"
+      tags: [mysql]
+
+    - name: MySQL | Create database
+      mysql_db:
+        name: "{{ db_name }}"
+        state: present
+        encoding: utf8mb4
+      when: install_level in ["full", "atom_and_framework"]
+      tags: [mysql]
+
+    - name: MySQL | Create user
+      mysql_user:
+        name: "{{ db_user }}"
+        password: "{{ db_password }}"
+        priv: "{{ db_name }}.*:ALL"
+        host: localhost
+        state: present
+      when: install_level in ["full", "atom_and_framework"]
+      tags: [mysql]
+
+    - name: Nginx | Install nginx
+      apt:
+        name: nginx
+        state: present
+      when: install_level == "full"
+      tags: [nginx]
+
+    - name: Nginx | Create site config
+      template:
+        src: templates/nginx-atom.conf.j2
+        dest: /etc/nginx/sites-available/atom
+      when: install_level == "full"
+      notify: Restart nginx
+      tags: [nginx]
+
+    - name: Nginx | Enable site
+      file:
+        src: /etc/nginx/sites-available/atom
+        dest: /etc/nginx/sites-enabled/atom
+        state: link
+      when: install_level == "full"
+      notify: Restart nginx
+      tags: [nginx]
+
+    - name: Elasticsearch | Add repository
+      apt_repository:
+        repo: "deb https://artifacts.elastic.co/packages/5.x/apt stable main"
+        state: present
+      when: install_level == "full"
+      tags: [elasticsearch]
+
+    - name: Elasticsearch | Install
+      apt:
+        name: "elasticsearch={{ elasticsearch_version }}"
+        state: present
+      when: install_level == "full"
+      tags: [elasticsearch]
+
+    - name: AtoM | Clone repository
+      git:
+        repo: https://github.com/artefactual/atom.git
+        dest: "{{ atom_root }}"
+        version: "stable/{{ atom_version }}"
+      become_user: "{{ atom_user }}"
+      when: 
+        - install_level in ["full", "atom_and_framework"]
+        - not atom_exists.stat.exists
+      tags: [atom]
+
+    - name: AtoM | Run Composer
+      composer:
+        command: install
+        working_dir: "{{ atom_root }}"
+        no_dev: yes
+      become_user: "{{ atom_user }}"
+      when: install_level in ["full", "atom_and_framework"]
+      tags: [atom]
+
+    - name: AHG Framework | Clone atom-framework
+      git:
+        repo: "{{ framework_repo }}"
+        dest: "{{ atom_root }}/atom-framework"
+        version: "{{ framework_branch }}"
+      become_user: "{{ atom_user }}"
+      tags: [framework]
+
+    - name: AHG Framework | Run Composer
+      composer:
+        command: install
+        working_dir: "{{ atom_root }}/atom-framework"
+        no_dev: yes
+      become_user: "{{ atom_user }}"
+      tags: [framework]
+
+    - name: AHG Framework | Clone plugins
+      git:
+        repo: "{{ plugins_repo }}"
+        dest: "{{ atom_root }}/atom-ahg-plugins"
+        version: "{{ framework_branch }}"
+      become_user: "{{ atom_user }}"
+      tags: [framework]
+
+    - name: AHG Framework | Run install script
+      shell: bash bin/install --auto
+      args:
+        chdir: "{{ atom_root }}/atom-framework"
+      become_user: "{{ atom_user }}"
+      tags: [framework]
+
+    - name: Post-Install | Set permissions
+      file:
+        path: "{{ item }}"
+        state: directory
+        owner: "{{ atom_user }}"
+        group: "{{ atom_group }}"
+        mode: '0775'
+        recurse: yes
+      loop:
+        - "{{ atom_root }}/cache"
+        - "{{ atom_root }}/log"
+        - "{{ atom_root }}/uploads"
+      tags: [postinstall]
+
+    - name: Post-Install | Clear cache
+      shell: php symfony cc
+      args:
+        chdir: "{{ atom_root }}"
+      become_user: "{{ atom_user }}"
+      tags: [postinstall]
+
+    - name: Complete | Show message
+      debug:
+        msg: |
+          Installation Complete!
+          URL: {{ site_base_url }}
+          Admin: admin@example.com / admin
+      tags: [postinstall]
