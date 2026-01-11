@@ -3,13 +3,13 @@
 # AtoM AHG Framework - Release Script
 # Usage: ./bin/release patch|minor|major "commit message"
 #===============================================================================
-
 set -e
 
 TYPE=${1:-patch}
 MSG=${2:-"Bug fixes and improvements"}
 
 cd "$(dirname "$0")/.."
+FRAMEWORK_PATH="$(pwd)"
 
 VERSION_FILE="version.json"
 
@@ -56,13 +56,142 @@ php -r "
 file_put_contents('${VERSION_FILE}', json_encode(\$j, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . \"\n\");
 "
 
+#===============================================================================
+# Build packages
+#===============================================================================
+echo "Building distribution packages..."
+
+if [ -f "${FRAMEWORK_PATH}/bin/build-installer.sh" ]; then
+    echo "[1/2] Building .run package..."
+    bash "${FRAMEWORK_PATH}/bin/build-installer.sh"
+else
+    echo "Warning: build-installer.sh not found, skipping .run"
+fi
+
+if [ -f "${FRAMEWORK_PATH}/bin/build-deb.sh" ]; then
+    echo "[2/2] Building .deb package..."
+    bash "${FRAMEWORK_PATH}/bin/build-deb.sh"
+else
+    echo "Warning: build-deb.sh not found, skipping .deb"
+fi
+
+#===============================================================================
 # Git operations
+#===============================================================================
+echo ""
+echo "Committing and pushing..."
+
 git add -A
 git commit -m "${TAG}: ${MSG}"
 git tag -a "${TAG}" -m "${MSG}"
 git push origin main
 git push origin "${TAG}"
 
+#===============================================================================
+# Create GitHub Release
+#===============================================================================
 echo ""
-echo "✅ Released ${TAG}"
+echo "Creating GitHub release..."
+
+# Check if gh is available
+if ! command -v gh &> /dev/null; then
+    echo "Warning: GitHub CLI (gh) not installed. Skipping release upload."
+    echo "Install with: sudo apt install gh"
+    echo ""
+    echo "✅ Released ${TAG} (git only, no GitHub release)"
+    exit 0
+fi
+
+# Check if authenticated
+if ! gh auth status &> /dev/null; then
+    echo "Warning: GitHub CLI not authenticated. Skipping release upload."
+    echo "Authenticate with: gh auth login"
+    echo ""
+    echo "✅ Released ${TAG} (git only, no GitHub release)"
+    exit 0
+fi
+
+# Find package files
+DEB_FILE=$(ls -1 "${FRAMEWORK_PATH}/dist/atom-ahg-framework_${NEW_VERSION}_all.deb" 2>/dev/null || true)
+RUN_FILE=$(ls -1 "${FRAMEWORK_PATH}/dist/atom-ahg-framework-${NEW_VERSION}.run" 2>/dev/null || true)
+
+# Create release notes
+RELEASE_NOTES="## AtoM AHG Framework ${TAG}
+
+**Release Date:** ${DATE}
+
+### Changes
+${MSG}
+
+### Installation
+
+#### Option 1: Self-Extracting Installer (.run)
+\`\`\`bash
+chmod +x atom-ahg-framework-${NEW_VERSION}.run
+sudo ./atom-ahg-framework-${NEW_VERSION}.run
+\`\`\`
+
+#### Option 2: Debian Package (.deb)
+\`\`\`bash
+sudo apt install ./atom-ahg-framework_${NEW_VERSION}_all.deb
+\`\`\`
+
+### Requirements
+- AtoM 2.8+
+- PHP 8.1+
+- MySQL 8.0+
+- Ubuntu 22.04+
+"
+
+# Create the release
+echo "Creating release ${TAG}..."
+gh release create "${TAG}" \
+    --title "AtoM AHG Framework ${TAG}" \
+    --notes "${RELEASE_NOTES}" \
+    2>/dev/null || {
+        echo "Release ${TAG} may already exist, trying to upload files..."
+    }
+
+# Upload packages if they exist
+UPLOAD_COUNT=0
+
+if [ -n "$RUN_FILE" ] && [ -f "$RUN_FILE" ]; then
+    echo "Uploading: $(basename "$RUN_FILE")"
+    gh release upload "${TAG}" "$RUN_FILE" --clobber 2>/dev/null && UPLOAD_COUNT=$((UPLOAD_COUNT + 1)) || echo "  Warning: Failed to upload .run"
+fi
+
+if [ -n "$DEB_FILE" ] && [ -f "$DEB_FILE" ]; then
+    echo "Uploading: $(basename "$DEB_FILE")"
+    gh release upload "${TAG}" "$DEB_FILE" --clobber 2>/dev/null && UPLOAD_COUNT=$((UPLOAD_COUNT + 1)) || echo "  Warning: Failed to upload .deb"
+fi
+
+# Upload additional files if present
+if [ -f "${FRAMEWORK_PATH}/dist/setup-wizard.sh" ]; then
+    echo "Uploading: setup-wizard.sh"
+    gh release upload "${TAG}" "${FRAMEWORK_PATH}/dist/setup-wizard.sh" --clobber 2>/dev/null || true
+fi
+
+if [ -f "${FRAMEWORK_PATH}/dist/ansible-playbook.tar.gz" ]; then
+    echo "Uploading: ansible-playbook.tar.gz"
+    gh release upload "${TAG}" "${FRAMEWORK_PATH}/dist/ansible-playbook.tar.gz" --clobber 2>/dev/null || true
+fi
+
+if [ -f "${FRAMEWORK_PATH}/dist/docker-compose.tar.gz" ]; then
+    echo "Uploading: docker-compose.tar.gz"
+    gh release upload "${TAG}" "${FRAMEWORK_PATH}/dist/docker-compose.tar.gz" --clobber 2>/dev/null || true
+fi
+
+echo ""
+echo "╔══════════════════════════════════════════════════════════════════╗"
+echo "║                      RELEASE COMPLETE                            ║"
+echo "╚══════════════════════════════════════════════════════════════════╝"
+echo ""
+echo "  Version:  ${TAG}"
+echo "  Date:     ${DATE}"
+echo "  Message:  ${MSG}"
+echo ""
+echo "  Packages uploaded: ${UPLOAD_COUNT}"
+echo ""
+echo "  GitHub Release:"
+echo "  https://github.com/ArchiveHeritageGroup/atom-framework/releases/tag/${TAG}"
 echo ""
