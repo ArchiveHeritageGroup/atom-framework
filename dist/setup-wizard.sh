@@ -439,7 +439,7 @@ apt-get install -y expect >>$LOG 2>&1 || true
 
 # Use expect to handle interactive prompts
 expect << EXPECT_SCRIPT >>$LOG 2>&1 || true
-set timeout 300
+set timeout 600
 spawn sudo -u www-data php symfony tools:install
 
 expect "Database host" { send "localhost\r" }
@@ -456,8 +456,14 @@ expect "Site base URL" { send "$SITE_URL\r" }
 expect "Admin email" { send "$ADMIN_EMAIL\r" }
 expect "Admin username" { send "$ADMIN_USER\r" }
 expect "Admin password" { send "$ADMIN_PASS\r" }
-expect -re "y/N|Y/n|yes/no" { send "y\r" }
-expect -re "y/N|Y/n|yes/no" { send "y\r" }
+
+# First y/N - Database exists/drop check
+expect -re "\\(y/N\\)|\\(Y/n\\)" { send "y\r" }
+
+# Second y/N - Final confirmation
+expect -re "\\(y/N\\)|\\(Y/n\\)" { send "y\r" }
+
+# Wait for completion
 expect eof
 EXPECT_SCRIPT
 
