@@ -598,30 +598,11 @@ if [ "$INSTALL_MODE" != "extensions" ]; then
 fi
 
 #---------------------------------------------------------------------------
-# Create config.php BEFORE tools:install
+#---------------------------------------------------------------------------
+# Prepare directories (config.php created by tools:install)
 #---------------------------------------------------------------------------
 echo 70
-echo "XXX"; echo "Creating configuration files..."; echo "XXX"
-
-mkdir -p "$ATOM_PATH/config"
-cat > "$ATOM_PATH/config/config.php" << CFGPHP
-<?php
-return [
-    'all' => [
-        'propel' => [
-            'class' => 'sfPropelDatabase',
-            'param' => [
-                'encoding' => 'utf8mb4',
-                'persistent' => true,
-                'pooling' => true,
-                'dsn' => 'mysql:host=localhost;dbname=$DB_NAME;charset=utf8mb4',
-                'username' => '$DB_USER',
-                'password' => '$DB_PASS',
-            ],
-        ],
-    ],
-];
-CFGPHP
+echo "XXX"; echo "Preparing directories..."; echo "XXX"
 
 mkdir -p "$ATOM_PATH/cache" "$ATOM_PATH/log" "$ATOM_PATH/uploads" "$ATOM_PATH/downloads"
 chown -R www-data:www-data "$ATOM_PATH"
@@ -771,13 +752,13 @@ expect "Admin email" { send "$ADMIN_EMAIL\r" }
 expect "Admin username" { send "$ADMIN_USER\r" }
 expect "Admin password" { send "$ADMIN_PASS\r" }
 
-# First y/N - Database exists/drop check
+# First y/N - Confirm configuration
 expect -re "\(y/N\)" { send "y\r" }
 
-# Second y/N - Final confirmation to proceed
+# Second y/N - Database warning
 expect -re "\(y/N\)" { send "y\r" }
 
-# Wait for completion (can take a while for DB setup)
+# Wait for completion
 expect eof
 EXPECT_SCRIPT
 
