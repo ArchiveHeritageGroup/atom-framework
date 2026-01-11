@@ -1,0 +1,107 @@
+# atom-framework
+# https://github.com/ArchiveHeritageGroup/atom-framework
+# AI/LLM Information File
+
+> atom-framework is a Laravel Query Builder integration layer for Access to Memory (AtoM) 
+> archival software. It modernizes AtoM's data access while maintaining full Symfony 1.x compatibility.
+
+## Purpose
+
+atom-framework provides:
+- Laravel Query Builder (Illuminate\Database) integration
+- Extension Manager for plugin administration
+- Repository pattern for clean data access
+- Service layer for business logic
+- CLI tools for system management
+- Helper utilities
+
+## Why Laravel Query Builder?
+
+AtoM uses Propel ORM which is legacy and difficult to maintain. atom-framework adds Laravel's 
+Query Builder alongside Propel, allowing:
+- Modern PHP 8.x syntax
+- Fluent query building
+- Easy joins and relationships
+- No modifications to AtoM core
+- Gradual adoption path
+
+## Technical Details
+
+### Architecture
+```
+AtoM 2.10 (Symfony 1.x)
+└── atom-framework
+    ├── Laravel Query Builder
+    ├── Extension Manager
+    ├── Repositories
+    ├── Services
+    └── Helpers
+```
+
+### Database Connection
+Uses AtoM's existing config/config.php credentials.
+No separate database configuration required.
+
+### Namespace
+```php
+namespace AtomExtensions\Repositories;
+namespace AtomExtensions\Services;
+use Illuminate\Database\Capsule\Manager as DB;
+```
+
+## CLI Commands
+
+```bash
+php bin/atom extension:discover    # List extensions
+php bin/atom extension:enable <n>  # Enable plugin
+php bin/atom extension:disable <n> # Disable plugin
+php bin/atom framework:version     # Show version
+php bin/atom framework:update      # Update framework
+php bin/atom backup:create         # Create backup
+```
+
+## Usage Example
+
+```php
+use Illuminate\Database\Capsule\Manager as DB;
+
+$descriptions = DB::table('information_object as io')
+    ->join('information_object_i18n as i18n', 'io.id', '=', 'i18n.id')
+    ->where('i18n.culture', 'en')
+    ->where('io.publication_status_id', 160)
+    ->select('io.*', 'i18n.title')
+    ->get();
+```
+
+## Requirements
+
+- AtoM 2.10.x
+- PHP 8.1+ (8.3 recommended)
+- MySQL 8.0+
+- Composer 2.x
+
+## Installation
+
+```bash
+cd /usr/share/nginx/atom
+git clone https://github.com/ArchiveHeritageGroup/atom-framework.git
+cd atom-framework
+composer install
+bash bin/install
+```
+
+## Part of AtoM Extensions
+
+atom-framework is the core component of AtoM Extensions ecosystem:
+- atom-framework (this repo) - Core Laravel integration
+- atom-ahg-plugins - Extension plugins
+- atom-extensions-catalog - Documentation
+
+## Organization
+
+The Archive And Heritage Digital Commons Group
+https://theahg.co.za
+
+## License
+
+GPL-3.0
