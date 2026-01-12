@@ -1,6 +1,6 @@
 #!/bin/bash
 #===============================================================================
-# AtoM Setup Wizard v2.6
+# AtoM Setup Wizard v2.7
 # Interactive installer with complete plugin selection
 #===============================================================================
 
@@ -25,7 +25,6 @@ trap "rm -f $TEMP" EXIT
 INSTALL_MODE="complete"
 ATOM_PATH="/usr/share/nginx/atom"
 
-# Services (all default on)
 SVC_NGINX="on"
 SVC_PHP="on"
 SVC_MYSQL="on"
@@ -51,7 +50,6 @@ ADMIN_PASS=""
 LOAD_DEMO="on"
 SETUP_WORKER="on"
 
-# All plugins default ON
 PLG_THEME="on"
 PLG_SECURITY="on"
 PLG_LIBRARY="on"
@@ -79,8 +77,6 @@ PLG_DATAMIG="on"
 PLG_MIGRATION="on"
 PLG_API="on"
 
-LOG="/var/log/atom-install-$(date +%Y%m%d%H%M%S).log"
-
 #===============================================================================
 # System Check
 #===============================================================================
@@ -95,8 +91,8 @@ check_requirements() {
     report+="RAM:  ${ram}MB\n"
     report+="Disk: ${disk}GB free\n"
     report+="OS:   $os\n\n"
-    
     report+="INSTALLED SERVICES\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n"
+    
     command -v nginx &>/dev/null && report+="[x] Nginx\n" && SVC_NGINX="off" || report+="[ ] Nginx\n"
     command -v php &>/dev/null && report+="[x] PHP\n" && SVC_PHP="off" || report+="[ ] PHP\n"
     command -v mysql &>/dev/null && report+="[x] MySQL\n" && SVC_MYSQL="off" || report+="[ ] MySQL\n"
@@ -120,14 +116,8 @@ dialog --title "AtoM Setup Wizard" --msgbox "\n
       Access to Memory Setup Wizard
         Version 2.10 + AHG Framework
 
-  Complete archival solution with:
-  • Bootstrap 5 Theme
-  • GLAM Sector Support (26 plugins)
-  • Privacy Compliance
-  • AI Features
-
           Press OK to continue...
-" 24 55
+" 20 55
 
 check_requirements || exit 1
 
@@ -258,11 +248,10 @@ ADMIN_PASS=$(<$TEMP)
 #===============================================================================
 if [ "$INSTALL_MODE" = "complete" ] || [ "$INSTALL_MODE" = "extensions" ]; then
 
-# Page 1: Core & Theme
 dialog --title "Step 8/10: Plugins - Core (1/5)" \
-       --checklist "\nCore plugins (Required marked *):\n" 14 70 4 \
+       --checklist "\nCore plugins (* = Required):\n" 14 70 4 \
        "theme" "* ahgThemeB5Plugin - Bootstrap 5 Theme" $PLG_THEME \
-       "security" "* ahgSecurityClearancePlugin - Security Levels" $PLG_SECURITY \
+       "security" "* ahgSecurityClearancePlugin - Security" $PLG_SECURITY \
        "display" "  ahgDisplayPlugin - Display Profiles" $PLG_DISPLAY \
        "backup" "  ahgBackupPlugin - Backup & Restore" $PLG_BACKUP \
        2>$TEMP || exit 1
@@ -273,14 +262,13 @@ PLG_THEME="off"; PLG_SECURITY="off"; PLG_DISPLAY="off"; PLG_BACKUP="off"
 [[ "$P" == *display* ]] && PLG_DISPLAY="on"
 [[ "$P" == *backup* ]] && PLG_BACKUP="on"
 
-# Page 2: GLAM Sector
-dialog --title "Step 8/10: Plugins - GLAM Sector (2/5)" \
-       --checklist "\nGallery, Library, Archive, Museum plugins:\n" 16 70 6 \
+dialog --title "Step 8/10: Plugins - GLAM (2/5)" \
+       --checklist "\nGLAM sector plugins:\n" 15 70 5 \
        "library" "ahgLibraryPlugin - Library (RDA, MARC21)" $PLG_LIBRARY \
        "museum" "ahgMuseumPlugin - Museum (CCO, Spectrum)" $PLG_MUSEUM \
        "gallery" "ahgGalleryPlugin - Gallery (CCO, CDWA)" $PLG_GALLERY \
        "dam" "ahgDAMPlugin - Digital Asset Management" $PLG_DAM \
-       "spectrum" "ahgSpectrumPlugin - Spectrum 5.0 Procedures" $PLG_SPECTRUM \
+       "spectrum" "ahgSpectrumPlugin - Spectrum 5.0" $PLG_SPECTRUM \
        2>$TEMP || exit 1
 P=$(<$TEMP)
 PLG_LIBRARY="off"; PLG_MUSEUM="off"; PLG_GALLERY="off"; PLG_DAM="off"; PLG_SPECTRUM="off"
@@ -290,9 +278,8 @@ PLG_LIBRARY="off"; PLG_MUSEUM="off"; PLG_GALLERY="off"; PLG_DAM="off"; PLG_SPECT
 [[ "$P" == *dam* ]] && PLG_DAM="on"
 [[ "$P" == *spectrum* ]] && PLG_SPECTRUM="on"
 
-# Page 3: Research & Management
-dialog --title "Step 8/10: Plugins - Research & Management (3/5)" \
-       --checklist "\nResearch and management plugins:\n" 16 70 6 \
+dialog --title "Step 8/10: Plugins - Management (3/5)" \
+       --checklist "\nManagement plugins:\n" 16 70 6 \
        "research" "ahgResearchPlugin - Researcher Portal" $PLG_RESEARCH \
        "access" "ahgAccessRequestPlugin - Access Requests" $PLG_ACCESS \
        "donor" "ahgDonorAgreementPlugin - Donor Agreements" $PLG_DONOR \
@@ -309,11 +296,10 @@ PLG_RESEARCH="off"; PLG_ACCESS="off"; PLG_DONOR="off"; PLG_VENDOR="off"; PLG_CON
 [[ "$P" == *condition* ]] && PLG_CONDITION="on"
 [[ "$P" == *audit* ]] && PLG_AUDIT="on"
 
-# Page 4: Compliance
 dialog --title "Step 8/10: Plugins - Compliance (4/5)" \
-       --checklist "\nCompliance and rights plugins:\n" 16 70 5 \
-       "privacy" "ahgPrivacyPlugin - Privacy (GDPR, POPIA, CCPA)" $PLG_PRIVACY \
-       "heritage" "ahgHeritageAccountingPlugin - GRAP 103, IPSAS" $PLG_HERITAGE \
+       --checklist "\nCompliance plugins:\n" 14 70 4 \
+       "privacy" "ahgPrivacyPlugin - Privacy (GDPR, POPIA)" $PLG_PRIVACY \
+       "heritage" "ahgHeritageAccountingPlugin - GRAP 103" $PLG_HERITAGE \
        "extrights" "ahgExtendedRightsPlugin - Extended Rights" $PLG_EXTRIGHTS \
        "rights" "ahgRightsPlugin - Rights Management" $PLG_RIGHTS \
        2>$TEMP || exit 1
@@ -324,10 +310,9 @@ PLG_PRIVACY="off"; PLG_HERITAGE="off"; PLG_EXTRIGHTS="off"; PLG_RIGHTS="off"
 [[ "$P" == *extrights* ]] && PLG_EXTRIGHTS="on"
 [[ "$P" == *rights* ]] && PLG_RIGHTS="on"
 
-# Page 5: AI & Advanced
-dialog --title "Step 8/10: Plugins - AI & Advanced (5/5)" \
-       --checklist "\nAI and advanced features:\n" 18 70 8 \
-       "ner" "ahgNerPlugin - Named Entity Recognition (AI)" $PLG_NER \
+dialog --title "Step 8/10: Plugins - Advanced (5/5)" \
+       --checklist "\nAI & Advanced plugins:\n" 17 70 7 \
+       "ner" "ahgNerPlugin - Named Entity Recognition" $PLG_NER \
        "3dmodel" "ahg3DModelPlugin - 3D Model Viewer" $PLG_3DMODEL \
        "iiif" "ahgIiifCollectionPlugin - IIIF Deep Zoom" $PLG_IIIF \
        "ric" "ahgRicExplorerPlugin - Records in Contexts" $PLG_RIC \
@@ -398,9 +383,7 @@ dialog --title "Step 10/10: Confirm" --yesno "
 
 Mode:      $INSTALL_MODE
 Path:      $ATOM_PATH
-
 Database:  $DB_NAME (user: $DB_USER)
-ES Heap:   $ES_HEAP
 
 Site:      $SITE_TITLE
 URL:       $SITE_URL
@@ -413,7 +396,22 @@ Worker:    $SETUP_WORKER
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 Proceed with installation?
-" 26 55 || exit 1
+" 24 55 || exit 1
+
+#===============================================================================
+# Setup logging
+#===============================================================================
+mkdir -p /var/log/atom
+LOG="/var/log/atom/install-$(date +%Y%m%d%H%M%S).log"
+touch "$LOG"
+
+dialog --title "Monitor Installation" --msgbox "
+To watch progress in real-time, open another terminal:
+
+  tail -f $LOG
+
+Press OK to start installation...
+" 12 58
 
 #===============================================================================
 # INSTALLATION
@@ -423,7 +421,10 @@ echo 2; echo "XXX"; echo "Updating system..."; echo "XXX"
 apt-get update -qq >>$LOG 2>&1
 apt-get install -y software-properties-common curl wget gnupg git >>$LOG 2>&1
 
-[ "$SVC_NGINX" = "on" ] && { echo 5; echo "XXX"; echo "Installing Nginx..."; echo "XXX"; apt-get install -y nginx >>$LOG 2>&1; }
+if [ "$SVC_NGINX" = "on" ]; then
+    echo 5; echo "XXX"; echo "Installing Nginx..."; echo "XXX"
+    apt-get install -y nginx >>$LOG 2>&1
+fi
 
 if [ "$SVC_PHP" = "on" ]; then
     echo 10; echo "XXX"; echo "Installing PHP 8.3..."; echo "XXX"
@@ -450,7 +451,11 @@ MYCNF
 fi
 
 echo 22; echo "XXX"; echo "Creating database..."; echo "XXX"
-[ -n "$MYSQL_ROOT" ] && MCMD="mysql -u root -p$MYSQL_ROOT" || MCMD="mysql -u root"
+if [ -n "$MYSQL_ROOT" ]; then
+    MCMD="mysql -u root -p$MYSQL_ROOT"
+else
+    MCMD="mysql -u root"
+fi
 $MCMD -e "CREATE DATABASE IF NOT EXISTS \`$DB_NAME\` CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;" >>$LOG 2>&1
 $MCMD -e "CREATE USER IF NOT EXISTS '$DB_USER'@'localhost' IDENTIFIED BY '$DB_PASS';" >>$LOG 2>&1
 $MCMD -e "GRANT ALL PRIVILEGES ON \`$DB_NAME\`.* TO '$DB_USER'@'localhost'; FLUSH PRIVILEGES;" >>$LOG 2>&1
@@ -474,14 +479,31 @@ ESCFG
     mkdir -p /etc/elasticsearch/jvm.options.d
     echo "-Xms${ES_HEAP}" > /etc/elasticsearch/jvm.options.d/heap.options
     echo "-Xmx${ES_HEAP}" >> /etc/elasticsearch/jvm.options.d/heap.options
-    systemctl daemon-reload; systemctl enable elasticsearch; systemctl start elasticsearch
+    systemctl daemon-reload
+    systemctl enable elasticsearch
+    systemctl start elasticsearch
     for i in {1..30}; do curl -s http://localhost:9200 &>/dev/null && break; sleep 2; done
 fi
 
-[ "$SVC_GEARMAN" = "on" ] && { echo 40; echo "XXX"; echo "Installing Gearman..."; echo "XXX"; apt-get install -y gearman-job-server php8.3-gearman >>$LOG 2>&1; systemctl enable gearman-job-server; systemctl start gearman-job-server; }
-[ "$SVC_MEMCACHED" = "on" ] && { apt-get install -y memcached php-memcache >>$LOG 2>&1; }
-[ "$SVC_MEDIA" = "on" ] && { echo 44; echo "XXX"; echo "Installing media tools..."; echo "XXX"; apt-get install -y imagemagick ghostscript poppler-utils ffmpeg >>$LOG 2>&1; }
-[ "$SVC_FOP" = "on" ] && { apt-get install -y --no-install-recommends fop libsaxon-java >>$LOG 2>&1; }
+if [ "$SVC_GEARMAN" = "on" ]; then
+    echo 40; echo "XXX"; echo "Installing Gearman..."; echo "XXX"
+    apt-get install -y gearman-job-server php8.3-gearman >>$LOG 2>&1
+    systemctl enable gearman-job-server
+    systemctl start gearman-job-server
+fi
+
+if [ "$SVC_MEMCACHED" = "on" ]; then
+    apt-get install -y memcached php-memcache >>$LOG 2>&1
+fi
+
+if [ "$SVC_MEDIA" = "on" ]; then
+    echo 44; echo "XXX"; echo "Installing media tools..."; echo "XXX"
+    apt-get install -y imagemagick ghostscript poppler-utils ffmpeg >>$LOG 2>&1
+fi
+
+if [ "$SVC_FOP" = "on" ]; then
+    apt-get install -y --no-install-recommends fop libsaxon-java >>$LOG 2>&1
+fi
 
 echo 48; echo "XXX"; echo "Installing Node.js..."; echo "XXX"
 apt-get install -y nodejs npm >>$LOG 2>&1
@@ -587,12 +609,11 @@ if [ "$INSTALL_MODE" = "complete" ] || [ "$INSTALL_MODE" = "extensions" ]; then
     cd "$ATOM_PATH/atom-framework"
     composer install --no-dev --no-interaction >>$LOG 2>&1
     
-    echo 88; echo "XXX"; echo "Running framework install (creates symlinks)..."; echo "XXX"
+    echo 88; echo "XXX"; echo "Running framework install..."; echo "XXX"
     bash bin/install --auto >>$LOG 2>&1 || true
     
     echo 92; echo "XXX"; echo "Enabling selected plugins..."; echo "XXX"
     
-    # Enable only selected plugins
     [ "$PLG_THEME" = "on" ] && php bin/atom extension:enable ahgThemeB5Plugin >>$LOG 2>&1 || true
     [ "$PLG_SECURITY" = "on" ] && php bin/atom extension:enable ahgSecurityClearancePlugin >>$LOG 2>&1 || true
     [ "$PLG_DISPLAY" = "on" ] && php bin/atom extension:enable ahgDisplayPlugin >>$LOG 2>&1 || true
@@ -624,7 +645,6 @@ if [ "$INSTALL_MODE" = "complete" ] || [ "$INSTALL_MODE" = "extensions" ]; then
     cd "$ATOM_PATH"
     sudo -u www-data php symfony cc >>$LOG 2>&1 || true
     chown -R www-data:www-data "$ATOM_PATH"
-fi
 fi
 
 if [ "$SETUP_WORKER" = "on" ]; then
@@ -678,13 +698,8 @@ Path:    $ATOM_PATH
 Plugins: $PLG_COUNT enabled
 Log:     $LOG
 
-Commands:
-  php symfony cc
-  php symfony search:populate
-  systemctl status atom-worker
-
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-" 26 55
+" 22 55
 
 clear
 echo "========================================"
