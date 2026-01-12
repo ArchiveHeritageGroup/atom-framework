@@ -586,65 +586,13 @@ if [ "$INSTALL_MODE" = "complete" ] || [ "$INSTALL_MODE" = "extensions" ]; then
     echo 85; echo "XXX"; echo "Setting up framework..."; echo "XXX"
     cd "$ATOM_PATH/atom-framework"
     composer install --no-dev --no-interaction >>$LOG 2>&1
+    
+    echo 88; echo "XXX"; echo "Running framework install (creates symlinks)..."; echo "XXX"
     bash bin/install --auto >>$LOG 2>&1 || true
     
-    echo 88; echo "XXX"; echo "Creating plugin symlinks..."; echo "XXX"
+    echo 92; echo "XXX"; echo "Enabling selected plugins..."; echo "XXX"
     
-    # Function to create symlink
-    create_link() {
-        local plugin_name="$1"
-        local source="$ATOM_PATH/atom-ahg-plugins/$plugin_name"
-        local target="$ATOM_PATH/plugins/$plugin_name"
-        if [ -d "$source" ]; then
-            rm -f "$target"
-            ln -sf "$source" "$target"
-            echo "Linked: $plugin_name" >>$LOG
-        else
-            echo "Not found: $source" >>$LOG
-        fi
-    }
-    
-    # Core plugins
-    [ "$PLG_THEME" = "on" ] && create_link "ahgThemeB5Plugin"
-    [ "$PLG_SECURITY" = "on" ] && create_link "ahgSecurityClearancePlugin"
-    [ "$PLG_DISPLAY" = "on" ] && create_link "ahgDisplayPlugin"
-    [ "$PLG_BACKUP" = "on" ] && create_link "ahgBackupPlugin"
-    
-    # GLAM plugins
-    [ "$PLG_LIBRARY" = "on" ] && create_link "ahgLibraryPlugin"
-    [ "$PLG_MUSEUM" = "on" ] && create_link "ahgMuseumPlugin"
-    [ "$PLG_GALLERY" = "on" ] && create_link "ahgGalleryPlugin"
-    [ "$PLG_DAM" = "on" ] && create_link "ahgDAMPlugin"
-    [ "$PLG_SPECTRUM" = "on" ] && create_link "ahgSpectrumPlugin"
-    
-    # Research & Management plugins
-    [ "$PLG_RESEARCH" = "on" ] && create_link "ahgResearchPlugin"
-    [ "$PLG_ACCESS" = "on" ] && create_link "ahgAccessRequestPlugin"
-    [ "$PLG_DONOR" = "on" ] && create_link "ahgDonorAgreementPlugin"
-    [ "$PLG_VENDOR" = "on" ] && create_link "ahgVendorPlugin"
-    [ "$PLG_CONDITION" = "on" ] && create_link "ahgConditionPlugin"
-    [ "$PLG_AUDIT" = "on" ] && create_link "ahgAuditTrailPlugin"
-    
-    # Compliance plugins
-    [ "$PLG_PRIVACY" = "on" ] && create_link "ahgPrivacyPlugin"
-    [ "$PLG_HERITAGE" = "on" ] && create_link "ahgHeritageAccountingPlugin"
-    [ "$PLG_EXTRIGHTS" = "on" ] && create_link "ahgExtendedRightsPlugin"
-    [ "$PLG_RIGHTS" = "on" ] && create_link "ahgRightsPlugin"
-    
-    # AI & Advanced plugins
-    [ "$PLG_NER" = "on" ] && create_link "ahgNerPlugin"
-    [ "$PLG_3DMODEL" = "on" ] && create_link "ahg3DModelPlugin"
-    [ "$PLG_IIIF" = "on" ] && create_link "ahgIiifCollectionPlugin"
-    [ "$PLG_RIC" = "on" ] && create_link "ahgRicExplorerPlugin"
-    [ "$PLG_DATAMIG" = "on" ] && create_link "ahgDataMigrationPlugin"
-    [ "$PLG_MIGRATION" = "on" ] && create_link "ahgMigrationPlugin"
-    [ "$PLG_API" = "on" ] && create_link "ahgAPIPlugin"
-    
-    echo 92; echo "XXX"; echo "Enabling plugins..."; echo "XXX"
-    cd "$ATOM_PATH/atom-framework"
-    php bin/atom extension:discover >>$LOG 2>&1 || true
-    
-    # Enable selected plugins
+    # Enable only selected plugins
     [ "$PLG_THEME" = "on" ] && php bin/atom extension:enable ahgThemeB5Plugin >>$LOG 2>&1 || true
     [ "$PLG_SECURITY" = "on" ] && php bin/atom extension:enable ahgSecurityClearancePlugin >>$LOG 2>&1 || true
     [ "$PLG_DISPLAY" = "on" ] && php bin/atom extension:enable ahgDisplayPlugin >>$LOG 2>&1 || true
@@ -676,6 +624,7 @@ if [ "$INSTALL_MODE" = "complete" ] || [ "$INSTALL_MODE" = "extensions" ]; then
     cd "$ATOM_PATH"
     sudo -u www-data php symfony cc >>$LOG 2>&1 || true
     chown -R www-data:www-data "$ATOM_PATH"
+fi
 fi
 
 if [ "$SETUP_WORKER" = "on" ]; then
