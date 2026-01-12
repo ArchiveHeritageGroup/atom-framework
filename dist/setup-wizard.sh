@@ -612,6 +612,9 @@ if [ "$INSTALL_MODE" = "complete" ] || [ "$INSTALL_MODE" = "extensions" ]; then
     echo 88; echo "XXX"; echo "Running framework install..."; echo "XXX"
     bash bin/install --auto >>$LOG 2>&1 || true
     
+    echo 90; echo "XXX"; echo "Discovering plugins..."; echo "XXX"
+    php bin/atom extension:discover >>$LOG 2>&1 || true
+
     echo 92; echo "XXX"; echo "Enabling selected plugins..."; echo "XXX"
     
     [ "$PLG_THEME" = "on" ] && php bin/atom extension:enable ahgThemeB5Plugin >>$LOG 2>&1 || true
