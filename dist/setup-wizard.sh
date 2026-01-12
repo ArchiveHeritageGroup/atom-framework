@@ -209,7 +209,7 @@ dialog --title "Step 4: Database Password" \
        --insecure --passwordbox "\nPassword for '$DB_USER':\n" 10 50 \
        2>$TEMP || exit 1
 DB_PASS=$(<$TEMP)
-[ ${#DB_PASS} -lt 8 ] && DB_PASS="atompass123"
+[ ${#DB_PASS} -lt 8 ] && DB_PASS="AtoM@123"
 
 #===============================================================================
 # Step 5: Elasticsearch
@@ -258,7 +258,7 @@ dialog --title "Step 7: Admin Password" \
        --insecure --passwordbox "\nAdmin password (min 8 chars):\n" 10 50 \
        2>$TEMP || exit 1
 ADMIN_PASS=$(<$TEMP)
-[ ${#ADMIN_PASS} -lt 8 ] && ADMIN_PASS="admin12345"
+[ ${#ADMIN_PASS} -lt 8 ] && ADMIN_PASS="Merlot@123"
 
 fi # End of full install steps
 
