@@ -1,6 +1,6 @@
 #!/bin/bash
 #===============================================================================
-# AtoM Setup Wizard v2.8
+# AtoM Setup Wizard v2.9
 #===============================================================================
 
 set -e
@@ -122,27 +122,46 @@ check_requirements || exit 1
 #===============================================================================
 # Step 1: Installation Mode
 #===============================================================================
-dialog --title "Step 1/10: Installation Mode" \
-       --menu "\nSelect installation type:\n" 14 65 3 \
-       "complete" "AtoM 2.10 + All AHG Extensions (Recommended)" \
-       "atom" "Base AtoM 2.10 only" \
-       "extensions" "AHG Extensions only (existing AtoM)" \
+dialog --title "Step 1: Installation Mode" \
+       --menu "\nSelect installation type:\n" 15 70 3 \
+       "complete" "Full install: AtoM 2.10 + Services + AHG Extensions" \
+       "atom" "Base AtoM 2.10 + Services only (no extensions)" \
+       "extensions" "AHG Extensions only (existing AtoM installation)" \
        2>$TEMP || exit 1
 INSTALL_MODE=$(<$TEMP)
 
 #===============================================================================
 # Step 2: Installation Path
 #===============================================================================
-dialog --title "Step 2/10: Installation Path" \
-       --inputbox "\nInstallation directory:\n" 10 55 "$ATOM_PATH" \
-       2>$TEMP || exit 1
-ATOM_PATH=$(<$TEMP)
-[ -z "$ATOM_PATH" ] && ATOM_PATH="/usr/share/nginx/atom"
+if [ "$INSTALL_MODE" = "extensions" ]; then
+    dialog --title "Step 2: AtoM Path" \
+           --inputbox "\nPath to existing AtoM installation:\n" 10 55 "$ATOM_PATH" \
+           2>$TEMP || exit 1
+    ATOM_PATH=$(<$TEMP)
+    [ -z "$ATOM_PATH" ] && ATOM_PATH="/usr/share/nginx/atom"
+    
+    # Verify AtoM exists
+    if [ ! -f "$ATOM_PATH/symfony" ]; then
+        dialog --title "Error" --msgbox "\nAtoM not found at: $ATOM_PATH\n\nPlease check the path and try again." 10 50
+        exit 1
+    fi
+else
+    dialog --title "Step 2: Installation Path" \
+           --inputbox "\nInstallation directory:\n" 10 55 "$ATOM_PATH" \
+           2>$TEMP || exit 1
+    ATOM_PATH=$(<$TEMP)
+    [ -z "$ATOM_PATH" ] && ATOM_PATH="/usr/share/nginx/atom"
+fi
+
+#===============================================================================
+# Steps 3-7: Only for full installs
+#===============================================================================
+if [ "$INSTALL_MODE" != "extensions" ]; then
 
 #===============================================================================
 # Step 3: Services
 #===============================================================================
-dialog --title "Step 3/10: Services" \
+dialog --title "Step 3: Services" \
        --checklist "\nSelect services to install:\n" 18 65 8 \
        "nginx" "Nginx Web Server" $SVC_NGINX \
        "php" "PHP 8.3 + Extensions" $SVC_PHP \
@@ -170,14 +189,14 @@ SVC_GEARMAN="off"; SVC_MEMCACHED="off"; SVC_MEDIA="off"; SVC_FOP="off"
 # Step 4: MySQL
 #===============================================================================
 if [ "$SVC_MYSQL" = "on" ]; then
-    dialog --title "Step 4/10: MySQL Root Password" \
+    dialog --title "Step 4: MySQL Root Password" \
            --insecure --passwordbox "\nMySQL root password (min 8 chars):\n" 10 50 \
            2>$TEMP || exit 1
     MYSQL_ROOT=$(<$TEMP)
     [ ${#MYSQL_ROOT} -lt 8 ] && MYSQL_ROOT="rootpass123"
 fi
 
-dialog --title "Step 4/10: AtoM Database" \
+dialog --title "Step 4: AtoM Database" \
        --form "\nDatabase settings:\n" 12 55 2 \
        "Name:" 1 1 "$DB_NAME" 1 8 30 50 \
        "User:" 2 1 "$DB_USER" 2 8 30 50 \
@@ -186,7 +205,7 @@ DB_NAME=$(sed -n '1p' $TEMP); DB_USER=$(sed -n '2p' $TEMP)
 [ -z "$DB_NAME" ] && DB_NAME="atom"
 [ -z "$DB_USER" ] && DB_USER="atom"
 
-dialog --title "Step 4/10: Database Password" \
+dialog --title "Step 4: Database Password" \
        --insecure --passwordbox "\nPassword for '$DB_USER':\n" 10 50 \
        2>$TEMP || exit 1
 DB_PASS=$(<$TEMP)
@@ -200,7 +219,7 @@ if [ "$SVC_ES" = "on" ]; then
     rec=$((ram_mb / 4)); [ $rec -gt 1024 ] && rec=1024; [ $rec -lt 256 ] && rec=256
     ES_HEAP="${rec}m"
     
-    dialog --title "Step 5/10: Elasticsearch" \
+    dialog --title "Step 5: Elasticsearch" \
            --inputbox "\nHeap size (recommended: ${ES_HEAP}):\n" 10 50 "$ES_HEAP" \
            2>$TEMP || exit 1
     ES_HEAP=$(<$TEMP)
@@ -213,7 +232,7 @@ fi
 SERVER_IP=$(hostname -I | awk '{print $1}')
 [ -z "$SITE_URL" ] && SITE_URL="http://${SERVER_IP}"
 
-dialog --title "Step 6/10: Site Configuration" \
+dialog --title "Step 6: Site Configuration" \
        --form "\nSite settings:\n" 14 60 3 \
        "Title:" 1 1 "$SITE_TITLE" 1 12 40 100 \
        "Description:" 2 1 "$SITE_DESC" 2 12 40 200 \
@@ -226,7 +245,7 @@ SITE_TITLE=$(sed -n '1p' $TEMP); SITE_DESC=$(sed -n '2p' $TEMP); SITE_URL=$(sed 
 #===============================================================================
 # Step 7: Admin Account
 #===============================================================================
-dialog --title "Step 7/10: Administrator" \
+dialog --title "Step 7: Administrator" \
        --form "\nAdmin account:\n" 12 55 2 \
        "Email:" 1 1 "$ADMIN_EMAIL" 1 10 40 100 \
        "Username:" 2 1 "$ADMIN_USER" 2 10 30 50 \
@@ -235,18 +254,20 @@ ADMIN_EMAIL=$(sed -n '1p' $TEMP); ADMIN_USER=$(sed -n '2p' $TEMP)
 [ -z "$ADMIN_EMAIL" ] && ADMIN_EMAIL="admin@example.com"
 [ -z "$ADMIN_USER" ] && ADMIN_USER="admin"
 
-dialog --title "Step 7/10: Admin Password" \
+dialog --title "Step 7: Admin Password" \
        --insecure --passwordbox "\nAdmin password (min 8 chars):\n" 10 50 \
        2>$TEMP || exit 1
 ADMIN_PASS=$(<$TEMP)
 [ ${#ADMIN_PASS} -lt 8 ] && ADMIN_PASS="admin12345"
 
+fi # End of full install steps
+
 #===============================================================================
-# Step 8: AHG Plugins
+# Step 8: AHG Plugins (for complete and extensions modes)
 #===============================================================================
 if [ "$INSTALL_MODE" = "complete" ] || [ "$INSTALL_MODE" = "extensions" ]; then
 
-dialog --title "Step 8/10: Plugins - Core (1/5)" \
+dialog --title "Plugins - Core (1/5)" \
        --checklist "\nCore plugins (* = Required):\n" 13 70 3 \
        "security" "* ahgSecurityClearancePlugin - Security" $PLG_SECURITY \
        "display" "  ahgDisplayPlugin - Display Profiles" $PLG_DISPLAY \
@@ -258,7 +279,7 @@ PLG_SECURITY="off"; PLG_DISPLAY="off"; PLG_BACKUP="off"
 [[ "$P" == *display* ]] && PLG_DISPLAY="on"
 [[ "$P" == *backup* ]] && PLG_BACKUP="on"
 
-dialog --title "Step 8/10: Plugins - GLAM (2/5)" \
+dialog --title "Plugins - GLAM (2/5)" \
        --checklist "\nGLAM sector plugins:\n" 15 70 5 \
        "library" "ahgLibraryPlugin - Library (RDA, MARC21)" $PLG_LIBRARY \
        "museum" "ahgMuseumPlugin - Museum (CCO, Spectrum)" $PLG_MUSEUM \
@@ -274,7 +295,7 @@ PLG_LIBRARY="off"; PLG_MUSEUM="off"; PLG_GALLERY="off"; PLG_DAM="off"; PLG_SPECT
 [[ "$P" == *dam* ]] && PLG_DAM="on"
 [[ "$P" == *spectrum* ]] && PLG_SPECTRUM="on"
 
-dialog --title "Step 8/10: Plugins - Management (3/5)" \
+dialog --title "Plugins - Management (3/5)" \
        --checklist "\nManagement plugins:\n" 16 70 6 \
        "research" "ahgResearchPlugin - Researcher Portal" $PLG_RESEARCH \
        "access" "ahgAccessRequestPlugin - Access Requests" $PLG_ACCESS \
@@ -292,7 +313,7 @@ PLG_RESEARCH="off"; PLG_ACCESS="off"; PLG_DONOR="off"; PLG_VENDOR="off"; PLG_CON
 [[ "$P" == *condition* ]] && PLG_CONDITION="on"
 [[ "$P" == *audit* ]] && PLG_AUDIT="on"
 
-dialog --title "Step 8/10: Plugins - Compliance (4/5)" \
+dialog --title "Plugins - Compliance (4/5)" \
        --checklist "\nCompliance plugins:\n" 14 70 4 \
        "privacy" "ahgPrivacyPlugin - Privacy (GDPR, POPIA)" $PLG_PRIVACY \
        "heritage" "ahgHeritageAccountingPlugin - GRAP 103" $PLG_HERITAGE \
@@ -306,7 +327,7 @@ PLG_PRIVACY="off"; PLG_HERITAGE="off"; PLG_EXTRIGHTS="off"; PLG_RIGHTS="off"
 [[ "$P" == *extrights* ]] && PLG_EXTRIGHTS="on"
 [[ "$P" == *rights* ]] && PLG_RIGHTS="on"
 
-dialog --title "Step 8/10: Plugins - Advanced (5/5)" \
+dialog --title "Plugins - Advanced (5/5)" \
        --checklist "\nAI & Advanced plugins:\n" 17 70 7 \
        "ner" "ahgNerPlugin - Named Entity Recognition" $PLG_NER \
        "3dmodel" "ahg3DModelPlugin - 3D Model Viewer" $PLG_3DMODEL \
@@ -329,9 +350,10 @@ PLG_NER="off"; PLG_3DMODEL="off"; PLG_IIIF="off"; PLG_RIC="off"; PLG_DATAMIG="of
 fi
 
 #===============================================================================
-# Step 9: Options
+# Step 9: Options (only for full installs)
 #===============================================================================
-dialog --title "Step 9/10: Options" \
+if [ "$INSTALL_MODE" != "extensions" ]; then
+dialog --title "Options" \
        --checklist "\nAdditional options:\n" 12 55 2 \
        "demo" "Load demo data" $LOAD_DEMO \
        "worker" "Setup atom-worker service" $SETUP_WORKER \
@@ -340,9 +362,10 @@ O=$(<$TEMP)
 LOAD_DEMO="off"; SETUP_WORKER="off"
 [[ "$O" == *demo* ]] && LOAD_DEMO="on"
 [[ "$O" == *worker* ]] && SETUP_WORKER="on"
+fi
 
 #===============================================================================
-# Step 10: Confirm
+# Confirmation
 #===============================================================================
 PLG_COUNT=0
 [ "$PLG_SECURITY" = "on" ] && PLG_COUNT=$((PLG_COUNT+1))
@@ -371,7 +394,27 @@ PLG_COUNT=0
 [ "$PLG_MIGRATION" = "on" ] && PLG_COUNT=$((PLG_COUNT+1))
 [ "$PLG_API" = "on" ] && PLG_COUNT=$((PLG_COUNT+1))
 
-dialog --title "Step 10/10: Confirm" --yesno "
+if [ "$INSTALL_MODE" = "extensions" ]; then
+    dialog --title "Confirm Installation" --yesno "
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        AHG EXTENSIONS INSTALLATION
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+AtoM Path: $ATOM_PATH
+Plugins:   $PLG_COUNT selected
+
+This will:
+  • Clone atom-framework
+  • Clone atom-ahg-plugins
+  • Create plugin symlinks
+  • Enable selected plugins
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Proceed with installation?
+" 22 55 || exit 1
+else
+    dialog --title "Confirm Installation" --yesno "
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
            INSTALLATION SUMMARY
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -385,13 +428,13 @@ URL:       $SITE_URL
 Admin:     $ADMIN_EMAIL
 
 Plugins:   $PLG_COUNT selected
-Demo:      $LOAD_DEMO
 Worker:    $SETUP_WORKER
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 Proceed with installation?
 " 24 55 || exit 1
+fi
 
 #===============================================================================
 # Setup logging
@@ -409,7 +452,94 @@ Press OK to start installation...
 " 12 58
 
 #===============================================================================
-# INSTALLATION
+# INSTALLATION - Extensions Only Mode
+#===============================================================================
+if [ "$INSTALL_MODE" = "extensions" ]; then
+{
+echo 10; echo "XXX"; echo "Cloning AHG Framework..."; echo "XXX"
+cd "$ATOM_PATH"
+rm -rf atom-framework atom-ahg-plugins
+git clone --depth 1 https://github.com/ArchiveHeritageGroup/atom-framework.git atom-framework >>$LOG 2>&1
+git clone --depth 1 https://github.com/ArchiveHeritageGroup/atom-ahg-plugins.git atom-ahg-plugins >>$LOG 2>&1
+
+echo 30; echo "XXX"; echo "Installing framework dependencies..."; echo "XXX"
+cd "$ATOM_PATH/atom-framework"
+composer install --no-dev --no-interaction >>$LOG 2>&1
+
+echo 50; echo "XXX"; echo "Running framework install..."; echo "XXX"
+bash bin/install --auto >>$LOG 2>&1 || true
+
+echo 70; echo "XXX"; echo "Discovering plugins..."; echo "XXX"
+php bin/atom extension:discover >>$LOG 2>&1 || true
+
+echo 80; echo "XXX"; echo "Enabling selected plugins..."; echo "XXX"
+
+[ "$PLG_SECURITY" = "on" ] && php bin/atom extension:enable ahgSecurityClearancePlugin >>$LOG 2>&1 || true
+[ "$PLG_DISPLAY" = "on" ] && php bin/atom extension:enable ahgDisplayPlugin >>$LOG 2>&1 || true
+[ "$PLG_BACKUP" = "on" ] && php bin/atom extension:enable ahgBackupPlugin >>$LOG 2>&1 || true
+[ "$PLG_LIBRARY" = "on" ] && php bin/atom extension:enable ahgLibraryPlugin >>$LOG 2>&1 || true
+[ "$PLG_MUSEUM" = "on" ] && php bin/atom extension:enable ahgMuseumPlugin >>$LOG 2>&1 || true
+[ "$PLG_GALLERY" = "on" ] && php bin/atom extension:enable ahgGalleryPlugin >>$LOG 2>&1 || true
+[ "$PLG_DAM" = "on" ] && php bin/atom extension:enable ahgDAMPlugin >>$LOG 2>&1 || true
+[ "$PLG_SPECTRUM" = "on" ] && php bin/atom extension:enable ahgSpectrumPlugin >>$LOG 2>&1 || true
+[ "$PLG_RESEARCH" = "on" ] && php bin/atom extension:enable ahgResearchPlugin >>$LOG 2>&1 || true
+[ "$PLG_ACCESS" = "on" ] && php bin/atom extension:enable ahgAccessRequestPlugin >>$LOG 2>&1 || true
+[ "$PLG_DONOR" = "on" ] && php bin/atom extension:enable ahgDonorAgreementPlugin >>$LOG 2>&1 || true
+[ "$PLG_VENDOR" = "on" ] && php bin/atom extension:enable ahgVendorPlugin >>$LOG 2>&1 || true
+[ "$PLG_CONDITION" = "on" ] && php bin/atom extension:enable ahgConditionPlugin >>$LOG 2>&1 || true
+[ "$PLG_AUDIT" = "on" ] && php bin/atom extension:enable ahgAuditTrailPlugin >>$LOG 2>&1 || true
+[ "$PLG_PRIVACY" = "on" ] && php bin/atom extension:enable ahgPrivacyPlugin >>$LOG 2>&1 || true
+[ "$PLG_HERITAGE" = "on" ] && php bin/atom extension:enable ahgHeritageAccountingPlugin >>$LOG 2>&1 || true
+[ "$PLG_EXTRIGHTS" = "on" ] && php bin/atom extension:enable ahgExtendedRightsPlugin >>$LOG 2>&1 || true
+[ "$PLG_RIGHTS" = "on" ] && php bin/atom extension:enable ahgRightsPlugin >>$LOG 2>&1 || true
+[ "$PLG_NER" = "on" ] && php bin/atom extension:enable ahgNerPlugin >>$LOG 2>&1 || true
+[ "$PLG_3DMODEL" = "on" ] && php bin/atom extension:enable ahg3DModelPlugin >>$LOG 2>&1 || true
+[ "$PLG_IIIF" = "on" ] && php bin/atom extension:enable ahgIiifCollectionPlugin >>$LOG 2>&1 || true
+[ "$PLG_RIC" = "on" ] && php bin/atom extension:enable ahgRicExplorerPlugin >>$LOG 2>&1 || true
+[ "$PLG_DATAMIG" = "on" ] && php bin/atom extension:enable ahgDataMigrationPlugin >>$LOG 2>&1 || true
+[ "$PLG_MIGRATION" = "on" ] && php bin/atom extension:enable ahgMigrationPlugin >>$LOG 2>&1 || true
+[ "$PLG_API" = "on" ] && php bin/atom extension:enable ahgAPIPlugin >>$LOG 2>&1 || true
+
+echo 95; echo "XXX"; echo "Clearing cache..."; echo "XXX"
+cd "$ATOM_PATH"
+sudo -u www-data php symfony cc >>$LOG 2>&1 || true
+chown -R www-data:www-data "$ATOM_PATH"
+
+echo 100; echo "XXX"; echo "Complete!"; echo "XXX"
+sleep 1
+
+} | dialog --title "Installing AHG Extensions" --gauge "Preparing..." 8 60 0
+
+SERVER_IP=$(hostname -I | awk '{print $1}')
+
+dialog --title "Installation Complete!" --msgbox "
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   AHG Extensions Installed!
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Path:    $ATOM_PATH
+Plugins: $PLG_COUNT enabled
+Log:     $LOG
+
+Remember to clear cache if needed:
+  cd $ATOM_PATH && php symfony cc
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+" 20 55
+
+clear
+echo "========================================"
+echo "  AHG Extensions Installed!"
+echo "========================================"
+echo "  Path:    $ATOM_PATH"
+echo "  Plugins: $PLG_COUNT enabled"
+echo "  Log:     $LOG"
+echo ""
+exit 0
+fi
+
+#===============================================================================
+# INSTALLATION - Full Mode (complete or atom)
 #===============================================================================
 {
 echo 2; echo "XXX"; echo "Updating system..."; echo "XXX"
@@ -499,22 +629,20 @@ fi
 echo 48; echo "XXX"; echo "Installing Node.js..."; echo "XXX"
 apt-get install -y nodejs npm >>$LOG 2>&1
 
-if [ "$INSTALL_MODE" != "extensions" ]; then
-    echo 52; echo "XXX"; echo "Downloading AtoM..."; echo "XXX"
-    rm -rf "$ATOM_PATH"
-    mkdir -p "$ATOM_PATH"
-    wget -q https://storage.accesstomemory.org/releases/atom-latest.tar.gz -O /tmp/atom-latest.tar.gz >>$LOG 2>&1
-    tar -xzf /tmp/atom-latest.tar.gz -C "$ATOM_PATH" --strip-components=1 >>$LOG 2>&1
-    rm -f /tmp/atom-latest.tar.gz
-    
-    echo 58; echo "XXX"; echo "Installing dependencies..."; echo "XXX"
-    cd "$ATOM_PATH"
-    composer install --no-dev --no-interaction >>$LOG 2>&1
-    
-    echo 62; echo "XXX"; echo "Building theme..."; echo "XXX"
-    npm install >>$LOG 2>&1
-    npm run build >>$LOG 2>&1 || true
-fi
+echo 52; echo "XXX"; echo "Downloading AtoM..."; echo "XXX"
+rm -rf "$ATOM_PATH"
+mkdir -p "$ATOM_PATH"
+wget -q https://storage.accesstomemory.org/releases/atom-latest.tar.gz -O /tmp/atom-latest.tar.gz >>$LOG 2>&1
+tar -xzf /tmp/atom-latest.tar.gz -C "$ATOM_PATH" --strip-components=1 >>$LOG 2>&1
+rm -f /tmp/atom-latest.tar.gz
+
+echo 58; echo "XXX"; echo "Installing dependencies..."; echo "XXX"
+cd "$ATOM_PATH"
+composer install --no-dev --no-interaction >>$LOG 2>&1
+
+echo 62; echo "XXX"; echo "Building theme..."; echo "XXX"
+npm install >>$LOG 2>&1
+npm run build >>$LOG 2>&1 || true
 
 echo 65; echo "XXX"; echo "Preparing directories..."; echo "XXX"
 mkdir -p "$ATOM_PATH/cache" "$ATOM_PATH/log" "$ATOM_PATH/uploads" "$ATOM_PATH/downloads"
@@ -626,9 +754,9 @@ expect eof
 EXPECT_EOF
 
 #---------------------------------------------------------------------------
-# AHG Extensions
+# AHG Extensions (only for complete mode)
 #---------------------------------------------------------------------------
-if [ "$INSTALL_MODE" = "complete" ] || [ "$INSTALL_MODE" = "extensions" ]; then
+if [ "$INSTALL_MODE" = "complete" ]; then
     echo 82; echo "XXX"; echo "Installing AHG Framework..."; echo "XXX"
     cd "$ATOM_PATH"
     git clone --depth 1 https://github.com/ArchiveHeritageGroup/atom-framework.git atom-framework >>$LOG 2>&1
@@ -675,7 +803,6 @@ if [ "$INSTALL_MODE" = "complete" ] || [ "$INSTALL_MODE" = "extensions" ]; then
     echo 94; echo "XXX"; echo "Clearing cache..."; echo "XXX"
     cd "$ATOM_PATH"
     sudo -u www-data php symfony cc >>$LOG 2>&1 || true
-    chown -R www-data:www-data "$ATOM_PATH"
 fi
 
 if [ "$SETUP_WORKER" = "on" ]; then
