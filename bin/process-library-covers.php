@@ -16,6 +16,9 @@ $context = sfContext::createInstance($configuration);
 sfConfig::set('sf_default_culture', 'en');
 $context->user->setCulture('en');
 
+// Set allowed languages for ElasticSearch (fix for CLI mode)
+sfConfig::set('app_i18n_languages', ['en']);
+
 // Bootstrap framework
 require_once ATOM_ROOT . '/atom-framework/bootstrap.php';
 
