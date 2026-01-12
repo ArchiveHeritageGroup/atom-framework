@@ -554,19 +554,55 @@ systemctl restart php8.3-fpm
 
 echo 70; echo "XXX"; echo "Configuring Nginx..."; echo "XXX"
 cat > /etc/nginx/sites-available/atom << NGXCFG
-upstream atom { server unix:/run/php-fpm.atom.sock; }
+upstream atom {
+    server unix:/run/php-fpm.atom.sock;
+}
+
 server {
     listen 80;
     server_name _;
-    root $ATOM_PATH;
+    root /usr/share/nginx/atom;
+    
     client_max_body_size 72M;
-    location / { try_files \$uri /index.php?\$args; }
-    location ~ ^/(index|qubit_dev)\.php(/|\$) {
+    
+    location ~* ^/(css|dist|js|images|plugins|vendor)/.*\.(css|png|jpg|js|svg|ico|gif|pdf|woff|woff2|otf|ttf)$ {
+    }
+    
+    location ~* ^/(downloads)/.*\.(pdf|xml|html|csv|zip|rtf)$ {
+    }
+    
+    location ~ ^/(ead.dtd|favicon.ico|robots.txt|sitemap.*)$ {
+    }
+    
+    location / {
+        try_files $uri /index.php?$args;
+        if (-f $request_filename) {
+            return 403;
+        }
+    }
+    
+    location ~* /uploads/r/(.*)/conf/ {
+    }
+    
+    location ~* ^/uploads/r/(.*)$ {
         include /etc/nginx/fastcgi_params;
-        fastcgi_param SCRIPT_FILENAME \$document_root\$fastcgi_script_name;
+        set $index /index.php;
+        fastcgi_param SCRIPT_FILENAME $document_root$index;
+        fastcgi_param SCRIPT_NAME $index;
         fastcgi_pass atom;
     }
-    location ~* \.(js|css|png|jpg|gif|ico|svg|woff|woff2)$ { expires 1y; }
+    
+    location ~ ^/private/(.*)$ {
+        internal;
+        alias /usr/share/nginx/atom/$1;
+    }
+    
+    location ~ ^/(index|qubit_dev)\.php(/|$) {
+        include /etc/nginx/fastcgi_params;
+        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+        fastcgi_split_path_info ^(.+\.php)(/.*)$;
+        fastcgi_pass atom;
+    }
 }
 NGXCFG
 ln -sf /etc/nginx/sites-available/atom /etc/nginx/sites-enabled/atom
