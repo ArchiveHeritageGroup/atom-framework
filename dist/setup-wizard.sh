@@ -511,7 +511,10 @@ apt-get install -y nodejs npm >>$LOG 2>&1
 if [ "$INSTALL_MODE" != "extensions" ]; then
     echo 52; echo "XXX"; echo "Downloading AtoM..."; echo "XXX"
     rm -rf "$ATOM_PATH"
-    git clone -b stable/2.10.x --depth 1 https://github.com/artefactual/atom.git "$ATOM_PATH" >>$LOG 2>&1
+    wget -q https://storage.accesstomemory.org/releases/atom-latest.tar.gz -O /tmp/atom-latest.tar.gz >>$LOG 2>&1
+    mkdir -p "$ATOM_PATH"
+    tar -xzf /tmp/atom-latest.tar.gz -C "$ATOM_PATH" --strip-components=1 >>$LOG 2>&1
+    rm -f /tmp/atom-latest.tar.gz
     
     echo 58; echo "XXX"; echo "Installing dependencies..."; echo "XXX"
     cd "$ATOM_PATH"
