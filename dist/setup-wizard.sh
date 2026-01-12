@@ -1,6 +1,6 @@
 #!/bin/bash
 #===============================================================================
-# AtoM Setup Wizard v2.5
+# AtoM Setup Wizard v2.6
 # Interactive installer with complete plugin selection
 #===============================================================================
 
@@ -122,7 +122,7 @@ dialog --title "AtoM Setup Wizard" --msgbox "\n
 
   Complete archival solution with:
   • Bootstrap 5 Theme
-  • GLAM Sector Support
+  • GLAM Sector Support (26 plugins)
   • Privacy Compliance
   • AI Features
 
@@ -363,7 +363,6 @@ LOAD_DEMO="off"; SETUP_WORKER="off"
 #===============================================================================
 # Step 10: Confirm
 #===============================================================================
-# Count plugins
 PLG_COUNT=0
 [ "$PLG_THEME" = "on" ] && PLG_COUNT=$((PLG_COUNT+1))
 [ "$PLG_SECURITY" = "on" ] && PLG_COUNT=$((PLG_COUNT+1))
@@ -590,43 +589,56 @@ if [ "$INSTALL_MODE" = "complete" ] || [ "$INSTALL_MODE" = "extensions" ]; then
     bash bin/install --auto >>$LOG 2>&1 || true
     
     echo 88; echo "XXX"; echo "Creating plugin symlinks..."; echo "XXX"
-    cd "$ATOM_PATH"
     
-    # Core
-    [ "$PLG_THEME" = "on" ] && ln -sf "$ATOM_PATH/atom-ahg-plugins/ahgThemeB5Plugin" "$ATOM_PATH/plugins/"
-    [ "$PLG_SECURITY" = "on" ] && ln -sf "$ATOM_PATH/atom-ahg-plugins/ahgSecurityClearancePlugin" "$ATOM_PATH/plugins/"
-    [ "$PLG_DISPLAY" = "on" ] && ln -sf "$ATOM_PATH/atom-ahg-plugins/ahgDisplayPlugin" "$ATOM_PATH/plugins/"
-    [ "$PLG_BACKUP" = "on" ] && ln -sf "$ATOM_PATH/atom-ahg-plugins/ahgBackupPlugin" "$ATOM_PATH/plugins/"
+    # Function to create symlink
+    create_link() {
+        local plugin_name="$1"
+        local source="$ATOM_PATH/atom-ahg-plugins/$plugin_name"
+        local target="$ATOM_PATH/plugins/$plugin_name"
+        if [ -d "$source" ]; then
+            rm -f "$target"
+            ln -sf "$source" "$target"
+            echo "Linked: $plugin_name" >>$LOG
+        else
+            echo "Not found: $source" >>$LOG
+        fi
+    }
     
-    # GLAM
-    [ "$PLG_LIBRARY" = "on" ] && ln -sf "$ATOM_PATH/atom-ahg-plugins/ahgLibraryPlugin" "$ATOM_PATH/plugins/"
-    [ "$PLG_MUSEUM" = "on" ] && ln -sf "$ATOM_PATH/atom-ahg-plugins/ahgMuseumPlugin" "$ATOM_PATH/plugins/"
-    [ "$PLG_GALLERY" = "on" ] && ln -sf "$ATOM_PATH/atom-ahg-plugins/ahgGalleryPlugin" "$ATOM_PATH/plugins/"
-    [ "$PLG_DAM" = "on" ] && ln -sf "$ATOM_PATH/atom-ahg-plugins/ahgDAMPlugin" "$ATOM_PATH/plugins/"
-    [ "$PLG_SPECTRUM" = "on" ] && ln -sf "$ATOM_PATH/atom-ahg-plugins/ahgSpectrumPlugin" "$ATOM_PATH/plugins/"
+    # Core plugins
+    [ "$PLG_THEME" = "on" ] && create_link "ahgThemeB5Plugin"
+    [ "$PLG_SECURITY" = "on" ] && create_link "ahgSecurityClearancePlugin"
+    [ "$PLG_DISPLAY" = "on" ] && create_link "ahgDisplayPlugin"
+    [ "$PLG_BACKUP" = "on" ] && create_link "ahgBackupPlugin"
     
-    # Research & Management
-    [ "$PLG_RESEARCH" = "on" ] && ln -sf "$ATOM_PATH/atom-ahg-plugins/ahgResearchPlugin" "$ATOM_PATH/plugins/"
-    [ "$PLG_ACCESS" = "on" ] && ln -sf "$ATOM_PATH/atom-ahg-plugins/ahgAccessRequestPlugin" "$ATOM_PATH/plugins/"
-    [ "$PLG_DONOR" = "on" ] && ln -sf "$ATOM_PATH/atom-ahg-plugins/ahgDonorAgreementPlugin" "$ATOM_PATH/plugins/"
-    [ "$PLG_VENDOR" = "on" ] && ln -sf "$ATOM_PATH/atom-ahg-plugins/ahgVendorPlugin" "$ATOM_PATH/plugins/"
-    [ "$PLG_CONDITION" = "on" ] && ln -sf "$ATOM_PATH/atom-ahg-plugins/ahgConditionPlugin" "$ATOM_PATH/plugins/"
-    [ "$PLG_AUDIT" = "on" ] && ln -sf "$ATOM_PATH/atom-ahg-plugins/ahgAuditTrailPlugin" "$ATOM_PATH/plugins/"
+    # GLAM plugins
+    [ "$PLG_LIBRARY" = "on" ] && create_link "ahgLibraryPlugin"
+    [ "$PLG_MUSEUM" = "on" ] && create_link "ahgMuseumPlugin"
+    [ "$PLG_GALLERY" = "on" ] && create_link "ahgGalleryPlugin"
+    [ "$PLG_DAM" = "on" ] && create_link "ahgDAMPlugin"
+    [ "$PLG_SPECTRUM" = "on" ] && create_link "ahgSpectrumPlugin"
     
-    # Compliance
-    [ "$PLG_PRIVACY" = "on" ] && ln -sf "$ATOM_PATH/atom-ahg-plugins/ahgPrivacyPlugin" "$ATOM_PATH/plugins/"
-    [ "$PLG_HERITAGE" = "on" ] && ln -sf "$ATOM_PATH/atom-ahg-plugins/ahgHeritageAccountingPlugin" "$ATOM_PATH/plugins/"
-    [ "$PLG_EXTRIGHTS" = "on" ] && ln -sf "$ATOM_PATH/atom-ahg-plugins/ahgExtendedRightsPlugin" "$ATOM_PATH/plugins/"
-    [ "$PLG_RIGHTS" = "on" ] && ln -sf "$ATOM_PATH/atom-ahg-plugins/ahgRightsPlugin" "$ATOM_PATH/plugins/"
+    # Research & Management plugins
+    [ "$PLG_RESEARCH" = "on" ] && create_link "ahgResearchPlugin"
+    [ "$PLG_ACCESS" = "on" ] && create_link "ahgAccessRequestPlugin"
+    [ "$PLG_DONOR" = "on" ] && create_link "ahgDonorAgreementPlugin"
+    [ "$PLG_VENDOR" = "on" ] && create_link "ahgVendorPlugin"
+    [ "$PLG_CONDITION" = "on" ] && create_link "ahgConditionPlugin"
+    [ "$PLG_AUDIT" = "on" ] && create_link "ahgAuditTrailPlugin"
     
-    # AI & Advanced
-    [ "$PLG_NER" = "on" ] && ln -sf "$ATOM_PATH/atom-ahg-plugins/ahgNerPlugin" "$ATOM_PATH/plugins/"
-    [ "$PLG_3DMODEL" = "on" ] && ln -sf "$ATOM_PATH/atom-ahg-plugins/ahg3DModelPlugin" "$ATOM_PATH/plugins/"
-    [ "$PLG_IIIF" = "on" ] && ln -sf "$ATOM_PATH/atom-ahg-plugins/ahgIiifCollectionPlugin" "$ATOM_PATH/plugins/"
-    [ "$PLG_RIC" = "on" ] && ln -sf "$ATOM_PATH/atom-ahg-plugins/ahgRicExplorerPlugin" "$ATOM_PATH/plugins/"
-    [ "$PLG_DATAMIG" = "on" ] && ln -sf "$ATOM_PATH/atom-ahg-plugins/ahgDataMigrationPlugin" "$ATOM_PATH/plugins/"
-    [ "$PLG_MIGRATION" = "on" ] && ln -sf "$ATOM_PATH/atom-ahg-plugins/ahgMigrationPlugin" "$ATOM_PATH/plugins/"
-    [ "$PLG_API" = "on" ] && ln -sf "$ATOM_PATH/atom-ahg-plugins/ahgAPIPlugin" "$ATOM_PATH/plugins/"
+    # Compliance plugins
+    [ "$PLG_PRIVACY" = "on" ] && create_link "ahgPrivacyPlugin"
+    [ "$PLG_HERITAGE" = "on" ] && create_link "ahgHeritageAccountingPlugin"
+    [ "$PLG_EXTRIGHTS" = "on" ] && create_link "ahgExtendedRightsPlugin"
+    [ "$PLG_RIGHTS" = "on" ] && create_link "ahgRightsPlugin"
+    
+    # AI & Advanced plugins
+    [ "$PLG_NER" = "on" ] && create_link "ahgNerPlugin"
+    [ "$PLG_3DMODEL" = "on" ] && create_link "ahg3DModelPlugin"
+    [ "$PLG_IIIF" = "on" ] && create_link "ahgIiifCollectionPlugin"
+    [ "$PLG_RIC" = "on" ] && create_link "ahgRicExplorerPlugin"
+    [ "$PLG_DATAMIG" = "on" ] && create_link "ahgDataMigrationPlugin"
+    [ "$PLG_MIGRATION" = "on" ] && create_link "ahgMigrationPlugin"
+    [ "$PLG_API" = "on" ] && create_link "ahgAPIPlugin"
     
     echo 92; echo "XXX"; echo "Enabling plugins..."; echo "XXX"
     cd "$ATOM_PATH/atom-framework"
@@ -660,6 +672,7 @@ if [ "$INSTALL_MODE" = "complete" ] || [ "$INSTALL_MODE" = "extensions" ]; then
     [ "$PLG_MIGRATION" = "on" ] && php bin/atom extension:enable ahgMigrationPlugin >>$LOG 2>&1 || true
     [ "$PLG_API" = "on" ] && php bin/atom extension:enable ahgAPIPlugin >>$LOG 2>&1 || true
     
+    echo 94; echo "XXX"; echo "Clearing cache..."; echo "XXX"
     cd "$ATOM_PATH"
     sudo -u www-data php symfony cc >>$LOG 2>&1 || true
     chown -R www-data:www-data "$ATOM_PATH"
