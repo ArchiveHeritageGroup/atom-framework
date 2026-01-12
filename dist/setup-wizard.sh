@@ -1,7 +1,6 @@
 #!/bin/bash
 #===============================================================================
-# AtoM Setup Wizard v2.7
-# Interactive installer with complete plugin selection
+# AtoM Setup Wizard v2.8
 #===============================================================================
 
 set -e
@@ -50,7 +49,6 @@ ADMIN_PASS=""
 LOAD_DEMO="on"
 SETUP_WORKER="on"
 
-PLG_THEME="on"
 PLG_SECURITY="on"
 PLG_LIBRARY="on"
 PLG_MUSEUM="on"
@@ -249,15 +247,13 @@ ADMIN_PASS=$(<$TEMP)
 if [ "$INSTALL_MODE" = "complete" ] || [ "$INSTALL_MODE" = "extensions" ]; then
 
 dialog --title "Step 8/10: Plugins - Core (1/5)" \
-       --checklist "\nCore plugins (* = Required):\n" 14 70 4 \
-       "theme" "* ahgThemeB5Plugin - Bootstrap 5 Theme" $PLG_THEME \
+       --checklist "\nCore plugins (* = Required):\n" 13 70 3 \
        "security" "* ahgSecurityClearancePlugin - Security" $PLG_SECURITY \
        "display" "  ahgDisplayPlugin - Display Profiles" $PLG_DISPLAY \
        "backup" "  ahgBackupPlugin - Backup & Restore" $PLG_BACKUP \
        2>$TEMP || exit 1
 P=$(<$TEMP)
-PLG_THEME="off"; PLG_SECURITY="off"; PLG_DISPLAY="off"; PLG_BACKUP="off"
-[[ "$P" == *theme* ]] && PLG_THEME="on"
+PLG_SECURITY="off"; PLG_DISPLAY="off"; PLG_BACKUP="off"
 [[ "$P" == *security* ]] && PLG_SECURITY="on"
 [[ "$P" == *display* ]] && PLG_DISPLAY="on"
 [[ "$P" == *backup* ]] && PLG_BACKUP="on"
@@ -349,7 +345,6 @@ LOAD_DEMO="off"; SETUP_WORKER="off"
 # Step 10: Confirm
 #===============================================================================
 PLG_COUNT=0
-[ "$PLG_THEME" = "on" ] && PLG_COUNT=$((PLG_COUNT+1))
 [ "$PLG_SECURITY" = "on" ] && PLG_COUNT=$((PLG_COUNT+1))
 [ "$PLG_DISPLAY" = "on" ] && PLG_COUNT=$((PLG_COUNT+1))
 [ "$PLG_BACKUP" = "on" ] && PLG_COUNT=$((PLG_COUNT+1))
@@ -492,18 +487,14 @@ if [ "$SVC_GEARMAN" = "on" ]; then
     systemctl start gearman-job-server
 fi
 
-if [ "$SVC_MEMCACHED" = "on" ]; then
-    apt-get install -y memcached php-memcache >>$LOG 2>&1
-fi
+[ "$SVC_MEMCACHED" = "on" ] && apt-get install -y memcached php-memcache >>$LOG 2>&1
 
 if [ "$SVC_MEDIA" = "on" ]; then
     echo 44; echo "XXX"; echo "Installing media tools..."; echo "XXX"
     apt-get install -y imagemagick ghostscript poppler-utils ffmpeg >>$LOG 2>&1
 fi
 
-if [ "$SVC_FOP" = "on" ]; then
-    apt-get install -y --no-install-recommends fop libsaxon-java >>$LOG 2>&1
-fi
+[ "$SVC_FOP" = "on" ] && apt-get install -y --no-install-recommends fop libsaxon-java >>$LOG 2>&1
 
 echo 48; echo "XXX"; echo "Installing Node.js..."; echo "XXX"
 apt-get install -y nodejs npm >>$LOG 2>&1
@@ -511,8 +502,8 @@ apt-get install -y nodejs npm >>$LOG 2>&1
 if [ "$INSTALL_MODE" != "extensions" ]; then
     echo 52; echo "XXX"; echo "Downloading AtoM..."; echo "XXX"
     rm -rf "$ATOM_PATH"
-    wget -q https://storage.accesstomemory.org/releases/atom-latest.tar.gz -O /tmp/atom-latest.tar.gz >>$LOG 2>&1
     mkdir -p "$ATOM_PATH"
+    wget -q https://storage.accesstomemory.org/releases/atom-latest.tar.gz -O /tmp/atom-latest.tar.gz >>$LOG 2>&1
     tar -xzf /tmp/atom-latest.tar.gz -C "$ATOM_PATH" --strip-components=1 >>$LOG 2>&1
     rm -f /tmp/atom-latest.tar.gz
     
@@ -557,26 +548,25 @@ cat > /etc/nginx/sites-available/atom << NGXCFG
 upstream atom {
     server unix:/run/php-fpm.atom.sock;
 }
-
 server {
     listen 80;
     server_name _;
-    root /usr/share/nginx/atom;
+    root $ATOM_PATH;
     
     client_max_body_size 72M;
     
-    location ~* ^/(css|dist|js|images|plugins|vendor)/.*\.(css|png|jpg|js|svg|ico|gif|pdf|woff|woff2|otf|ttf)$ {
+    location ~* ^/(css|dist|js|images|plugins|vendor)/.*\.(css|png|jpg|js|svg|ico|gif|pdf|woff|woff2|otf|ttf)\$ {
     }
     
-    location ~* ^/(downloads)/.*\.(pdf|xml|html|csv|zip|rtf)$ {
+    location ~* ^/(downloads)/.*\.(pdf|xml|html|csv|zip|rtf)\$ {
     }
     
-    location ~ ^/(ead.dtd|favicon.ico|robots.txt|sitemap.*)$ {
+    location ~ ^/(ead.dtd|favicon.ico|robots.txt|sitemap.*)\$ {
     }
     
     location / {
-        try_files $uri /index.php?$args;
-        if (-f $request_filename) {
+        try_files \$uri /index.php?\$args;
+        if (-f \$request_filename) {
             return 403;
         }
     }
@@ -584,23 +574,23 @@ server {
     location ~* /uploads/r/(.*)/conf/ {
     }
     
-    location ~* ^/uploads/r/(.*)$ {
+    location ~* ^/uploads/r/(.*)\$ {
         include /etc/nginx/fastcgi_params;
-        set $index /index.php;
-        fastcgi_param SCRIPT_FILENAME $document_root$index;
-        fastcgi_param SCRIPT_NAME $index;
+        set \$index /index.php;
+        fastcgi_param SCRIPT_FILENAME \$document_root\$index;
+        fastcgi_param SCRIPT_NAME \$index;
         fastcgi_pass atom;
     }
     
-    location ~ ^/private/(.*)$ {
+    location ~ ^/private/(.*)\$ {
         internal;
-        alias /usr/share/nginx/atom/$1;
+        alias $ATOM_PATH/\$1;
     }
     
-    location ~ ^/(index|qubit_dev)\.php(/|$) {
+    location ~ ^/(index|qubit_dev)\.php(/|\$) {
         include /etc/nginx/fastcgi_params;
-        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
-        fastcgi_split_path_info ^(.+\.php)(/.*)$;
+        fastcgi_param SCRIPT_FILENAME \$document_root\$fastcgi_script_name;
+        fastcgi_split_path_info ^(.+\.php)(/.*)\$;
         fastcgi_pass atom;
     }
 }
@@ -653,10 +643,9 @@ if [ "$INSTALL_MODE" = "complete" ] || [ "$INSTALL_MODE" = "extensions" ]; then
     
     echo 90; echo "XXX"; echo "Discovering plugins..."; echo "XXX"
     php bin/atom extension:discover >>$LOG 2>&1 || true
-
+    
     echo 92; echo "XXX"; echo "Enabling selected plugins..."; echo "XXX"
     
-    [ "$PLG_THEME" = "on" ] && php bin/atom extension:enable ahgThemeB5Plugin >>$LOG 2>&1 || true
     [ "$PLG_SECURITY" = "on" ] && php bin/atom extension:enable ahgSecurityClearancePlugin >>$LOG 2>&1 || true
     [ "$PLG_DISPLAY" = "on" ] && php bin/atom extension:enable ahgDisplayPlugin >>$LOG 2>&1 || true
     [ "$PLG_BACKUP" = "on" ] && php bin/atom extension:enable ahgBackupPlugin >>$LOG 2>&1 || true
