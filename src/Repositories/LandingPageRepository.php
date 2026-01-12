@@ -239,6 +239,7 @@ class LandingPageRepository
                 'atom_landing_block.text_color',
                 'atom_landing_block.padding_top',
                 'atom_landing_block.padding_bottom',
+                'atom_landing_block.col_span',
                 'atom_landing_block.position',
                 'atom_landing_block.is_visible',
                 'atom_landing_block.parent_block_id',
@@ -323,6 +324,7 @@ class LandingPageRepository
             'text_color' => $data['text_color'] ?? null,
             'padding_top' => $data['padding_top'] ?? '3',
             'padding_bottom' => $data['padding_bottom'] ?? '3',
+            'col_span' => $data['col_span'] ?? 1,
             'position' => $data['position'] ?? ($maxPosition + 1),
             'parent_block_id' => $data['parent_block_id'] ?? null,
             'column_slot' => $data['column_slot'] ?? null,
@@ -340,7 +342,7 @@ class LandingPageRepository
         $updateData = ['updated_at' => date('Y-m-d H:i:s')];
 
         $fields = ['title', 'css_classes', 'container_type', 'background_color', 
-                   'text_color', 'padding_top', 'padding_bottom', 'position', 'is_visible'];
+                   'text_color', 'padding_top', 'padding_bottom', 'col_span', 'position', 'is_visible'];
 
         foreach ($fields as $field) {
             if (array_key_exists($field, $data)) {
@@ -425,6 +427,7 @@ class LandingPageRepository
             'text_color' => $block->text_color,
             'padding_top' => $block->padding_top,
             'padding_bottom' => $block->padding_bottom,
+            'col_span' => $block->col_span ?? 1,
             'position' => $block->position + 1,
             'is_visible' => 1
         ]);
