@@ -100,7 +100,5 @@ CREATE TABLE IF NOT EXISTS display_standard_sector (
     KEY idx_sector (sector)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- Ensure ahgAPIPlugin is enabled
-INSERT INTO atom_plugin (name, class_name, is_enabled, load_order, category) 
-VALUES ('ahgAPIPlugin', 'ahgAPIPluginConfiguration', 1, 5, 'ahg') 
-ON DUPLICATE KEY UPDATE is_enabled = 1;
+-- NOTE: Plugin registration should be done via CLI: php bin/atom extension:enable ahgAPIPlugin
+-- DO NOT include INSERT INTO atom_plugin statements in SQL files

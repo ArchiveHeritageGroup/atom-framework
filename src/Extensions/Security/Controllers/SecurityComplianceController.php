@@ -2,12 +2,12 @@
 
 declare(strict_types=1);
 
-namespace AtoM\Framework\Extensions\Security\Controllers;
+namespace AtomFramework\Extensions\Security\Controllers;
 
 use AtomExtensions\Helpers\CultureHelper;
 
-use AtoM\Framework\Extensions\Security\Services\AccessJustificationService;
-use AtoM\Framework\Extensions\Security\Services\SecurityComplianceService;
+use AtomFramework\Extensions\Security\Services\AccessJustificationService;
+use AtomFramework\Extensions\Security\Services\SecurityComplianceService;
 use Illuminate\Database\Capsule\Manager as DB;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;

@@ -96,41 +96,38 @@ class MediaUploadHook
     public static function queueProcessing(int $digitalObjectId, array $options = []): bool
     {
         self::init();
-        
+
         try {
             // Get object info
-            $pdo = Propel::getConnection();
-            $stmt = $pdo->prepare("SELECT object_id, name FROM digital_object WHERE id = ?");
-            $stmt->execute([$digitalObjectId]);
-            $do = $stmt->fetch(PDO::FETCH_OBJ);
-            
+            $do = \Illuminate\Database\Capsule\Manager::table('digital_object')
+                ->where('id', $digitalObjectId)
+                ->select('object_id', 'name')
+                ->first();
+
             if (!$do) {
                 return false;
             }
-            
+
             // Check if media file
             $ext = strtolower(pathinfo($do->name, PATHINFO_EXTENSION));
             $isMedia = in_array($ext, self::AUDIO_FORMATS) || in_array($ext, self::VIDEO_FORMATS);
-            
+
             if (!$isMedia) {
                 return false;
             }
-            
+
             // Insert into processing queue
-            $stmt = $pdo->prepare("
-                INSERT INTO media_processing_queue 
-                (digital_object_id, object_id, task_type, task_options, status, created_at)
-                VALUES (?, ?, 'full_processing', ?, 'pending', NOW())
-            ");
-            
-            $stmt->execute([
-                $digitalObjectId,
-                $do->object_id,
-                json_encode($options)
+            \Illuminate\Database\Capsule\Manager::table('media_processing_queue')->insert([
+                'digital_object_id' => $digitalObjectId,
+                'object_id' => $do->object_id,
+                'task_type' => 'full_processing',
+                'task_options' => json_encode($options),
+                'status' => 'pending',
+                'created_at' => date('Y-m-d H:i:s'),
             ]);
-            
+
             return true;
-            
+
         } catch (Exception $e) {
             error_log('MediaUploadHook queue error: ' . $e->getMessage());
             return false;
@@ -143,14 +140,11 @@ class MediaUploadHook
     public static function isEnabled(): bool
     {
         try {
-            $pdo = Propel::getConnection();
-            $stmt = $pdo->prepare("
-                SELECT setting_value FROM media_processor_settings 
-                WHERE setting_key = 'auto_process_enabled'
-            ");
-            $stmt->execute();
-            $row = $stmt->fetch(PDO::FETCH_OBJ);
-            
+            $row = \Illuminate\Database\Capsule\Manager::table('media_processor_settings')
+                ->where('setting_key', 'auto_process_enabled')
+                ->select('setting_value')
+                ->first();
+
             return $row && filter_var($row->setting_value, FILTER_VALIDATE_BOOLEAN);
         } catch (Exception $e) {
             // Default to enabled
@@ -185,36 +179,36 @@ class MediaUploadHook
             'uploads_dir' => sfConfig::get('sf_upload_dir', '/usr/share/nginx/atom/uploads'),
             'derivatives_dir' => sfConfig::get('sf_upload_dir', '/usr/share/nginx/atom/uploads') . '/derivatives',
         ];
-        
+
         try {
-            $pdo = Propel::getConnection();
-            $stmt = $pdo->prepare("SELECT setting_key, setting_value, setting_type FROM media_processor_settings");
-            $stmt->execute();
-            
-            while ($row = $stmt->fetch(PDO::FETCH_OBJ)) {
+            $rows = \Illuminate\Database\Capsule\Manager::table('media_processor_settings')
+                ->select('setting_key', 'setting_value', 'setting_type')
+                ->get();
+
+            foreach ($rows as $row) {
                 $value = $row->setting_value;
-                
+
                 switch ($row->setting_type) {
                     case 'boolean':
                         $value = filter_var($value, FILTER_VALIDATE_BOOLEAN);
                         break;
                     case 'integer':
-                        $value = (int)$value;
+                        $value = (int) $value;
                         break;
                     case 'float':
-                        $value = (float)$value;
+                        $value = (float) $value;
                         break;
                     case 'json':
                         $value = json_decode($value, true);
                         break;
                 }
-                
+
                 $settings[$row->setting_key] = $value;
             }
         } catch (Exception $e) {
             // Use defaults
         }
-        
+
         return $settings;
     }
     
@@ -224,60 +218,64 @@ class MediaUploadHook
     public static function processQueue(int $limit = 10): array
     {
         self::init();
-        
+
         $results = [];
-        
+
         try {
-            $pdo = Propel::getConnection();
-            
             // Get pending items
-            $stmt = $pdo->prepare("
-                SELECT * FROM media_processing_queue 
-                WHERE status = 'pending' 
-                ORDER BY priority DESC, created_at ASC
-                LIMIT ?
-            ");
-            $stmt->execute([$limit]);
-            $items = $stmt->fetchAll(PDO::FETCH_OBJ);
-            
+            $items = \Illuminate\Database\Capsule\Manager::table('media_processing_queue')
+                ->where('status', 'pending')
+                ->orderBy('priority', 'desc')
+                ->orderBy('created_at', 'asc')
+                ->limit($limit)
+                ->get();
+
             $processor = self::getProcessor();
-            
+
             foreach ($items as $item) {
                 // Mark as processing
-                $pdo->exec("UPDATE media_processing_queue SET status = 'processing', started_at = NOW() WHERE id = " . $item->id);
-                
+                \Illuminate\Database\Capsule\Manager::table('media_processing_queue')
+                    ->where('id', $item->id)
+                    ->update([
+                        'status' => 'processing',
+                        'started_at' => date('Y-m-d H:i:s'),
+                    ]);
+
                 try {
                     $result = $processor->processUpload($item->digital_object_id);
-                    
+
                     $status = $result['success'] ? 'completed' : 'failed';
                     $error = $result['error'] ?? null;
-                    
-                    $stmt = $pdo->prepare("
-                        UPDATE media_processing_queue 
-                        SET status = ?, error_message = ?, completed_at = NOW()
-                        WHERE id = ?
-                    ");
-                    $stmt->execute([$status, $error, $item->id]);
-                    
+
+                    \Illuminate\Database\Capsule\Manager::table('media_processing_queue')
+                        ->where('id', $item->id)
+                        ->update([
+                            'status' => $status,
+                            'error_message' => $error,
+                            'completed_at' => date('Y-m-d H:i:s'),
+                        ]);
+
                     $results[$item->id] = $result;
-                    
+
                 } catch (Exception $e) {
                     // Mark as failed
-                    $stmt = $pdo->prepare("
-                        UPDATE media_processing_queue 
-                        SET status = 'failed', error_message = ?, retry_count = retry_count + 1, completed_at = NOW()
-                        WHERE id = ?
-                    ");
-                    $stmt->execute([$e->getMessage(), $item->id]);
-                    
+                    \Illuminate\Database\Capsule\Manager::table('media_processing_queue')
+                        ->where('id', $item->id)
+                        ->update([
+                            'status' => 'failed',
+                            'error_message' => $e->getMessage(),
+                            'retry_count' => \Illuminate\Database\Capsule\Manager::raw('retry_count + 1'),
+                            'completed_at' => date('Y-m-d H:i:s'),
+                        ]);
+
                     $results[$item->id] = ['success' => false, 'error' => $e->getMessage()];
                 }
             }
-            
+
         } catch (Exception $e) {
             error_log('MediaUploadHook queue processing error: ' . $e->getMessage());
         }
-        
+
         return $results;
     }
 }

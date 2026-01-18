@@ -11,7 +11,7 @@ declare(strict_types=1);
  * @author Johan Pieterse <johan@theahg.co.za>
  */
 
-use AtoM\Framework\Extensions\Security\Controllers\SecurityComplianceController;
+use AtomFramework\Extensions\Security\Controllers\SecurityComplianceController;
 
 return function ($app) {
     // Compliance Dashboard

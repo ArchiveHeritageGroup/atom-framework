@@ -22,13 +22,20 @@ class RicSyncService implements RicSyncContract
 
     protected function loadConfig(): void
     {
-        $rows = DB::table('ric_sync_config')->get();
-        foreach ($rows as $row) {
-            $this->config[$row->config_key] = $row->config_value;
+        // Load from ahg_settings table (AHG Settings UI) - fuseki section
+        try {
+            $rows = DB::table('ahg_settings')
+                ->where('setting_group', 'fuseki')
+                ->get();
+            foreach ($rows as $row) {
+                $this->config[$row->setting_key] = $row->setting_value;
+            }
+        } catch (\Exception $e) {
+            // Table may not exist yet
         }
-        $this->fusekiEndpoint = $this->config['fuseki_endpoint'] ?? 'http://192.168.0.112:3030/ric';
+        $this->fusekiEndpoint = $this->config['fuseki_endpoint'] ?? 'http://localhost:3030/ric';
         $this->fusekiUsername = $this->config['fuseki_username'] ?? 'admin';
-        $this->fusekiPassword = $this->config['fuseki_password'] ?? 'admin123';
+        $this->fusekiPassword = $this->config['fuseki_password'] ?? '';
     }
 
     // =========================================================================

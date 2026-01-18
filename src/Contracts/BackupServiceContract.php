@@ -1,6 +1,6 @@
 <?php
 
-namespace AtoM\Contracts;
+namespace AtomFramework\Contracts;
 
 interface BackupServiceContract
 {

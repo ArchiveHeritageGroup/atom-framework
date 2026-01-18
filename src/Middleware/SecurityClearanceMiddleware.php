@@ -2,14 +2,14 @@
 
 declare(strict_types=1);
 
-namespace TheAHG\Archive\Middleware;
+namespace AtomFramework\Middleware;
 
 use Psr\Http\Message\ResponseInterface;
 use Psr\Http\Message\ServerRequestInterface;
 use Psr\Http\Server\MiddlewareInterface;
 use Psr\Http\Server\RequestHandlerInterface;
 use Slim\Psr7\Response;
-use TheAHG\Archive\Services\SecurityClearanceService;
+use AtomExtensions\Services\SecurityClearanceService;
 
 /**
  * Security Clearance Middleware.

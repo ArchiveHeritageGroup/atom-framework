@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace Atom\Framework\Database\Seeders;
+namespace AtomFramework\Database\Seeders;
 
-use Atom\Framework\Repositories\PluginRepository;
+use AtomFramework\Repositories\PluginRepository;
 
 class PluginSeeder
 {

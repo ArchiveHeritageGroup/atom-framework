@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace AtoM\Framework\Extensions\Security\Services;
+namespace AtomFramework\Extensions\Security\Services;
 
 use AtomExtensions\Helpers\CultureHelper;
 

@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace AtoM\Framework\Extensions\Privacy\Controllers;
+namespace AtomFramework\Extensions\Privacy\Controllers;
 
-use AtoM\Framework\Extensions\Privacy\Services\PrivacyComplianceService;
+use AtomFramework\Extensions\Privacy\Services\PrivacyComplianceService;
 use Illuminate\Database\Capsule\Manager as DB;
 use Psr\Http\Message\ResponseInterface as Response;
 use Psr\Http\Message\ServerRequestInterface as Request;

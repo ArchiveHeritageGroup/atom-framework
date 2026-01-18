@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Atom\Framework\Exceptions;
+namespace AtomFramework\Exceptions;
 
 class PluginStateException extends PluginException
 {

@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 
-namespace AtoM\Framework\Services;
+namespace AtomFramework\Services;
 
 use AtomExtensions\Helpers\CultureHelper;
 

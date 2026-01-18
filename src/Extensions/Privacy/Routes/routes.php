@@ -11,7 +11,7 @@ declare(strict_types=1);
  * @author Johan Pieterse <johan@theahg.co.za>
  */
 
-use AtoM\Framework\Extensions\Privacy\Controllers\PrivacyComplianceController;
+use AtomFramework\Extensions\Privacy\Controllers\PrivacyComplianceController;
 
 return function ($app) {
     // Privacy Dashboard

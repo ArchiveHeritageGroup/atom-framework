@@ -1,9 +1,9 @@
 <?php
 declare(strict_types=1);
 
-namespace App\Repositories;
+namespace AtomFramework\Repositories;
 
-use App\Contracts\SearchHistoryContract;
+use AtomFramework\Contracts\SearchHistoryContract;
 use Illuminate\Database\Capsule\Manager as DB;
 
 class SearchHistoryRepository implements SearchHistoryContract

@@ -920,6 +920,7 @@ CREATE TABLE IF NOT EXISTS `atom_plugin` (
   `load_order` int DEFAULT '100',
   `plugin_path` varchar(500) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `settings` json DEFAULT NULL,
+  `record_check_query` text COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT 'SQL query to check if plugin has associated records',
   `enabled_at` timestamp NULL DEFAULT NULL,
   `disabled_at` timestamp NULL DEFAULT NULL,
   `created_at` timestamp NULL DEFAULT NULL,

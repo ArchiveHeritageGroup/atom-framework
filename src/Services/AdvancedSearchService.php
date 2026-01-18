@@ -1,11 +1,11 @@
 <?php
 declare(strict_types=1);
 
-namespace App\Services;
+namespace AtomFramework\Services;
 
-use App\Repositories\SearchHistoryRepository;
-use App\Repositories\SearchTemplateRepository;
-use App\Repositories\SavedSearchRepository;
+use AtomFramework\Repositories\SearchHistoryRepository;
+use AtomFramework\Repositories\SearchTemplateRepository;
+use AtomFramework\Repositories\SavedSearchRepository;
 use Illuminate\Database\Capsule\Manager as DB;
 
 class AdvancedSearchService

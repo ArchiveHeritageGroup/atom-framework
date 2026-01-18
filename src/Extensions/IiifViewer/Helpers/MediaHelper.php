@@ -480,10 +480,10 @@ function is_media_file($digitalObject): bool
 function get_media_metadata(int $digitalObjectId): ?object
 {
     try {
-        $pdo = Propel::getConnection();
-        $stmt = $pdo->prepare("SELECT * FROM media_metadata WHERE digital_object_id = ?");
-        $stmt->execute([$digitalObjectId]);
-        return $stmt->fetch(PDO::FETCH_OBJ) ?: null;
+        $result = \Illuminate\Database\Capsule\Manager::table('media_metadata')
+            ->where('digital_object_id', $digitalObjectId)
+            ->first();
+        return $result ?: null;
     } catch (Exception $e) {
         return null;
     }
@@ -492,10 +492,10 @@ function get_media_metadata(int $digitalObjectId): ?object
 function get_transcription(int $digitalObjectId): ?object
 {
     try {
-        $pdo = Propel::getConnection();
-        $stmt = $pdo->prepare("SELECT * FROM media_transcription WHERE digital_object_id = ?");
-        $stmt->execute([$digitalObjectId]);
-        return $stmt->fetch(PDO::FETCH_OBJ) ?: null;
+        $result = \Illuminate\Database\Capsule\Manager::table('media_transcription')
+            ->where('digital_object_id', $digitalObjectId)
+            ->first();
+        return $result ?: null;
     } catch (Exception $e) {
         return null;
     }
@@ -556,38 +556,35 @@ function get_language_name(string $code): string
 function get_media_derivatives(int $digitalObjectId): array
 {
     try {
-        $pdo = Propel::getConnection();
-        $stmt = $pdo->prepare("
-            SELECT derivative_type, derivative_index, path, metadata 
-            FROM media_derivatives 
-            WHERE digital_object_id = ?
-            ORDER BY derivative_type, derivative_index
-        ");
-        $stmt->execute([$digitalObjectId]);
-        $rows = $stmt->fetchAll(PDO::FETCH_OBJ);
-        
+        $rows = \Illuminate\Database\Capsule\Manager::table('media_derivatives')
+            ->where('digital_object_id', $digitalObjectId)
+            ->orderBy('derivative_type')
+            ->orderBy('derivative_index')
+            ->select('derivative_type', 'derivative_index', 'path', 'metadata')
+            ->get();
+
         $derivatives = [];
         foreach ($rows as $row) {
             $type = $row->derivative_type;
-            
+
             $item = ['path' => $row->path];
             if ($row->metadata) {
                 $item = array_merge($item, json_decode($row->metadata, true) ?: []);
             }
-            
+
             if (!isset($derivatives[$type])) {
                 $derivatives[$type] = [];
             }
             $derivatives[$type][] = $item;
         }
-        
+
         // Flatten single items
         foreach ($derivatives as $type => $items) {
             if (count($items) === 1 && $type !== 'posters') {
                 $derivatives[$type] = $items[0];
             }
         }
-        
+
         return $derivatives;
     } catch (Exception $e) {
         return [];
@@ -600,14 +597,11 @@ function get_media_derivatives(int $digitalObjectId): array
 function get_snippets(int $digitalObjectId): array
 {
     try {
-        $pdo = Propel::getConnection();
-        $stmt = $pdo->prepare("
-            SELECT * FROM media_snippets 
-            WHERE digital_object_id = ?
-            ORDER BY start_time
-        ");
-        $stmt->execute([$digitalObjectId]);
-        return $stmt->fetchAll(PDO::FETCH_OBJ);
+        return \Illuminate\Database\Capsule\Manager::table('media_snippets')
+            ->where('digital_object_id', $digitalObjectId)
+            ->orderBy('start_time')
+            ->get()
+            ->all();
     } catch (Exception $e) {
         return [];
     }

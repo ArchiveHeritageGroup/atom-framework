@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace Atom\Framework\Bridge;
+namespace AtomFramework\Bridge;
 
-use Atom\Framework\Repositories\PluginRepository;
-use Atom\Framework\Services\PluginManagerService;
+use AtomFramework\Repositories\PluginRepository;
+use AtomFramework\Services\PluginManagerService;
 use Illuminate\Database\Capsule\Manager as Capsule;
 
 class AtomPluginBridge

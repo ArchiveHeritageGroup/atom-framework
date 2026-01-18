@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace AtoM\Framework\Extensions\Security\Database;
+namespace AtomFramework\Extensions\Security\Database;
 
 use Illuminate\Database\Capsule\Manager as DB;
 use Monolog\Handler\RotatingFileHandler;

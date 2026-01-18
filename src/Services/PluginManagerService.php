@@ -2,13 +2,13 @@
 
 declare(strict_types=1);
 
-namespace Atom\Framework\Services;
+namespace AtomFramework\Services;
 
-use Atom\Framework\Contracts\PluginManagerContract;
-use Atom\Framework\Exceptions\PluginDependencyException;
-use Atom\Framework\Exceptions\PluginNotFoundException;
-use Atom\Framework\Exceptions\PluginStateException;
-use Atom\Framework\Repositories\PluginRepository;
+use AtomFramework\Contracts\PluginManagerContract;
+use AtomFramework\Exceptions\PluginDependencyException;
+use AtomFramework\Exceptions\PluginNotFoundException;
+use AtomFramework\Exceptions\PluginStateException;
+use AtomFramework\Repositories\PluginRepository;
 
 class PluginManagerService implements PluginManagerContract
 {

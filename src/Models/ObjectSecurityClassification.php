@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace TheAHG\Archive\Models;
+namespace AtomFramework\Models;
 
 /**
  * Object Security Classification Model.
