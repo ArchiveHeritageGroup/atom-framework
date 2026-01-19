@@ -180,7 +180,7 @@ echo -e "  ${GREEN}✓${NC} Cache cleared"
 echo ""
 echo -e "${BLUE}Step 6b: Loading plugin data...${NC}"
 
-AHG_DATA_PLUGINS="ahgThemeB5Plugin ahgDisplayPlugin ahgLibraryPlugin ahgSecurityClearancePlugin ahgDAMPlugin ahgAuditTrailPlugin ahgResearchPlugin ahgSpectrumPlugin ahgMuseumPlugin ahgGalleryPlugin ahgConditionPlugin ahgDonorAgreementPlugin ahgAccessRequestPlugin ahgRightsPlugin ahgExtendedRightsPlugin ahgPrivacyPlugin ahgVendorPlugin ahgHeritageAccountingPlugin ahg3DModelPlugin ahgBackupPlugin ahgIiifCollectionPlugin ahgRicExplorerPlugin ahgPreservationPlugin ahgReportBuilderPlugin"
+AHG_DATA_PLUGINS="ahgThemeB5Plugin ahgDisplayPlugin ahgLibraryPlugin ahgSecurityClearancePlugin ahgDAMPlugin ahgAuditTrailPlugin ahgResearchPlugin ahgSpectrumPlugin ahgMuseumPlugin ahgGalleryPlugin ahgConditionPlugin ahgDonorAgreementPlugin ahgAccessRequestPlugin ahgRightsPlugin ahgExtendedRightsPlugin ahgPrivacyPlugin ahgVendorPlugin ahgHeritageAccountingPlugin ahg3DModelPlugin ahgBackupPlugin ahgIiifCollectionPlugin ahgRicExplorerPlugin ahgPreservationPlugin ahgReportBuilderPlugin ahgLoanPlugin"
 
 for plugin in $AHG_DATA_PLUGINS; do
     DATA_SQL="${PLUGINS_DIR}/${plugin}/data/install.sql"
@@ -222,6 +222,18 @@ ON DUPLICATE KEY UPDATE is_enabled = 1, version = VALUES(version), updated_at = 
 "
 echo -e "  ${GREEN}✓${NC} ahgPreservationPlugin enabled"
 echo -e "  ${GREEN}✓${NC} ahgReportBuilderPlugin enabled"
+
+# Register GLAM sector plugins (optional - user enables as needed)
+mysql_cmd -e "
+INSERT INTO atom_plugin (name, class_name, version, is_enabled, is_core, is_locked, load_order, category, description, created_at, updated_at) VALUES
+('ahgLoanPlugin', 'ahgLoanPluginConfiguration', '1.0.0', 0, 0, 0, 150, 'ahg', 'Shared loan management for all GLAM sectors (Museum, Gallery, Archive, DAM). Spectrum 5.0 compliant.', NOW(), NOW()),
+('ahgMuseumPlugin', 'ahgMuseumPluginConfiguration', '1.0.0', 0, 0, 0, 140, 'ahg', 'Museum collections management with CCO metadata standard', NOW(), NOW()),
+('ahgGalleryPlugin', 'ahgGalleryPluginConfiguration', '1.0.0', 0, 0, 0, 140, 'ahg', 'Gallery and artwork management with exhibition support', NOW(), NOW()),
+('ahgDAMPlugin', 'ahgDAMPluginConfiguration', '1.0.0', 0, 0, 0, 140, 'ahg', 'Digital Asset Management with IPTC/XMP metadata', NOW(), NOW()),
+('ahgLibraryPlugin', 'ahgLibraryPluginConfiguration', '1.0.0', 0, 0, 0, 140, 'ahg', 'Library cataloging with ISBN, ISSN, call numbers', NOW(), NOW())
+ON DUPLICATE KEY UPDATE description = VALUES(description), version = VALUES(version), updated_at = NOW();
+"
+echo -e "  ${GREEN}✓${NC} GLAM plugins registered (enable via admin panel)"
 
 # =============================================================================
 # Step 6d: Sync plugin versions from extension.json
