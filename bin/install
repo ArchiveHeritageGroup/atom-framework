@@ -180,7 +180,7 @@ echo -e "  ${GREEN}✓${NC} Cache cleared"
 echo ""
 echo -e "${BLUE}Step 6b: Loading plugin data...${NC}"
 
-AHG_DATA_PLUGINS="ahgThemeB5Plugin ahgDisplayPlugin ahgLibraryPlugin ahgSecurityClearancePlugin ahgDAMPlugin ahgAuditTrailPlugin ahgResearchPlugin ahgSpectrumPlugin ahgMuseumPlugin ahgGalleryPlugin ahgConditionPlugin ahgDonorAgreementPlugin ahgAccessRequestPlugin ahgRightsPlugin ahgExtendedRightsPlugin ahgPrivacyPlugin ahgVendorPlugin ahgHeritageAccountingPlugin ahg3DModelPlugin ahgBackupPlugin ahgIiifCollectionPlugin ahgRicExplorerPlugin"
+AHG_DATA_PLUGINS="ahgThemeB5Plugin ahgDisplayPlugin ahgLibraryPlugin ahgSecurityClearancePlugin ahgDAMPlugin ahgAuditTrailPlugin ahgResearchPlugin ahgSpectrumPlugin ahgMuseumPlugin ahgGalleryPlugin ahgConditionPlugin ahgDonorAgreementPlugin ahgAccessRequestPlugin ahgRightsPlugin ahgExtendedRightsPlugin ahgPrivacyPlugin ahgVendorPlugin ahgHeritageAccountingPlugin ahg3DModelPlugin ahgBackupPlugin ahgIiifCollectionPlugin ahgRicExplorerPlugin ahgPreservationPlugin ahgReportBuilderPlugin"
 
 for plugin in $AHG_DATA_PLUGINS; do
     DATA_SQL="${PLUGINS_DIR}/${plugin}/data/install.sql"
@@ -212,6 +212,16 @@ ON DUPLICATE KEY UPDATE is_core = 1, is_locked = 1, version = VALUES(version), u
 echo -e "  ${GREEN}✓${NC} ahgThemeB5Plugin enabled (locked)"
 echo -e "  ${GREEN}✓${NC} ahgSecurityClearancePlugin enabled (locked)"
 echo -e "  ${GREEN}✓${NC} ahgDisplayPlugin enabled (locked)"
+
+# Enable optional but recommended plugins
+mysql_cmd -e "
+INSERT INTO atom_plugin (name, class_name, version, is_enabled, is_core, is_locked, load_order, category, description, created_at, updated_at) VALUES
+('ahgPreservationPlugin', 'ahgPreservationPluginConfiguration', '1.0.0', 1, 0, 0, 100, 'preservation', 'Digital preservation: checksums, fixity, PREMIS events', NOW(), NOW()),
+('ahgReportBuilderPlugin', 'ahgReportBuilderPluginConfiguration', '1.0.0', 1, 0, 0, 100, 'reporting', 'Custom report builder with charts and scheduling', NOW(), NOW())
+ON DUPLICATE KEY UPDATE is_enabled = 1, version = VALUES(version), updated_at = NOW();
+"
+echo -e "  ${GREEN}✓${NC} ahgPreservationPlugin enabled"
+echo -e "  ${GREEN}✓${NC} ahgReportBuilderPlugin enabled"
 
 # =============================================================================
 # Step 6d: Sync plugin versions from extension.json
