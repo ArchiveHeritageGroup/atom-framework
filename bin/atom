@@ -40,6 +40,14 @@ switch ($module) {
         $cmd = new \AtomFramework\Console\MigrateCommand();
         exit($cmd->run(array_merge([$command], $remaining)));
 
+    case 'thesaurus':
+        require_once FRAMEWORK_ROOT . '/src/Services/SemanticSearch/ThesaurusService.php';
+        require_once FRAMEWORK_ROOT . '/src/Services/SemanticSearch/WordNetSyncService.php';
+        require_once FRAMEWORK_ROOT . '/src/Services/SemanticSearch/WikidataSyncService.php';
+        require_once FRAMEWORK_ROOT . '/src/Console/ThesaurusCommand.php';
+        $cmd = new \AtomFramework\Console\ThesaurusCommand(array_merge(['atom', $command], $remaining));
+        exit($cmd->run());
+
     case 'framework':
         switch ($command) {
             case 'install':
@@ -270,6 +278,15 @@ function showHelp(): void
   migrate:up                  Run pending migrations
   migrate:down                Rollback last migration
   migrate:status              Show migration status
+
+\033[33mThesaurus Commands:\033[0m
+  thesaurus:stats             Show thesaurus statistics
+  thesaurus:sync-wordnet      Sync from WordNet (Datamuse API)
+  thesaurus:sync-wikidata     Sync from Wikidata SPARQL
+  thesaurus:import-local      Import local JSON synonym files
+  thesaurus:export-es         Export to Elasticsearch format
+  thesaurus:search <term>     Search the thesaurus
+  thesaurus:expand <query>    Test query expansion
 
 \033[33mOther Commands:\033[0m
   update                      Full update (framework + plugins + migrations)

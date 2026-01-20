@@ -88,6 +88,22 @@ return [
         'anthropic_endpoint' => env('ANTHROPIC_ENDPOINT', 'https://api.anthropic.com/v1'),
     ],
 
+    // Whisper Speech-to-Text Configuration
+    'whisper' => [
+        'api_endpoint' => env('WHISPER_API_ENDPOINT', 'https://api.openai.com/v1/audio/transcriptions'),
+        'api_key' => env('OPENAI_API_KEY', ''),
+        'model' => env('WHISPER_MODEL', 'whisper-1'),
+        'cost_per_minute' => 0.006, // USD per minute
+        'max_file_size_mb' => 25,   // OpenAI limit
+        'supported_formats' => ['mp3', 'mp4', 'mpeg', 'mpga', 'm4a', 'wav', 'webm', 'flac', 'ogg'],
+        'default_language' => null, // null = auto-detect
+        'timeout' => 300,           // 5 minutes for large files
+        'monthly_budget' => env('WHISPER_MONTHLY_BUDGET', 50.00), // USD monthly limit
+        'temp_directory' => '/tmp/whisper',
+        'ffmpeg_path' => '/usr/bin/ffmpeg',
+        'ffprobe_path' => '/usr/bin/ffprobe',
+    ],
+
     // Payment Gateways
     'payment' => [
         'payfast' => [

@@ -1,0 +1,233 @@
+{
+  "domain": "archival",
+  "description": "Archival terminology and synonyms for GLAM institutions",
+  "version": "1.0.0",
+  "terms": [
+    {
+      "term": "archive",
+      "definition": "A collection of historical documents or records providing information about a place, institution, or group of people",
+      "preferred": true,
+      "synonyms": [
+        {"text": "repository", "weight": 0.95},
+        {"text": "record office", "weight": 0.9},
+        {"text": "depository", "weight": 0.85},
+        {"text": "depot", "weight": 0.8},
+        {"text": "vault", "weight": 0.75},
+        {"text": "registry", "weight": 0.7}
+      ],
+      "broader": ["institution", "collection"],
+      "narrower": ["digital archive", "film archive", "sound archive"]
+    },
+    {
+      "term": "fonds",
+      "definition": "The entire body of records of an organization, family, or individual that have been created and accumulated as the result of an organic process reflecting the functions of the creator",
+      "preferred": true,
+      "synonyms": [
+        {"text": "record group", "weight": 0.95},
+        {"text": "collection", "weight": 0.85},
+        {"text": "papers", "weight": 0.8},
+        {"text": "archive group", "weight": 0.75}
+      ]
+    },
+    {
+      "term": "series",
+      "definition": "Documents arranged in accordance with a filing system or maintained as a unit because they result from the same accumulation or filing process",
+      "preferred": true,
+      "synonyms": [
+        {"text": "record series", "weight": 0.95},
+        {"text": "file series", "weight": 0.9}
+      ],
+      "broader": ["fonds"]
+    },
+    {
+      "term": "accession",
+      "definition": "The formal process of adding materials to a repository",
+      "preferred": true,
+      "synonyms": [
+        {"text": "acquisition", "weight": 0.95},
+        {"text": "intake", "weight": 0.85},
+        {"text": "addition", "weight": 0.7},
+        {"text": "receipt", "weight": 0.65}
+      ]
+    },
+    {
+      "term": "finding aid",
+      "definition": "A descriptive tool that enables users to locate archival materials",
+      "preferred": true,
+      "synonyms": [
+        {"text": "inventory", "weight": 0.9},
+        {"text": "guide", "weight": 0.85},
+        {"text": "register", "weight": 0.8},
+        {"text": "catalog", "weight": 0.75},
+        {"text": "catalogue", "weight": 0.75},
+        {"text": "index", "weight": 0.7}
+      ]
+    },
+    {
+      "term": "provenance",
+      "definition": "The origin or source of something; chain of custody",
+      "preferred": true,
+      "synonyms": [
+        {"text": "origin", "weight": 0.9},
+        {"text": "source", "weight": 0.85},
+        {"text": "custody", "weight": 0.8},
+        {"text": "derivation", "weight": 0.7}
+      ]
+    },
+    {
+      "term": "arrangement",
+      "definition": "The process and results of organizing archives according to archival principles",
+      "preferred": true,
+      "synonyms": [
+        {"text": "organization", "weight": 0.9},
+        {"text": "ordering", "weight": 0.85},
+        {"text": "classification", "weight": 0.8},
+        {"text": "systematization", "weight": 0.7}
+      ]
+    },
+    {
+      "term": "description",
+      "definition": "The creation of an accurate representation of archival material",
+      "preferred": true,
+      "synonyms": [
+        {"text": "cataloguing", "weight": 0.9},
+        {"text": "cataloging", "weight": 0.9},
+        {"text": "documentation", "weight": 0.85},
+        {"text": "metadata creation", "weight": 0.8}
+      ]
+    },
+    {
+      "term": "preservation",
+      "definition": "The protection of records against damage or destruction",
+      "preferred": true,
+      "synonyms": [
+        {"text": "conservation", "weight": 0.95},
+        {"text": "safekeeping", "weight": 0.8},
+        {"text": "protection", "weight": 0.75},
+        {"text": "maintenance", "weight": 0.7}
+      ]
+    },
+    {
+      "term": "digitization",
+      "definition": "The process of converting physical materials to digital format",
+      "preferred": true,
+      "synonyms": [
+        {"text": "digital conversion", "weight": 0.95},
+        {"text": "scanning", "weight": 0.85},
+        {"text": "imaging", "weight": 0.8},
+        {"text": "digital capture", "weight": 0.8}
+      ]
+    },
+    {
+      "term": "document",
+      "definition": "Recorded information regardless of medium or characteristics",
+      "preferred": true,
+      "synonyms": [
+        {"text": "record", "weight": 0.95},
+        {"text": "paper", "weight": 0.8},
+        {"text": "instrument", "weight": 0.75},
+        {"text": "file", "weight": 0.7},
+        {"text": "item", "weight": 0.65}
+      ]
+    },
+    {
+      "term": "manuscript",
+      "definition": "A handwritten document or a typescript that has not been printed",
+      "preferred": true,
+      "synonyms": [
+        {"text": "handwritten document", "weight": 0.9},
+        {"text": "original document", "weight": 0.8},
+        {"text": "holograph", "weight": 0.7},
+        {"text": "autograph", "weight": 0.65}
+      ]
+    },
+    {
+      "term": "photograph",
+      "definition": "A picture made using a camera",
+      "preferred": true,
+      "synonyms": [
+        {"text": "photo", "weight": 0.95},
+        {"text": "picture", "weight": 0.85},
+        {"text": "image", "weight": 0.8},
+        {"text": "print", "weight": 0.7},
+        {"text": "snapshot", "weight": 0.65}
+      ]
+    },
+    {
+      "term": "creator",
+      "definition": "The entity responsible for creating, accumulating, or maintaining records",
+      "preferred": true,
+      "synonyms": [
+        {"text": "originator", "weight": 0.9},
+        {"text": "author", "weight": 0.85},
+        {"text": "producer", "weight": 0.8},
+        {"text": "source", "weight": 0.7}
+      ]
+    },
+    {
+      "term": "donor",
+      "definition": "A person or organization that gives materials to a repository",
+      "preferred": true,
+      "synonyms": [
+        {"text": "depositor", "weight": 0.95},
+        {"text": "giver", "weight": 0.8},
+        {"text": "contributor", "weight": 0.75},
+        {"text": "benefactor", "weight": 0.7}
+      ]
+    },
+    {
+      "term": "researcher",
+      "definition": "A person who uses archival materials for study",
+      "preferred": true,
+      "synonyms": [
+        {"text": "patron", "weight": 0.9},
+        {"text": "user", "weight": 0.85},
+        {"text": "scholar", "weight": 0.8},
+        {"text": "investigator", "weight": 0.75},
+        {"text": "reader", "weight": 0.7}
+      ]
+    },
+    {
+      "term": "access",
+      "definition": "The ability to locate and retrieve information for use",
+      "preferred": true,
+      "synonyms": [
+        {"text": "availability", "weight": 0.9},
+        {"text": "accessibility", "weight": 0.9},
+        {"text": "retrieval", "weight": 0.8}
+      ]
+    },
+    {
+      "term": "restriction",
+      "definition": "A limitation on access to or use of materials",
+      "preferred": true,
+      "synonyms": [
+        {"text": "limitation", "weight": 0.9},
+        {"text": "constraint", "weight": 0.85},
+        {"text": "embargo", "weight": 0.8},
+        {"text": "closure", "weight": 0.75}
+      ]
+    },
+    {
+      "term": "appraisal",
+      "definition": "The process of determining the value and disposition of records",
+      "preferred": true,
+      "synonyms": [
+        {"text": "evaluation", "weight": 0.9},
+        {"text": "assessment", "weight": 0.85},
+        {"text": "selection", "weight": 0.8},
+        {"text": "review", "weight": 0.7}
+      ]
+    },
+    {
+      "term": "deaccession",
+      "definition": "The formal process of removing materials from a repository",
+      "preferred": true,
+      "synonyms": [
+        {"text": "disposal", "weight": 0.85},
+        {"text": "removal", "weight": 0.8},
+        {"text": "withdrawal", "weight": 0.75}
+      ]
+    }
+  ]
+}

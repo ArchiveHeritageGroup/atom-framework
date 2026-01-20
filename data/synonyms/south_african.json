@@ -1,0 +1,220 @@
+{
+  "domain": "south_african",
+  "description": "South African heritage terminology and synonyms",
+  "version": "1.0.0",
+  "languages": ["en", "af", "zu", "xh"],
+  "terms": [
+    {
+      "term": "apartheid",
+      "definition": "The system of racial segregation in South Africa from 1948-1994",
+      "preferred": true,
+      "synonyms": [
+        {"text": "racial segregation", "weight": 0.95},
+        {"text": "separate development", "weight": 0.9},
+        {"text": "afsonderlike ontwikkeling", "weight": 0.85}
+      ],
+      "related": ["pass laws", "Group Areas Act", "Bantu Education"]
+    },
+    {
+      "term": "dompas",
+      "definition": "The pass book that Black South Africans were required to carry under apartheid",
+      "preferred": true,
+      "synonyms": [
+        {"text": "pass book", "weight": 0.95},
+        {"text": "reference book", "weight": 0.9},
+        {"text": "passbook", "weight": 0.9},
+        {"text": "identity document", "weight": 0.8}
+      ]
+    },
+    {
+      "term": "township",
+      "definition": "An urban area designated for Black residents under apartheid",
+      "preferred": true,
+      "synonyms": [
+        {"text": "location", "weight": 0.9},
+        {"text": "lokasie", "weight": 0.85},
+        {"text": "ilokishi", "weight": 0.8},
+        {"text": "urban settlement", "weight": 0.75}
+      ],
+      "related": ["Soweto", "Khayelitsha", "Alexandra"]
+    },
+    {
+      "term": "homeland",
+      "definition": "The territories designated for Black ethnic groups under apartheid",
+      "preferred": true,
+      "synonyms": [
+        {"text": "Bantustan", "weight": 0.95},
+        {"text": "national state", "weight": 0.85},
+        {"text": "tuisland", "weight": 0.8},
+        {"text": "reserve", "weight": 0.75}
+      ]
+    },
+    {
+      "term": "liberation movement",
+      "definition": "Organizations that fought against apartheid",
+      "preferred": true,
+      "synonyms": [
+        {"text": "freedom movement", "weight": 0.95},
+        {"text": "resistance movement", "weight": 0.9},
+        {"text": "struggle", "weight": 0.85}
+      ],
+      "related": ["ANC", "PAC", "UDF", "SACP"]
+    },
+    {
+      "term": "TRC",
+      "definition": "Truth and Reconciliation Commission",
+      "preferred": true,
+      "synonyms": [
+        {"text": "Truth and Reconciliation Commission", "weight": 1.0},
+        {"text": "reconciliation commission", "weight": 0.9},
+        {"text": "truth commission", "weight": 0.85}
+      ]
+    },
+    {
+      "term": "Robben Island",
+      "definition": "Island prison where political prisoners including Nelson Mandela were held",
+      "preferred": true,
+      "synonyms": [
+        {"text": "the Island", "weight": 0.9},
+        {"text": "Robbeneiland", "weight": 0.9}
+      ],
+      "related": ["political prisoners", "Nelson Mandela"]
+    },
+    {
+      "term": "heritage site",
+      "definition": "A place of cultural or historical significance",
+      "preferred": true,
+      "synonyms": [
+        {"text": "erfenisplek", "weight": 0.9},
+        {"text": "historical site", "weight": 0.9},
+        {"text": "cultural site", "weight": 0.85},
+        {"text": "indawo yobuhlanga", "weight": 0.8}
+      ]
+    },
+    {
+      "term": "sangoma",
+      "definition": "A traditional healer in Zulu and related cultures",
+      "preferred": true,
+      "synonyms": [
+        {"text": "traditional healer", "weight": 0.95},
+        {"text": "diviner", "weight": 0.9},
+        {"text": "inyanga", "weight": 0.85},
+        {"text": "igqirha", "weight": 0.8}
+      ]
+    },
+    {
+      "term": "ubuntu",
+      "definition": "African philosophy emphasizing community and interconnectedness",
+      "preferred": true,
+      "synonyms": [
+        {"text": "humanity", "weight": 0.85},
+        {"text": "humaneness", "weight": 0.8},
+        {"text": "botho", "weight": 0.9}
+      ]
+    },
+    {
+      "term": "kraal",
+      "definition": "A traditional African village or enclosure for livestock",
+      "preferred": true,
+      "synonyms": [
+        {"text": "cattle enclosure", "weight": 0.9},
+        {"text": "isibaya", "weight": 0.9},
+        {"text": "umuzi", "weight": 0.85},
+        {"text": "village", "weight": 0.7}
+      ]
+    },
+    {
+      "term": "indaba",
+      "definition": "A meeting or conference",
+      "preferred": true,
+      "synonyms": [
+        {"text": "conference", "weight": 0.9},
+        {"text": "meeting", "weight": 0.9},
+        {"text": "gathering", "weight": 0.85},
+        {"text": "imbizo", "weight": 0.85}
+      ]
+    },
+    {
+      "term": "Voortrekker",
+      "definition": "Afrikaner pioneers who migrated from the Cape Colony in the 1830s-1840s",
+      "preferred": true,
+      "synonyms": [
+        {"text": "trekboer", "weight": 0.9},
+        {"text": "pioneer", "weight": 0.85},
+        {"text": "settler", "weight": 0.7}
+      ],
+      "related": ["Great Trek", "Boer"]
+    },
+    {
+      "term": "Boer",
+      "definition": "South African of Dutch, German, or Huguenot descent",
+      "preferred": true,
+      "synonyms": [
+        {"text": "Afrikaner", "weight": 0.95},
+        {"text": "Dutch settler", "weight": 0.8}
+      ]
+    },
+    {
+      "term": "lekgotla",
+      "definition": "A traditional African council or meeting place",
+      "preferred": true,
+      "synonyms": [
+        {"text": "council", "weight": 0.9},
+        {"text": "meeting place", "weight": 0.85},
+        {"text": "assembly", "weight": 0.8}
+      ]
+    },
+    {
+      "term": "Khoisan",
+      "definition": "Indigenous peoples of Southern Africa",
+      "preferred": true,
+      "synonyms": [
+        {"text": "San", "weight": 0.9},
+        {"text": "Khoi", "weight": 0.9},
+        {"text": "Bushmen", "weight": 0.8},
+        {"text": "First Nations", "weight": 0.75}
+      ]
+    },
+    {
+      "term": "NARSSA",
+      "definition": "National Archives and Records Service of South Africa",
+      "preferred": true,
+      "synonyms": [
+        {"text": "National Archives", "weight": 0.95},
+        {"text": "National Archives of South Africa", "weight": 0.95},
+        {"text": "South African National Archives", "weight": 0.9}
+      ]
+    },
+    {
+      "term": "POPIA",
+      "definition": "Protection of Personal Information Act",
+      "preferred": true,
+      "synonyms": [
+        {"text": "Protection of Personal Information Act", "weight": 1.0},
+        {"text": "privacy act", "weight": 0.85},
+        {"text": "data protection law", "weight": 0.8}
+      ],
+      "related": ["GDPR", "information regulator"]
+    },
+    {
+      "term": "PAIA",
+      "definition": "Promotion of Access to Information Act",
+      "preferred": true,
+      "synonyms": [
+        {"text": "Promotion of Access to Information Act", "weight": 1.0},
+        {"text": "access to information act", "weight": 0.9},
+        {"text": "freedom of information", "weight": 0.8}
+      ]
+    },
+    {
+      "term": "impi",
+      "definition": "A Zulu warrior regiment or armed body of men",
+      "preferred": true,
+      "synonyms": [
+        {"text": "regiment", "weight": 0.9},
+        {"text": "warrior band", "weight": 0.85},
+        {"text": "military unit", "weight": 0.8}
+      ]
+    }
+  ]
+}

@@ -1,0 +1,222 @@
+{
+  "domain": "library",
+  "description": "Library terminology and synonyms for GLAM institutions",
+  "version": "1.0.0",
+  "terms": [
+    {
+      "term": "library",
+      "definition": "A collection of books and other materials organized for use",
+      "preferred": true,
+      "synonyms": [
+        {"text": "bibliotheca", "weight": 0.85},
+        {"text": "book collection", "weight": 0.8},
+        {"text": "reading room", "weight": 0.7}
+      ],
+      "narrower": ["public library", "academic library", "special library", "digital library"]
+    },
+    {
+      "term": "book",
+      "definition": "A written or printed work consisting of pages bound together",
+      "preferred": true,
+      "synonyms": [
+        {"text": "volume", "weight": 0.95},
+        {"text": "publication", "weight": 0.9},
+        {"text": "tome", "weight": 0.85},
+        {"text": "work", "weight": 0.8}
+      ]
+    },
+    {
+      "term": "periodical",
+      "definition": "A publication issued at regular intervals",
+      "preferred": true,
+      "synonyms": [
+        {"text": "journal", "weight": 0.95},
+        {"text": "magazine", "weight": 0.9},
+        {"text": "serial", "weight": 0.9},
+        {"text": "publication", "weight": 0.8}
+      ]
+    },
+    {
+      "term": "catalog",
+      "definition": "A complete list of items in a library collection",
+      "preferred": true,
+      "synonyms": [
+        {"text": "catalogue", "weight": 1.0},
+        {"text": "index", "weight": 0.9},
+        {"text": "register", "weight": 0.85},
+        {"text": "inventory", "weight": 0.8},
+        {"text": "OPAC", "weight": 0.75}
+      ]
+    },
+    {
+      "term": "classification",
+      "definition": "The systematic arrangement of library materials",
+      "preferred": true,
+      "synonyms": [
+        {"text": "categorization", "weight": 0.95},
+        {"text": "organization", "weight": 0.9},
+        {"text": "arrangement", "weight": 0.85},
+        {"text": "ordering", "weight": 0.8}
+      ],
+      "related": ["Dewey Decimal", "Library of Congress", "UDC"]
+    },
+    {
+      "term": "call number",
+      "definition": "A unique identifier for locating items in a library",
+      "preferred": true,
+      "synonyms": [
+        {"text": "shelf mark", "weight": 0.95},
+        {"text": "shelfmark", "weight": 0.95},
+        {"text": "location code", "weight": 0.9},
+        {"text": "class mark", "weight": 0.85}
+      ]
+    },
+    {
+      "term": "circulation",
+      "definition": "The lending and return of library materials",
+      "preferred": true,
+      "synonyms": [
+        {"text": "lending", "weight": 0.95},
+        {"text": "borrowing", "weight": 0.9},
+        {"text": "loan service", "weight": 0.85}
+      ]
+    },
+    {
+      "term": "reference",
+      "definition": "Information services provided by librarians",
+      "preferred": true,
+      "synonyms": [
+        {"text": "reference service", "weight": 0.95},
+        {"text": "information service", "weight": 0.9},
+        {"text": "research assistance", "weight": 0.85}
+      ]
+    },
+    {
+      "term": "acquisition",
+      "definition": "The process of selecting and obtaining library materials",
+      "preferred": true,
+      "synonyms": [
+        {"text": "procurement", "weight": 0.9},
+        {"text": "purchasing", "weight": 0.85},
+        {"text": "collection development", "weight": 0.8},
+        {"text": "selection", "weight": 0.75}
+      ]
+    },
+    {
+      "term": "bibliography",
+      "definition": "A list of sources on a particular subject",
+      "preferred": true,
+      "synonyms": [
+        {"text": "reading list", "weight": 0.9},
+        {"text": "source list", "weight": 0.85},
+        {"text": "reference list", "weight": 0.8},
+        {"text": "works cited", "weight": 0.75}
+      ]
+    },
+    {
+      "term": "monograph",
+      "definition": "A scholarly book on a single subject",
+      "preferred": true,
+      "synonyms": [
+        {"text": "treatise", "weight": 0.9},
+        {"text": "study", "weight": 0.85},
+        {"text": "book", "weight": 0.8}
+      ]
+    },
+    {
+      "term": "serial",
+      "definition": "A publication issued in successive parts",
+      "preferred": true,
+      "synonyms": [
+        {"text": "periodical", "weight": 0.95},
+        {"text": "continuing publication", "weight": 0.9},
+        {"text": "journal", "weight": 0.85}
+      ]
+    },
+    {
+      "term": "subject heading",
+      "definition": "A standardized term used to describe the content of materials",
+      "preferred": true,
+      "synonyms": [
+        {"text": "subject term", "weight": 0.95},
+        {"text": "keyword", "weight": 0.9},
+        {"text": "descriptor", "weight": 0.85},
+        {"text": "index term", "weight": 0.8}
+      ],
+      "related": ["LCSH", "thesaurus"]
+    },
+    {
+      "term": "authority file",
+      "definition": "A list of standardized forms of names and subjects",
+      "preferred": true,
+      "synonyms": [
+        {"text": "authority record", "weight": 0.95},
+        {"text": "name authority", "weight": 0.9},
+        {"text": "controlled vocabulary", "weight": 0.85}
+      ]
+    },
+    {
+      "term": "interlibrary loan",
+      "definition": "The borrowing of materials from another library",
+      "preferred": true,
+      "synonyms": [
+        {"text": "ILL", "weight": 0.95},
+        {"text": "inter-library loan", "weight": 0.95},
+        {"text": "document delivery", "weight": 0.85},
+        {"text": "resource sharing", "weight": 0.8}
+      ]
+    },
+    {
+      "term": "patron",
+      "definition": "A person who uses library services",
+      "preferred": true,
+      "synonyms": [
+        {"text": "user", "weight": 0.95},
+        {"text": "borrower", "weight": 0.9},
+        {"text": "reader", "weight": 0.85},
+        {"text": "member", "weight": 0.8}
+      ]
+    },
+    {
+      "term": "stack",
+      "definition": "The area where library materials are stored",
+      "preferred": true,
+      "synonyms": [
+        {"text": "stacks", "weight": 0.95},
+        {"text": "shelves", "weight": 0.9},
+        {"text": "shelving", "weight": 0.85},
+        {"text": "storage area", "weight": 0.8}
+      ]
+    },
+    {
+      "term": "rare book",
+      "definition": "A book of special value due to age, condition, or scarcity",
+      "preferred": true,
+      "synonyms": [
+        {"text": "special collection", "weight": 0.9},
+        {"text": "antiquarian book", "weight": 0.85},
+        {"text": "precious book", "weight": 0.8}
+      ]
+    },
+    {
+      "term": "manuscript",
+      "definition": "A handwritten or typed document",
+      "preferred": true,
+      "synonyms": [
+        {"text": "handwritten document", "weight": 0.9},
+        {"text": "original document", "weight": 0.85},
+        {"text": "typescript", "weight": 0.8}
+      ]
+    },
+    {
+      "term": "anthology",
+      "definition": "A collection of selected literary pieces",
+      "preferred": true,
+      "synonyms": [
+        {"text": "collection", "weight": 0.9},
+        {"text": "compilation", "weight": 0.85},
+        {"text": "reader", "weight": 0.8}
+      ]
+    }
+  ]
+}

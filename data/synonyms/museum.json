@@ -1,0 +1,221 @@
+{
+  "domain": "museum",
+  "description": "Museum terminology and synonyms for GLAM institutions",
+  "version": "1.0.0",
+  "terms": [
+    {
+      "term": "museum",
+      "definition": "An institution that collects, preserves, and exhibits objects of artistic, cultural, historical, or scientific importance",
+      "preferred": true,
+      "synonyms": [
+        {"text": "gallery", "weight": 0.9},
+        {"text": "exhibition hall", "weight": 0.85},
+        {"text": "cultural institution", "weight": 0.8}
+      ],
+      "narrower": ["art museum", "natural history museum", "science museum", "history museum"]
+    },
+    {
+      "term": "artifact",
+      "definition": "An object made by a human being, typically of cultural or historical interest",
+      "preferred": true,
+      "synonyms": [
+        {"text": "artefact", "weight": 1.0},
+        {"text": "object", "weight": 0.9},
+        {"text": "item", "weight": 0.85},
+        {"text": "piece", "weight": 0.8},
+        {"text": "relic", "weight": 0.75}
+      ]
+    },
+    {
+      "term": "specimen",
+      "definition": "A sample or example, especially of a natural object",
+      "preferred": true,
+      "synonyms": [
+        {"text": "sample", "weight": 0.95},
+        {"text": "example", "weight": 0.9},
+        {"text": "exemplar", "weight": 0.85}
+      ]
+    },
+    {
+      "term": "exhibition",
+      "definition": "A public display of works of art or items of interest",
+      "preferred": true,
+      "synonyms": [
+        {"text": "exhibit", "weight": 0.95},
+        {"text": "display", "weight": 0.9},
+        {"text": "show", "weight": 0.85},
+        {"text": "exposition", "weight": 0.8}
+      ]
+    },
+    {
+      "term": "curator",
+      "definition": "A person responsible for the care and management of a museum collection",
+      "preferred": true,
+      "synonyms": [
+        {"text": "keeper", "weight": 0.9},
+        {"text": "custodian", "weight": 0.85},
+        {"text": "collection manager", "weight": 0.8},
+        {"text": "conservator", "weight": 0.7}
+      ]
+    },
+    {
+      "term": "conservation",
+      "definition": "The preservation and protection of cultural heritage objects",
+      "preferred": true,
+      "synonyms": [
+        {"text": "preservation", "weight": 0.95},
+        {"text": "protection", "weight": 0.85},
+        {"text": "safeguarding", "weight": 0.8},
+        {"text": "maintenance", "weight": 0.75}
+      ]
+    },
+    {
+      "term": "restoration",
+      "definition": "The process of returning an object to its original condition",
+      "preferred": true,
+      "synonyms": [
+        {"text": "repair", "weight": 0.9},
+        {"text": "refurbishment", "weight": 0.85},
+        {"text": "renovation", "weight": 0.8},
+        {"text": "reconditioning", "weight": 0.75}
+      ]
+    },
+    {
+      "term": "provenance",
+      "definition": "The history of ownership or location of an object",
+      "preferred": true,
+      "synonyms": [
+        {"text": "origin", "weight": 0.9},
+        {"text": "history", "weight": 0.85},
+        {"text": "pedigree", "weight": 0.8},
+        {"text": "lineage", "weight": 0.75}
+      ]
+    },
+    {
+      "term": "accession",
+      "definition": "The formal process of adding an object to a museum collection",
+      "preferred": true,
+      "synonyms": [
+        {"text": "acquisition", "weight": 0.95},
+        {"text": "addition", "weight": 0.85},
+        {"text": "intake", "weight": 0.8}
+      ]
+    },
+    {
+      "term": "deaccession",
+      "definition": "The formal removal of an object from a museum collection",
+      "preferred": true,
+      "synonyms": [
+        {"text": "disposal", "weight": 0.9},
+        {"text": "removal", "weight": 0.85},
+        {"text": "divestment", "weight": 0.8}
+      ]
+    },
+    {
+      "term": "loan",
+      "definition": "The temporary transfer of an object to another institution",
+      "preferred": true,
+      "synonyms": [
+        {"text": "lending", "weight": 0.9},
+        {"text": "borrowing", "weight": 0.85},
+        {"text": "temporary transfer", "weight": 0.8}
+      ]
+    },
+    {
+      "term": "registration",
+      "definition": "The documentation and tracking of museum objects",
+      "preferred": true,
+      "synonyms": [
+        {"text": "cataloguing", "weight": 0.9},
+        {"text": "cataloging", "weight": 0.9},
+        {"text": "documentation", "weight": 0.85},
+        {"text": "inventory control", "weight": 0.8}
+      ]
+    },
+    {
+      "term": "storage",
+      "definition": "The housing and organization of objects not on display",
+      "preferred": true,
+      "synonyms": [
+        {"text": "repository", "weight": 0.9},
+        {"text": "storeroom", "weight": 0.85},
+        {"text": "vault", "weight": 0.8},
+        {"text": "reserve collection", "weight": 0.75}
+      ]
+    },
+    {
+      "term": "artwork",
+      "definition": "A piece of creative work, especially visual art",
+      "preferred": true,
+      "synonyms": [
+        {"text": "art piece", "weight": 0.95},
+        {"text": "work of art", "weight": 0.95},
+        {"text": "art object", "weight": 0.9},
+        {"text": "piece", "weight": 0.8}
+      ]
+    },
+    {
+      "term": "sculpture",
+      "definition": "A three-dimensional work of art",
+      "preferred": true,
+      "synonyms": [
+        {"text": "statue", "weight": 0.9},
+        {"text": "carving", "weight": 0.85},
+        {"text": "figurine", "weight": 0.8},
+        {"text": "bust", "weight": 0.75}
+      ]
+    },
+    {
+      "term": "painting",
+      "definition": "A picture made using paint",
+      "preferred": true,
+      "synonyms": [
+        {"text": "canvas", "weight": 0.85},
+        {"text": "picture", "weight": 0.8},
+        {"text": "portrait", "weight": 0.7},
+        {"text": "landscape", "weight": 0.7}
+      ]
+    },
+    {
+      "term": "collection",
+      "definition": "A group of objects gathered together",
+      "preferred": true,
+      "synonyms": [
+        {"text": "holdings", "weight": 0.9},
+        {"text": "assemblage", "weight": 0.85},
+        {"text": "accumulation", "weight": 0.8},
+        {"text": "compilation", "weight": 0.75}
+      ]
+    },
+    {
+      "term": "condition report",
+      "definition": "A document describing the physical state of an object",
+      "preferred": true,
+      "synonyms": [
+        {"text": "condition assessment", "weight": 0.95},
+        {"text": "condition survey", "weight": 0.9},
+        {"text": "state report", "weight": 0.85}
+      ]
+    },
+    {
+      "term": "gallery",
+      "definition": "A room or building for the display of art",
+      "preferred": true,
+      "synonyms": [
+        {"text": "exhibition space", "weight": 0.9},
+        {"text": "display area", "weight": 0.85},
+        {"text": "showroom", "weight": 0.8}
+      ]
+    },
+    {
+      "term": "installation",
+      "definition": "A large-scale mixed-media artwork designed for a specific space",
+      "preferred": true,
+      "synonyms": [
+        {"text": "art installation", "weight": 0.95},
+        {"text": "site-specific art", "weight": 0.9},
+        {"text": "environmental art", "weight": 0.85}
+      ]
+    }
+  ]
+}
