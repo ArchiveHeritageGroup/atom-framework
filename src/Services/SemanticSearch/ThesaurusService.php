@@ -432,8 +432,9 @@ class ThesaurusService
      */
     private function tokenize(string $query): array
     {
-        // Remove punctuation and split
-        $query = preg_replace('/[^\w\s-]/u', ' ', $query);
+        // Remove punctuation and split (including hyphens, underscores)
+        $query = preg_replace('/[^\w\s]/u', ' ', $query);
+        $query = preg_replace('/[_-]+/', ' ', $query);
         $words = preg_split('/\s+/', $query, -1, PREG_SPLIT_NO_EMPTY);
 
         // Filter stop words
