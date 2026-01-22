@@ -1,32 +1,56 @@
 <?php
 
+// Dont define if were in Symfony context - let core handle it
+if (defined('SF_ROOT_DIR')) {
+    return;
+}
+
+use Illuminate\Database\Capsule\Manager as DB;
+
 /**
- * QubitTaxonomy Compatibility Layer.
- *
- * @deprecated Use AtomExtensions\Services\TaxonomyService directly
+ * QubitTaxonomy Compatibility Layer
  */
-
-use AtomExtensions\Services\TaxonomyService;
-
-class QubitTaxonomy
-{
-    // Mirror constants from TaxonomyService
-    public const SUBJECT_ID = TaxonomyService::SUBJECT_ID;
-    public const PLACE_ID = TaxonomyService::PLACE_ID;
-    public const LEVEL_OF_DESCRIPTION_ID = TaxonomyService::LEVEL_OF_DESCRIPTION_ID;
-    public const PUBLICATION_STATUS_ID = TaxonomyService::PUBLICATION_STATUS_ID;
-    public const EVENT_TYPE_ID = TaxonomyService::EVENT_TYPE_ID;
-    public const ACTOR_ENTITY_TYPE_ID = TaxonomyService::ACTOR_ENTITY_TYPE_ID;
-    public const RIGHT_BASIS_ID = TaxonomyService::RIGHT_BASIS_ID;
-    public const MEDIA_TYPE_ID = TaxonomyService::MEDIA_TYPE_ID;
-
-    public static function getById(int $id): ?object
+if (!class_exists('QubitTaxonomy', false)) {
+    class QubitTaxonomy
     {
-        return TaxonomyService::getById($id);
-    }
-
-    public static function getTermsById(int $taxonomyId): array
-    {
-        return TaxonomyService::getTermsById($taxonomyId)->toArray();
+        const LEVEL_OF_DESCRIPTION_ID = 34;
+        const SUBJECT_ID = 35;
+        const ACTOR_ENTITY_TYPE_ID = 32;
+        const PLACE_ID = 42;
+        const GENRE_ID = 78;
+        const RIGHT_BASIS_ID = 67;
+        
+        public static function getById(int $id): ?object
+        {
+            $culture = CultureHelper::getCulture();
+            if (class_exists('sfContext') && \sfContext::hasInstance()) {
+                $culture = \sfContext::getInstance()->getUser()->getCulture();
+            }
+            
+            return DB::table('taxonomy as t')
+                ->leftJoin('taxonomy_i18n as ti', function($j) use ($culture) {
+                    $j->on('t.id', '=', 'ti.id')->where('ti.culture', '=', $culture);
+                })
+                ->where('t.id', $id)
+                ->select('t.*', 'ti.name')
+                ->first();
+        }
+        
+        public static function getTermsById(int $taxonomyId): \Illuminate\Support\Collection
+        {
+            $culture = CultureHelper::getCulture();
+            if (class_exists('sfContext') && \sfContext::hasInstance()) {
+                $culture = \sfContext::getInstance()->getUser()->getCulture();
+            }
+            
+            return DB::table('term as t')
+                ->leftJoin('term_i18n as ti', function($j) use ($culture) {
+                    $j->on('t.id', '=', 'ti.id')->where('ti.culture', '=', $culture);
+                })
+                ->where('t.taxonomy_id', $taxonomyId)
+                ->orderBy('ti.name')
+                ->select('t.id', 'ti.name', 't.taxonomy_id')
+                ->get();
+        }
     }
 }

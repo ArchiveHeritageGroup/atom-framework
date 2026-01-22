@@ -17,7 +17,6 @@ $compatDir = __DIR__;
 
 // Load all compatibility classes
 $files = [
-    'Qubit.php',
     'QubitSetting.php',
     'QubitCache.php',
     'QubitTerm.php',
