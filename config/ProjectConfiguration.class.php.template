@@ -18,8 +18,11 @@ require_once __DIR__.'/../vendor/composer/autoload.php';
 // Must load parent classes first
 require_once __DIR__.'/../lib/routing/QubitRoute.class.php';
 require_once __DIR__.'/../lib/routing/QubitMetadataRoute.class.php';
-if (file_exists(__DIR__.'/../atom-framework/lib/AhgMetadataRoute.class.php')) {
-    require_once __DIR__.'/../atom-framework/lib/AhgMetadataRoute.class.php';
+// Try framework location first, then AtoM lib
+if (file_exists(__DIR__.'/../atom-framework/src/Routing/AhgMetadataRoute.class.php')) {
+    require_once __DIR__.'/../atom-framework/src/Routing/AhgMetadataRoute.class.php';
+} elseif (file_exists(__DIR__.'/../lib/routing/AhgMetadataRoute.class.php')) {
+    require_once __DIR__.'/../lib/routing/AhgMetadataRoute.class.php';
 }
 
 class ProjectConfiguration extends sfProjectConfiguration

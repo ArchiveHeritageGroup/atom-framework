@@ -9,5 +9,6 @@
     "description": "AtoM AHG Framework - Extension system for Access to Memory",
     "author": "The Archive and Heritage Group (Pty) Ltd",
     "license": "GPL-3.0",
-    "homepage": "https://github.com/ArchiveHeritageGroup/atom-framework"
+    "homepage": "https://github.com/ArchiveHeritageGroup/atom-framework",
+    "updated": "2026-01-22"
 }

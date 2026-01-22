@@ -97,7 +97,16 @@ class SecurityClearanceService
                 $q->whereNull('usc.expires_at')
                   ->orWhere('usc.expires_at', '>', date('Y-m-d H:i:s'));
             })
-            ->select('usc.*', 'sc.name as classification_name', 'sc.level')
+            ->select([
+                'usc.*',
+                'sc.name',
+                'sc.name as classification_name',
+                'sc.name as classificationName',  // Alias for template compatibility
+                'sc.level',
+                'sc.code',
+                'sc.color',
+                'sc.color as classificationColor',  // Alias for template compatibility
+            ])
             ->first();
     }
 
