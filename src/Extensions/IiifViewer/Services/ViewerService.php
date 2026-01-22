@@ -122,8 +122,13 @@ class ViewerService
         $html .= $this->renderMirador($viewerId, $manifestUrl, $options);
         
         // PDF viewer (if applicable)
+        $isPiiRedacted = false;
         if ($hasPdf) {
-            $pdfUrl = $this->getDigitalObjectUrl($primaryDo);
+            // Check for PII redaction
+            $pdfInfo = $this->getPdfUrlWithRedaction($objectId, $primaryDo);
+            $pdfUrl = $pdfInfo['url'];
+            $isPiiRedacted = $pdfInfo['is_redacted'];
+            $options['is_redacted'] = $isPiiRedacted;
             $html .= $this->renderPdfViewer($viewerId, $pdfUrl, $options);
         }
         
@@ -151,12 +156,18 @@ class ViewerService
         
         $html .= '</div>'; // container
         
+        // Check if user can do manual redaction (authenticated editor/admin with privacy plugin)
+        $canRedact = $this->canUserRedact();
+
         // JavaScript initialization
         $html .= $this->renderJavaScript($viewerId, $objectId, $manifestUrl, $preferredViewer, [
             'has3D' => $has3D,
             'hasPdf' => $hasPdf,
             'hasAV' => $hasAV,
             'enableAnnotations' => $this->config['enable_annotations'],
+            'enableRedaction' => $canRedact && $hasPdf,
+            'isPiiRedacted' => $isPiiRedacted,
+            'pdfUrl' => $hasPdf ? ($isPiiRedacted ? $this->baseUrl . '/privacyAdmin/downloadPdf?id=' . $objectId : $this->getDigitalObjectUrl($primaryDo)) : null,
         ]);
         
         return $html;
@@ -202,10 +213,15 @@ HTML;
     private function renderPdfViewer(string $viewerId, string $pdfUrl, array $options): string
     {
         $height = $options['height'] ?? $this->config['viewer_height'];
-        
+        $isRedacted = $options['is_redacted'] ?? false;
+
+        $redactedBadge = $isRedacted
+            ? '<span class="badge bg-warning text-dark ms-2"><i class="fas fa-shield-alt me-1"></i>PII Redacted</span>'
+            : '';
+
         return <<<HTML
 <div id="pdf-wrapper-{$viewerId}" class="pdf-wrapper" style="display:none;">
-    <div class="pdf-toolbar mb-2">
+    <div class="pdf-toolbar mb-2 d-flex align-items-center">
         <div class="btn-group btn-group-sm">
             <button type="button" class="btn btn-outline-secondary" id="pdf-prev-{$viewerId}">
                 <i class="fas fa-chevron-left"></i>
@@ -223,6 +239,7 @@ HTML;
                 <i class="fas fa-search-plus"></i>
             </button>
         </div>
+        {$redactedBadge}
     </div>
     <div id="pdf-container-{$viewerId}" style="width:100%;height:{$height};overflow:auto;background:#525659;border-radius:8px;">
         <canvas id="pdf-canvas-{$viewerId}"></canvas>
@@ -576,6 +593,55 @@ JS;
     private function getDigitalObjectUrl(object $do): string
     {
         return $this->baseUrl . '/uploads/' . trim($do->path ?? '', '/') . '/' . $do->name;
+    }
+
+    /**
+     * Get PDF URL with PII redaction check
+     *
+     * Returns the redacted PDF URL if PII redaction is active,
+     * otherwise returns the original PDF URL.
+     *
+     * @param int $objectId
+     * @param object $do Digital object
+     * @return array ['url' => string, 'is_redacted' => bool]
+     */
+    private function getPdfUrlWithRedaction(int $objectId, object $do): array
+    {
+        // Check if PII redaction is needed
+        $hasRedaction = $this->hasPiiRedaction($objectId);
+
+        if (!$hasRedaction) {
+            return [
+                'url' => $this->getDigitalObjectUrl($do),
+                'is_redacted' => false
+            ];
+        }
+
+        // Return URL to redaction download endpoint
+        return [
+            'url' => $this->baseUrl . '/privacyAdmin/downloadPdf?id=' . $objectId,
+            'is_redacted' => true
+        ];
+    }
+
+    /**
+     * Check if an object has PII entities marked for redaction
+     *
+     * @param int $objectId
+     * @return bool
+     */
+    private function hasPiiRedaction(int $objectId): bool
+    {
+        try {
+            $count = DB::table('ahg_ner_entity')
+                ->where('object_id', $objectId)
+                ->where('status', 'redacted')
+                ->count();
+
+            return $count > 0;
+        } catch (\Exception $e) {
+            return false;
+        }
     }
     
     private function buildIiifIdentifier(?string $path, ?string $name): string

@@ -51,16 +51,21 @@ export class IiifViewerManager {
         // Store preference
         const savedViewer = localStorage.getItem('iiif_viewer_pref');
         this.currentViewer = savedViewer || this.options.defaultViewer;
-        
+
         // Bind events
         this.bindEvents();
-        
+
         // Load initial viewer
         await this.showViewer(this.currentViewer);
-        
+
         // Load annotations if enabled
         if (this.options.flags.enableAnnotations) {
             await this.loadAnnotations();
+        }
+
+        // Store instance globally for callbacks
+        if (typeof window !== 'undefined') {
+            window.iiifViewerManager = this;
         }
     }
     
@@ -306,66 +311,378 @@ export class IiifViewerManager {
     // ========================================================================
     // PDF.js
     // ========================================================================
-    
+
     async initPdfJs() {
         if (this.pdfDoc) return;
-        
+
         // Load PDF.js
         if (!window.pdfjsLib) {
             await this.loadScript('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js');
             pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
         }
-        
-        // Get PDF URL from manifest or direct
-        const manifest = await this.fetchManifest();
-        let pdfUrl = null;
-        
-        if (manifest && manifest.items) {
-            for (const canvas of manifest.items) {
-                if (canvas.rendering) {
-                    const rendering = Array.isArray(canvas.rendering) ? canvas.rendering[0] : canvas.rendering;
-                    if (rendering.format === 'application/pdf') {
-                        pdfUrl = rendering.id;
-                        break;
+
+        // Use direct PDF URL if provided (for PII redaction), otherwise get from manifest
+        let pdfUrl = this.options.flags.pdfUrl || null;
+
+        if (!pdfUrl) {
+            // Get PDF URL from manifest
+            const manifest = await this.fetchManifest();
+
+            if (manifest && manifest.items) {
+                for (const canvas of manifest.items) {
+                    if (canvas.rendering) {
+                        const rendering = Array.isArray(canvas.rendering) ? canvas.rendering[0] : canvas.rendering;
+                        if (rendering.format === 'application/pdf') {
+                            pdfUrl = rendering.id;
+                            break;
+                        }
                     }
                 }
             }
         }
-        
+
         if (!pdfUrl) return;
-        
+
         const loadingTask = pdfjsLib.getDocument(pdfUrl);
         this.pdfDoc = await loadingTask.promise;
-        
+
         this.pdfPage = 1;
         await this.renderPdfPage();
-        
+
+        // Initialize text selection for redaction if user is authenticated
+        if (this.options.flags.enableRedaction) {
+            this.initPdfTextSelection();
+        }
+
         this.loaded.pdfjs = true;
     }
-    
+
     async renderPdfPage() {
         if (!this.pdfDoc) return;
-        
+
         const vid = this.viewerId;
         const page = await this.pdfDoc.getPage(this.pdfPage);
         const viewport = page.getViewport({ scale: this.pdfScale });
-        
+
         const canvas = document.getElementById(`pdf-canvas-${vid}`);
         const context = canvas.getContext('2d');
-        
+
         canvas.height = viewport.height;
         canvas.width = viewport.width;
-        
+
         await page.render({
             canvasContext: context,
             viewport: viewport
         }).promise;
-        
+
+        // Render text layer for selection
+        if (this.options.flags.enableRedaction) {
+            await this.renderPdfTextLayer(page, viewport);
+        }
+
         // Update page display
         const pageDisplay = document.getElementById(`pdf-page-${vid}`);
         if (pageDisplay) {
             pageDisplay.textContent = `${this.pdfPage} / ${this.pdfDoc.numPages}`;
         }
+    }
+
+    /**
+     * Render text layer over canvas for text selection
+     */
+    async renderPdfTextLayer(page, viewport) {
+        const vid = this.viewerId;
+        const canvas = document.getElementById(`pdf-canvas-${vid}`);
+
+        // Get or create text layer container
+        let textLayer = document.getElementById(`pdf-text-layer-${vid}`);
+        if (!textLayer) {
+            textLayer = document.createElement('div');
+            textLayer.id = `pdf-text-layer-${vid}`;
+            textLayer.className = 'pdf-text-layer';
+            canvas.parentNode.insertBefore(textLayer, canvas.nextSibling);
+        }
+
+        // Clear existing content
+        textLayer.innerHTML = '';
+
+        // Position text layer over canvas
+        textLayer.style.cssText = `
+            position: absolute;
+            left: ${canvas.offsetLeft}px;
+            top: ${canvas.offsetTop}px;
+            width: ${viewport.width}px;
+            height: ${viewport.height}px;
+            overflow: hidden;
+            opacity: 0.2;
+            line-height: 1.0;
+            pointer-events: auto;
+        `;
+
+        // Get text content
+        const textContent = await page.getTextContent();
+
+        // Render text items
+        pdfjsLib.renderTextLayer({
+            textContent: textContent,
+            container: textLayer,
+            viewport: viewport,
+            textDivs: []
+        });
+    }
+
+    /**
+     * Initialize text selection handler for PDF redaction
+     */
+    initPdfTextSelection() {
+        const vid = this.viewerId;
+        const wrapper = document.getElementById(`pdf-wrapper-${vid}`);
+
+        if (!wrapper) return;
+
+        // Create redaction button (hidden by default)
+        let redactBtn = document.getElementById(`pdf-redact-btn-${vid}`);
+        if (!redactBtn) {
+            redactBtn = document.createElement('button');
+            redactBtn.id = `pdf-redact-btn-${vid}`;
+            redactBtn.className = 'btn btn-danger btn-sm pdf-redact-btn';
+            redactBtn.innerHTML = '<i class="fas fa-eraser"></i> Redact Selected Text';
+            redactBtn.style.cssText = `
+                display: none;
+                position: absolute;
+                z-index: 1000;
+                box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+            `;
+            wrapper.appendChild(redactBtn);
+
+            // Handle redact button click
+            redactBtn.addEventListener('click', () => this.handlePdfRedaction());
+        }
+
+        // Create redacted terms panel
+        let termsPanel = document.getElementById(`pdf-terms-panel-${vid}`);
+        if (!termsPanel) {
+            termsPanel = document.createElement('div');
+            termsPanel.id = `pdf-terms-panel-${vid}`;
+            termsPanel.className = 'pdf-terms-panel';
+            termsPanel.innerHTML = `
+                <div class="card mt-2">
+                    <div class="card-header py-1 px-2 d-flex justify-content-between align-items-center">
+                        <small><strong>Redacted Terms</strong></small>
+                        <button class="btn btn-sm btn-outline-secondary py-0 px-1" id="pdf-refresh-terms-${vid}">
+                            <i class="fas fa-sync-alt"></i>
+                        </button>
+                    </div>
+                    <div class="card-body p-2" id="pdf-terms-list-${vid}" style="max-height: 150px; overflow-y: auto;">
+                        <small class="text-muted">Loading...</small>
+                    </div>
+                </div>
+            `;
+            wrapper.appendChild(termsPanel);
+
+            // Bind refresh button
+            document.getElementById(`pdf-refresh-terms-${vid}`).addEventListener('click', () => this.loadRedactedTerms());
+        }
+
+        // Listen for text selection
+        wrapper.addEventListener('mouseup', (e) => this.handlePdfTextSelection(e));
+
+        // Hide button when clicking elsewhere
+        document.addEventListener('mousedown', (e) => {
+            if (!redactBtn.contains(e.target)) {
+                redactBtn.style.display = 'none';
+            }
+        });
+
+        // Load existing redacted terms
+        this.loadRedactedTerms();
+    }
+
+    /**
+     * Handle text selection in PDF
+     */
+    handlePdfTextSelection(e) {
+        const vid = this.viewerId;
+        const selection = window.getSelection();
+        const selectedText = selection.toString().trim();
+
+        const redactBtn = document.getElementById(`pdf-redact-btn-${vid}`);
+
+        if (selectedText && selectedText.length > 0 && selectedText.length <= 500) {
+            this.selectedPdfText = selectedText;
+
+            // Position button near selection
+            const range = selection.getRangeAt(0);
+            const rect = range.getBoundingClientRect();
+            const wrapper = document.getElementById(`pdf-wrapper-${vid}`);
+            const wrapperRect = wrapper.getBoundingClientRect();
+
+            redactBtn.style.display = 'block';
+            redactBtn.style.left = `${rect.left - wrapperRect.left}px`;
+            redactBtn.style.top = `${rect.bottom - wrapperRect.top + 5}px`;
+        } else {
+            redactBtn.style.display = 'none';
+        }
+    }
+
+    /**
+     * Handle redaction button click
+     */
+    async handlePdfRedaction() {
+        const vid = this.viewerId;
+        const redactBtn = document.getElementById(`pdf-redact-btn-${vid}`);
+
+        if (!this.selectedPdfText || !this.options.objectId) {
+            return;
+        }
+
+        // Disable button and show loading
+        redactBtn.disabled = true;
+        redactBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
+
+        try {
+            const response = await fetch('/privacyAdmin/addManualRedaction', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                body: new URLSearchParams({
+                    object_id: this.options.objectId,
+                    text: this.selectedPdfText,
+                    redact_all: 'true'
+                })
+            });
+
+            const result = await response.json();
+
+            if (result.success) {
+                // Show success message
+                this.showPdfToast('Text marked for redaction. Reload page to see changes.', 'success');
+
+                // Refresh the terms list
+                this.loadRedactedTerms();
+
+                // Clear selection
+                window.getSelection().removeAllRanges();
+            } else {
+                this.showPdfToast(result.error || 'Failed to save redaction', 'danger');
+            }
+        } catch (error) {
+            console.error('Redaction failed:', error);
+            this.showPdfToast('Failed to save redaction', 'danger');
+        }
+
+        // Reset button
+        redactBtn.disabled = false;
+        redactBtn.innerHTML = '<i class="fas fa-eraser"></i> Redact Selected Text';
+        redactBtn.style.display = 'none';
+    }
+
+    /**
+     * Load redacted terms for the current object
+     */
+    async loadRedactedTerms() {
+        const vid = this.viewerId;
+        const termsList = document.getElementById(`pdf-terms-list-${vid}`);
+
+        if (!termsList || !this.options.objectId) return;
+
+        try {
+            const response = await fetch(`/privacyAdmin/getRedactedTerms?id=${this.options.objectId}`);
+            const result = await response.json();
+
+            if (result.success && result.terms && result.terms.length > 0) {
+                termsList.innerHTML = result.terms.map(term => `
+                    <div class="d-flex justify-content-between align-items-center mb-1">
+                        <small class="text-truncate" style="max-width: 150px;" title="${this.escapeHtml(term.entity_text)}">
+                            <span class="badge bg-${term.entity_type === 'MANUAL' ? 'warning' : 'secondary'} me-1">${term.entity_type}</span>
+                            ${this.escapeHtml(term.entity_text)}
+                        </small>
+                        <button class="btn btn-outline-danger btn-sm py-0 px-1" onclick="window.iiifViewerManager.removeRedaction(${term.id})">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+                `).join('');
+            } else {
+                termsList.innerHTML = '<small class="text-muted">No redacted terms</small>';
+            }
+        } catch (error) {
+            console.error('Failed to load terms:', error);
+            termsList.innerHTML = '<small class="text-danger">Failed to load</small>';
+        }
+    }
+
+    /**
+     * Remove a redaction
+     */
+    async removeRedaction(entityId) {
+        if (!confirm('Remove this redaction?')) return;
+
+        try {
+            const response = await fetch('/privacyAdmin/removeManualRedaction', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                },
+                body: new URLSearchParams({
+                    entity_id: entityId
+                })
+            });
+
+            const result = await response.json();
+
+            if (result.success) {
+                this.showPdfToast('Redaction removed. Reload page to see changes.', 'success');
+                this.loadRedactedTerms();
+            } else {
+                this.showPdfToast(result.error || 'Failed to remove redaction', 'danger');
+            }
+        } catch (error) {
+            console.error('Failed to remove redaction:', error);
+            this.showPdfToast('Failed to remove redaction', 'danger');
+        }
+    }
+
+    /**
+     * Show toast message
+     */
+    showPdfToast(message, type = 'info') {
+        const vid = this.viewerId;
+        let toast = document.getElementById(`pdf-toast-${vid}`);
+
+        if (!toast) {
+            toast = document.createElement('div');
+            toast.id = `pdf-toast-${vid}`;
+            toast.style.cssText = `
+                position: fixed;
+                bottom: 20px;
+                right: 20px;
+                z-index: 9999;
+                max-width: 300px;
+            `;
+            document.body.appendChild(toast);
+        }
+
+        toast.innerHTML = `
+            <div class="alert alert-${type} alert-dismissible fade show" role="alert">
+                ${message}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            </div>
+        `;
+
+        // Auto-dismiss after 5 seconds
+        setTimeout(() => {
+            toast.innerHTML = '';
+        }, 5000);
+    }
+
+    /**
+     * Escape HTML entities
+     */
+    escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
     }
     
     pdfPrevPage() {
@@ -651,4 +968,6 @@ export class IiifViewerManager {
 // Export for non-module usage
 if (typeof window !== 'undefined') {
     window.IiifViewerManager = IiifViewerManager;
+    // Store current instance for global access (used by redaction callbacks)
+    window.iiifViewerManager = null;
 }

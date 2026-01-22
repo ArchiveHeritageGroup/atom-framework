@@ -442,16 +442,18 @@ class IiifManifestService
     private function createPdfCanvases(object $do, int $startIndex, string $lang): array
     {
         $canvases = [];
-        
-        // Get PDF page count
-        $pdfPath = $this->getDigitalObjectPath($do);
+
+        // Get PDF page count and path (may be redacted)
+        $pdfInfo = $this->getPdfPathWithRedaction($do);
+        $pdfPath = $pdfInfo['path'];
+        $pdfIdentifier = $pdfInfo['identifier'];
+        $isRedacted = $pdfInfo['is_redacted'];
+
         $pageCount = $this->getPdfPageCount($pdfPath);
-        
+
         if ($pageCount === 0) {
             $pageCount = 1; // Fallback
         }
-        
-        $pdfIdentifier = $this->buildIiifIdentifier($do->path, $do->name);
         
         for ($i = 0; $i < $pageCount; $i++) {
             $pageIdentifier = $pdfIdentifier . '[' . $i . ']';
@@ -501,15 +503,126 @@ class IiifManifestService
                     ]
                 ],
                 'rendering' => [[
-                    'id' => $this->baseUrl . '/uploads/' . trim($do->path, '/') . '/' . $do->name,
+                    'id' => $isRedacted
+                        ? $this->baseUrl . '/privacyAdmin/downloadPdf?id=' . $do->object_id
+                        : $this->baseUrl . '/uploads/' . trim($do->path, '/') . '/' . $do->name,
                     'type' => 'Text',
-                    'label' => $this->langMap('Download PDF', $lang),
+                    'label' => $this->langMap($isRedacted ? 'Download Redacted PDF' : 'Download PDF', $lang),
                     'format' => 'application/pdf'
                 ]]
             ];
         }
-        
+
         return $canvases;
+    }
+
+    /**
+     * Get PDF path with PII redaction check
+     *
+     * Returns the redacted PDF path if PII redaction is active for this object,
+     * otherwise returns the original path.
+     *
+     * @param object $do Digital object
+     * @return array ['path' => string, 'identifier' => string, 'is_redacted' => bool]
+     */
+    private function getPdfPathWithRedaction(object $do): array
+    {
+        $originalPath = $this->getDigitalObjectPath($do);
+        $originalIdentifier = $this->buildIiifIdentifier($do->path, $do->name);
+        $objectId = $do->object_id ?? null;
+
+        // Check if PII redaction is needed for this object
+        if (!$objectId || !$this->hasPiiRedaction($objectId)) {
+            return [
+                'path' => $originalPath,
+                'identifier' => $originalIdentifier,
+                'is_redacted' => false
+            ];
+        }
+
+        // Load redaction service and get redacted PDF
+        try {
+            $pluginPath = class_exists('sfConfig')
+                ? \sfConfig::get('sf_plugins_dir') . '/ahgPrivacyPlugin/lib/Service/PdfRedactionService.php'
+                : '/usr/share/nginx/archive/plugins/ahgPrivacyPlugin/lib/Service/PdfRedactionService.php';
+
+            if (!file_exists($pluginPath)) {
+                return [
+                    'path' => $originalPath,
+                    'identifier' => $originalIdentifier,
+                    'is_redacted' => false
+                ];
+            }
+
+            require_once $pluginPath;
+            $service = new \ahgPrivacyPlugin\Service\PdfRedactionService();
+            $result = $service->getRedactedPdf($objectId, $originalPath);
+
+            if ($result['success'] && file_exists($result['path'])) {
+                // Build identifier for redacted PDF
+                // The redacted PDF is in cache, need to make it accessible to Cantaloupe
+                $redactedPath = $result['path'];
+
+                // Create symlink in uploads for Cantaloupe access
+                $symlinkDir = class_exists('sfConfig')
+                    ? \sfConfig::get('sf_upload_dir') . '/pii_redacted'
+                    : '/usr/share/nginx/archive/uploads/pii_redacted';
+
+                if (!is_dir($symlinkDir)) {
+                    @mkdir($symlinkDir, 0755, true);
+                }
+
+                $symlinkName = basename($redactedPath);
+                $symlinkPath = $symlinkDir . '/' . $symlinkName;
+
+                // Create/update symlink
+                if (!file_exists($symlinkPath) || !is_link($symlinkPath)) {
+                    @unlink($symlinkPath);
+                    @symlink($redactedPath, $symlinkPath);
+                }
+
+                // Build IIIF identifier for the symlinked redacted PDF
+                $redactedIdentifier = $this->buildIiifIdentifier('/pii_redacted', $symlinkName);
+
+                return [
+                    'path' => $redactedPath,
+                    'identifier' => $redactedIdentifier,
+                    'is_redacted' => true
+                ];
+            }
+        } catch (\Exception $e) {
+            $this->logger->error('PII redaction failed for manifest', [
+                'object_id' => $objectId,
+                'error' => $e->getMessage()
+            ]);
+        }
+
+        // Fallback to original
+        return [
+            'path' => $originalPath,
+            'identifier' => $originalIdentifier,
+            'is_redacted' => false
+        ];
+    }
+
+    /**
+     * Check if an object has PII entities marked for redaction
+     *
+     * @param int $objectId
+     * @return bool
+     */
+    private function hasPiiRedaction(int $objectId): bool
+    {
+        try {
+            $count = DB::table('ahg_ner_entity')
+                ->where('object_id', $objectId)
+                ->where('status', 'redacted')
+                ->count();
+
+            return $count > 0;
+        } catch (\Exception $e) {
+            return false;
+        }
     }
     
     /**
@@ -911,10 +1024,11 @@ class IiifManifestService
     
     private function getDigitalObjectPath(object $do): string
     {
-        $uploadsDir = class_exists('sfConfig') 
-		? \sfConfig::get('sf_upload_dir') 
-		: '/usr/share/nginx/atom/uploads';
-        return $uploadsDir . '/' . trim($do->path, '/') . '/' . $do->name;
+        // The $do->path already includes /uploads/ prefix, so use sf_web_dir
+        $webDir = class_exists('sfConfig')
+            ? \sfConfig::get('sf_web_dir')
+            : '/usr/share/nginx/archive';
+        return $webDir . $do->path . $do->name;
     }
     
     private function getMediaDuration(object $do): ?float
