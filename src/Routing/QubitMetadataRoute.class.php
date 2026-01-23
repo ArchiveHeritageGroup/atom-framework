@@ -147,9 +147,6 @@ class QubitMetadataRoute extends QubitRoute
 
                     if (false !== $defaultSetting = QubitPdo::fetchColumn($sql, [$this->resource->id, QubitTaxonomy::INFORMATION_OBJECT_TEMPLATE_ID])) {
                         $default = $defaultSetting;
-                        error_log('ROUTING: IO ' . $this->resource->id . ' has display_standard: ' . $defaultSetting);
-                    } else {
-                        error_log('ROUTING: IO ' . $this->resource->id . ' using default: ' . $default);
                     }
 
                     $parameters['module'] = $this->getActionParameter(['isad', 'dc', 'mods', 'rad', 'ead', 'dacs', 'museum', 'dam', 'gallery', 'library'], $default, $parameters);
