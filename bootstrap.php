@@ -1,6 +1,9 @@
 <?php
 /**
  * AtoM Framework Bootstrap
+ *
+ * Core framework initialization only.
+ * Plugin-specific logic (audit, security, etc.) should be in their respective plugins.
  */
 if (defined('ATOM_FRAMEWORK_LOADED')) {
     return;
@@ -10,7 +13,6 @@ define('ATOM_FRAMEWORK_PATH', __DIR__);
 define('ATOM_ROOT_PATH', dirname(__DIR__));
 
 $loader = require __DIR__ . '/vendor/autoload.php';
-$loader->addPsr4('AtomExtensions\\', __DIR__ . '/src/');
 $loader->addPsr4('AtomFramework\\', __DIR__ . '/src/');
 
 use Illuminate\Database\Capsule\Manager as Capsule;
@@ -56,60 +58,3 @@ if (file_exists($configFile)) {
         $capsule->bootEloquent();
     }
 }
-
-// Register shutdown function to log audit after request completes
-register_shutdown_function(function() {
-    try {
-        if (!class_exists('sfContext') || !sfContext::hasInstance()) {
-            return;
-        }
-        
-        $context = sfContext::getInstance();
-        $request = $context->getRequest();
-        $module = $context->getModuleName();
-        $action = $context->getActionName();
-        
-        // Only log POST/PUT/DELETE
-        if (!$request->isMethod('POST') && !$request->isMethod('PUT') && !$request->isMethod('DELETE')) {
-            return;
-        }
-        
-        // Skip non-auditable modules
-        $auditableModules = ['informationobject', 'actor', 'repository', 'term', 'taxonomy',
-            'accession', 'deaccession', 'donor', 'rightsholder', 'user', 'aclGroup', 'staticpage',
-            'ahgMuseumPlugin', 'sfMuseumPlugin', 'ahgAuditTrail'];
-        
-        if (!in_array($module, $auditableModules)) {
-            return;
-        }
-        
-        // Check if audit enabled
-        $enabled = \Illuminate\Database\Capsule\Manager::table('ahg_audit_settings')
-            ->where('setting_key', 'audit_enabled')
-            ->value('setting_value');
-        
-        if ($enabled !== '1') {
-            return;
-        }
-        
-        $user = $context->getUser();
-        $userId = $user->isAuthenticated() ? $user->getAttribute('user_id') : null;
-        $username = $user->isAuthenticated() ? ($user->getAttribute('username') ?? 'unknown') : 'anonymous';
-        
-        \Illuminate\Database\Capsule\Manager::table('ahg_audit_log')->insert([
-            'uuid' => bin2hex(random_bytes(16)),
-            'user_id' => $userId,
-            'username' => $username,
-            'action' => $action,
-            'entity_type' => $module,
-            'module' => $module,
-            'action_name' => $action,
-            'request_method' => $request->getMethod(),
-            'ip_address' => $_SERVER['REMOTE_ADDR'] ?? null,
-            'status' => 'success',
-            'created_at' => date('Y-m-d H:i:s'),
-        ]);
-    } catch (\Exception $e) {
-        // Silent fail
-    }
-});
