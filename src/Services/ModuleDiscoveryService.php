@@ -122,6 +122,10 @@ class ModuleDiscoveryService
 
     /**
      * Fallback plugin list if database unavailable.
+     *
+     * NOTE: This only includes core AtoM plugins. Theme and extension plugins
+     * are loaded from the database. If you need fallback support for specific
+     * plugins, they should register via the database, not hardcode here.
      */
     private static function getFallbackPlugins(): array
     {
@@ -131,7 +135,6 @@ class ModuleDiscoveryService
             'sfWebBrowserPlugin',
             'arElasticSearchPlugin',
             'arDominionB5Plugin',
-            'ahgThemeB5Plugin',
         ];
     }
 

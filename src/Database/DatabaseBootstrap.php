@@ -50,6 +50,11 @@ class DatabaseBootstrap
      */
     public static function initializeFromAtom(string $environment = 'all'): void
     {
+        // If already initialized (by bootstrap.php or previous call), skip
+        if (self::getCapsule() !== null) {
+            return;
+        }
+
         // Check if sfConfig is available (Symfony loaded)
         if (!class_exists('sfConfig')) {
             throw new \RuntimeException('Symfony not loaded yet - cannot access sfConfig');
@@ -75,10 +80,28 @@ class DatabaseBootstrap
 
     /**
      * Get the Capsule instance.
+     * Returns the instance from either this class or bootstrap.php initialization.
      */
     public static function getCapsule(): ?Capsule
     {
-        return self::$capsule;
+        // If we initialized it, return it
+        if (self::$capsule !== null) {
+            return self::$capsule;
+        }
+
+        // Check if bootstrap.php already initialized the global Capsule
+        // by trying to access the static connection
+        try {
+            Capsule::connection()->getPdo();
+            // If we got here, the global Capsule is already set up by bootstrap.php
+            // Create a wrapper instance for compatibility
+            self::$capsule = new Capsule();
+            return self::$capsule;
+        } catch (\Exception $e) {
+            // Not initialized yet
+        }
+
+        return null;
     }
 
     /**

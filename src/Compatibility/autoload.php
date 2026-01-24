@@ -7,7 +7,7 @@
  * All Qubit* classes will be available as thin wrappers around framework services.
  *
  * USAGE:
- *   require_once '/usr/share/nginx/archive/atom-framework/src/Compatibility/autoload.php';
+ *   require_once sfConfig::get('sf_root_dir') . '/atom-framework/src/Compatibility/autoload.php';
  *
  * IMPORTANT: This is for gradual migration only.
  * New code should use AtomExtensions\Services classes directly.

@@ -31,7 +31,12 @@ class LevelOfDescriptionService
         self::SECTOR_DAM,
     ];
 
-    // Plugin to sector mapping
+    /**
+     * Legacy plugin to sector mapping.
+     *
+     * @deprecated Use SectorRegistry instead. Plugins should implement
+     *             SectorProviderInterface and register via SectorRegistry::register().
+     */
     public const SECTOR_PLUGINS = [
         self::SECTOR_ARCHIVE => null, // Always available
         self::SECTOR_MUSEUM => ['sfMuseumPlugin', 'ahgMuseumPlugin'],
@@ -62,25 +67,37 @@ class LevelOfDescriptionService
 
     /**
      * Get available sectors based on enabled plugins.
+     *
+     * Uses SectorRegistry for dynamically registered sectors, with fallback
+     * to legacy SECTOR_PLUGINS constant for backward compatibility.
      */
     public static function getAvailableSectors(): array
     {
-        $available = [self::SECTOR_ARCHIVE]; // Archive always available
+        // Start with sectors from the registry (includes 'archive' by default)
+        $available = SectorRegistry::getSectorCodes();
 
+        // Fallback: also check legacy SECTOR_PLUGINS for backward compatibility
         foreach (self::SECTOR_PLUGINS as $sector => $plugins) {
+            if (in_array($sector, $available)) {
+                continue; // Already registered
+            }
+
             if ($plugins === null) {
-                continue; // Already added
+                $available[] = $sector;
+
+                continue;
             }
 
             foreach ($plugins as $plugin) {
                 if (self::isPluginEnabled($plugin)) {
                     $available[] = $sector;
+
                     break;
                 }
             }
         }
 
-        return $available;
+        return array_unique($available);
     }
 
     /**

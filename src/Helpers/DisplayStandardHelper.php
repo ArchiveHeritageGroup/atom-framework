@@ -2,12 +2,17 @@
 
 namespace AtomFramework\Helpers;
 
+use AtomExtensions\Services\MetadataTemplateRegistry;
 use Illuminate\Database\Capsule\Manager as DB;
 
 class DisplayStandardHelper
 {
     /**
-     * Map of display standard codes to their plugin names
+     * Core display standard codes to their plugin names.
+     *
+     * AHG plugins register dynamically via MetadataTemplateRegistry.
+     *
+     * @deprecated Use MetadataTemplateRegistry::getTemplatePluginMap() instead
      */
     private static array $codeToPlugin = [
         'isad' => 'sfIsadPlugin',
@@ -15,10 +20,6 @@ class DisplayStandardHelper
         'mods' => 'sfModsPlugin',
         'rad' => 'sfRadPlugin',
         'dacs' => 'arDacsPlugin',
-        'museum' => 'ahgMuseumPlugin',
-        'library' => 'ahgLibraryPlugin',
-        'dam' => 'ahgDAMPlugin',
-        'gallery' => 'ahgGalleryPlugin',
     ];
 
     /**
@@ -31,6 +32,22 @@ class DisplayStandardHelper
         'sfRadPlugin',
         'arDacsPlugin',
     ];
+
+    /**
+     * Get the combined code-to-plugin map (core + registered).
+     */
+    private static function getCodeToPluginMap(): array
+    {
+        $map = self::$codeToPlugin;
+
+        // Merge in registered templates from MetadataTemplateRegistry
+        if (class_exists(MetadataTemplateRegistry::class)) {
+            $registryMap = MetadataTemplateRegistry::getTemplatePluginMap();
+            $map = array_merge($map, $registryMap);
+        }
+
+        return $map;
+    }
 
     /**
      * Get available display standards based on enabled plugins
@@ -49,9 +66,10 @@ class DisplayStandardHelper
         // Add core plugins (always available)
         $availablePlugins = array_merge(self::$corePlugins, $enabledPlugins);
 
-        // Get codes for available plugins
+        // Get codes for available plugins (using combined map)
+        $codeToPlugin = self::getCodeToPluginMap();
         $availableCodes = [];
-        foreach (self::$codeToPlugin as $code => $plugin) {
+        foreach ($codeToPlugin as $code => $plugin) {
             if (in_array($plugin, $availablePlugins)) {
                 $availableCodes[] = $code;
             }
@@ -99,7 +117,8 @@ class DisplayStandardHelper
      */
     public static function isEnabled(string $code): bool
     {
-        $plugin = self::$codeToPlugin[$code] ?? null;
+        $codeToPlugin = self::getCodeToPluginMap();
+        $plugin = $codeToPlugin[$code] ?? null;
 
         if (!$plugin) {
             return false;

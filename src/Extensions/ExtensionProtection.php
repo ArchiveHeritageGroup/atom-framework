@@ -85,27 +85,27 @@ class ExtensionProtection
      */
     private function findConfigFile(): ?string
     {
-        // Check environment variable first
+        // Use PathResolver for consistent path detection
+        if (class_exists(\AtomFramework\Helpers\PathResolver::class)) {
+            $configFile = \AtomFramework\Helpers\PathResolver::getConfigFile();
+            if (file_exists($configFile)) {
+                return $configFile;
+            }
+        }
+
+        // Check environment variable
         $atomRoot = getenv('ATOM_ROOT') ?: ($_SERVER['ATOM_ROOT'] ?? null);
         if ($atomRoot && file_exists($atomRoot . '/config/config.php')) {
             return $atomRoot . '/config/config.php';
         }
 
-        // Known paths
-        $paths = [
-            '/usr/share/nginx/archive/config/config.php',
-            '/usr/share/nginx/atom/config/config.php',
-        ];
-
         // Try relative to this file
         $frameworkPath = dirname(__DIR__, 2);
         $atomPath = dirname($frameworkPath);
-        $paths[] = $atomPath . '/config/config.php';
+        $configPath = $atomPath . '/config/config.php';
 
-        foreach ($paths as $path) {
-            if (file_exists($path)) {
-                return $path;
-            }
+        if (file_exists($configPath)) {
+            return $configPath;
         }
 
         return null;

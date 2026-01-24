@@ -40,7 +40,7 @@ class ThemeHelper
         }
 
         // Check plugins directory for enabled themes
-        $pluginsPath = '/usr/share/nginx/archive/plugins';
+        $pluginsPath = PathResolver::getPluginsDir();
         foreach (array_keys(self::$supportedThemes) as $theme) {
             $configFile = $pluginsPath . '/' . $theme . '/config/' . $theme . 'Configuration.class.php';
             if (file_exists($configFile)) {

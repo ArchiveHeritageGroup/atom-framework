@@ -3,10 +3,19 @@
 /**
  * Extended MetadataRoute that adds GLAM sector plugins.
  * Falls back to ISAD when ahgThemeB5Plugin is not enabled.
+ *
+ * Uses MetadataTemplateRegistry for dynamic template lookup.
+ * GLAM sector plugins should register via MetadataTemplateProviderInterface.
  */
 class AhgMetadataRoute extends QubitMetadataRoute
 {
+    /**
+     * @deprecated Use MetadataTemplateRegistry for dynamic lookup.
+     *             Core templates are in parent::$METADATA_PLUGINS.
+     *             GLAM templates register via MetadataTemplateRegistry.
+     */
     public static $METADATA_PLUGINS = [
+        // Core AtoM templates (inherited from parent)
         'isaar' => 'sfIsaarPlugin',
         'eac' => 'sfEacPlugin',
         'ead' => 'sfEadPlugin',
@@ -17,19 +26,63 @@ class AhgMetadataRoute extends QubitMetadataRoute
         'mods' => 'sfModsPlugin',
         'dacs' => 'arDacsPlugin',
         'isdf' => 'sfIsdfPlugin',
-        'museum' => 'ahgMuseumPlugin',
-        'dam' => 'ahgDAMPlugin',
-        'gallery' => 'ahgGalleryPlugin',
-        'library' => 'ahgLibraryPlugin',
     ];
 
     protected static $IO_ALLOWED_VALUES = [
         'isad', 'dc', 'mods', 'rad', 'ead', 'dacs',
-        'museum', 'dam', 'gallery', 'library'
     ];
 
     // GLAM sector codes that require ahgThemeB5Plugin
     protected static $GLAM_CODES = ['museum', 'dam', 'gallery', 'library'];
+
+    /**
+     * Get allowed IO template values dynamically.
+     *
+     * Combines core values with registered GLAM templates.
+     */
+    protected static function getAllowedIOValues(): array
+    {
+        $values = self::$IO_ALLOWED_VALUES;
+
+        // Add GLAM codes if ahgThemeB5Plugin is enabled
+        if (self::isAhgThemeEnabled()) {
+            // Check MetadataTemplateRegistry for GLAM templates
+            if (class_exists('\\AtomExtensions\\Services\\MetadataTemplateRegistry')) {
+                $registeredCodes = \AtomExtensions\Services\MetadataTemplateRegistry::getTemplateCodes();
+                foreach ($registeredCodes as $code) {
+                    if (!in_array($code, $values)) {
+                        $values[] = $code;
+                    }
+                }
+            }
+        }
+
+        return $values;
+    }
+
+    /**
+     * Check if a code is a GLAM sector code.
+     *
+     * GLAM codes are registered by sector plugins or in $GLAM_CODES.
+     */
+    protected static function isGlamCode(string $code): bool
+    {
+        // Check static list first
+        if (in_array($code, self::$GLAM_CODES)) {
+            return true;
+        }
+
+        // Check if it's a registered template that's not a core template
+        if (class_exists('\\AtomExtensions\\Services\\MetadataTemplateRegistry')) {
+            $plugin = \AtomExtensions\Services\MetadataTemplateRegistry::getPluginForTemplate($code);
+            // If plugin name starts with 'ahg', it's a GLAM plugin
+            if ($plugin && strpos($plugin, 'ahg') === 0) {
+                return true;
+            }
+        }
+
+        return false;
+    }
 
     /**
      * Check if ahgThemeB5Plugin is enabled
@@ -105,13 +158,13 @@ class AhgMetadataRoute extends QubitMetadataRoute
                     if (false !== $defaultSetting = QubitPdo::fetchColumn($sql, [$this->resource->id, QubitTaxonomy::INFORMATION_OBJECT_TEMPLATE_ID])) {
                         $default = $defaultSetting;
                     }
-                    
+
                     // If GLAM code but ahgThemeB5Plugin not enabled, fall back to ISAD
-                    if (in_array($default, self::$GLAM_CODES) && !self::isAhgThemeEnabled()) {
+                    if (self::isGlamCode($default) && !self::isAhgThemeEnabled()) {
                         $default = 'isad';
                     }
-                    
-                    $parameters['module'] = $this->getActionParameter(self::$IO_ALLOWED_VALUES, $default, $parameters);
+
+                    $parameters['module'] = $this->getActionParameter(self::getAllowedIOValues(), $default, $parameters);
                     break;
                 case $this->resource instanceof QubitAccession:
                     $parameters['module'] = 'accession';
@@ -142,10 +195,10 @@ class AhgMetadataRoute extends QubitMetadataRoute
                 case 'informationobject':
                     if (false !== $code = $this->getDefaultTemplate($parameters['module'])) {
                         // If GLAM code but ahgThemeB5Plugin not enabled, fall back to ISAD
-                        if (in_array($code, self::$GLAM_CODES) && !self::isAhgThemeEnabled()) {
+                        if (self::isGlamCode($code) && !self::isAhgThemeEnabled()) {
                             $code = 'isad';
                         }
-                        $parameters['module'] = static::$METADATA_PLUGINS[$code];
+                        $parameters['module'] = self::getPluginForTemplate($code);
                     }
                     break;
                 case 'actor':
@@ -196,7 +249,8 @@ class AhgMetadataRoute extends QubitMetadataRoute
 
         if (isset($params['slug'])) {
             if (isset($params['module'])) {
-                if (false !== $key = array_search($params['module'], static::$METADATA_PLUGINS)) {
+                $key = self::getTemplateForPlugin($params['module']);
+                if ($key !== null) {
                     $params['template'] = $key;
                 }
                 unset($params['module']);
@@ -212,15 +266,58 @@ class AhgMetadataRoute extends QubitMetadataRoute
         if (isset($parameters['template'])) {
             $code = $parameters['template'];
         }
-        
+
         // If GLAM code but ahgThemeB5Plugin not enabled, fall back to ISAD
-        if (in_array($code, self::$GLAM_CODES) && !self::isAhgThemeEnabled()) {
+        if (self::isGlamCode($code) && !self::isAhgThemeEnabled()) {
             $code = 'isad';
         }
-        
+
         if (!in_array($code, $allowedValues)) {
             throw new sfConfigurationException(sprintf('The metadata code "%s" is not valid.', $code));
         }
-        return static::$METADATA_PLUGINS[$code];
+
+        return self::getPluginForTemplate($code);
+    }
+
+    /**
+     * Get the plugin name for a template code.
+     *
+     * Checks MetadataTemplateRegistry first (for dynamically registered plugins),
+     * then falls back to legacy $METADATA_PLUGINS array.
+     */
+    protected static function getPluginForTemplate(string $code): ?string
+    {
+        // Check registry first (dynamic registration)
+        if (class_exists('\\AtomExtensions\\Services\\MetadataTemplateRegistry')) {
+            $plugin = \AtomExtensions\Services\MetadataTemplateRegistry::getPluginForTemplate($code);
+            if ($plugin !== null) {
+                return $plugin;
+            }
+        }
+
+        // Fallback to legacy array
+        return self::$METADATA_PLUGINS[$code] ?? null;
+    }
+
+    /**
+     * Get the template code for a plugin name (reverse lookup).
+     *
+     * Checks MetadataTemplateRegistry first, then falls back to legacy array.
+     */
+    protected static function getTemplateForPlugin(string $plugin): ?string
+    {
+        // Check registry first
+        if (class_exists('\\AtomExtensions\\Services\\MetadataTemplateRegistry')) {
+            $map = \AtomExtensions\Services\MetadataTemplateRegistry::getTemplatePluginMap();
+            $key = array_search($plugin, $map, true);
+            if ($key !== false) {
+                return $key;
+            }
+        }
+
+        // Fallback to legacy array
+        $key = array_search($plugin, self::$METADATA_PLUGINS, true);
+
+        return $key !== false ? $key : null;
     }
 }

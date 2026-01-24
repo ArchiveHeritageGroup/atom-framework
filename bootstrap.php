@@ -14,6 +14,7 @@ define('ATOM_ROOT_PATH', dirname(__DIR__));
 
 $loader = require __DIR__ . '/vendor/autoload.php';
 $loader->addPsr4('AtomFramework\\', __DIR__ . '/src/');
+$loader->addPsr4('AtomExtensions\\', __DIR__ . '/src/');
 
 use Illuminate\Database\Capsule\Manager as Capsule;
 

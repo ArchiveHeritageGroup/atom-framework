@@ -1,1 +1,0 @@
-/usr/share/nginx/archive/atom-ahg-plugins/ahg3DModelPlugin/bin/cron-3d-thumbnails.sh

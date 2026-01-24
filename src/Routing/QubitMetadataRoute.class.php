@@ -17,9 +17,26 @@
  * along with Access to Memory (AtoM).  If not, see <http://www.gnu.org/licenses/>.
  */
 
+/**
+ * Metadata route handler for AtoM.
+ *
+ * Uses MetadataTemplateRegistry for dynamic template lookup.
+ * Plugins can register their templates via MetadataTemplateProviderInterface.
+ */
 class QubitMetadataRoute extends QubitRoute
 {
+    /**
+     * Legacy metadata plugins mapping.
+     *
+     * @deprecated Use MetadataTemplateRegistry instead. Plugins should implement
+     *             MetadataTemplateProviderInterface and register via
+     *             MetadataTemplateRegistry::register().
+     *
+     * Core AtoM templates are handled by MetadataTemplateRegistry::$coreTemplates.
+     * AHG plugin templates should register dynamically in their configuration.
+     */
     public static $METADATA_PLUGINS = [
+        // Core AtoM templates
         'isaar' => 'sfIsaarPlugin',
         'eac' => 'sfEacPlugin',
         'ead' => 'sfEadPlugin',
@@ -30,10 +47,6 @@ class QubitMetadataRoute extends QubitRoute
         'mods' => 'sfModsPlugin',
         'dacs' => 'arDacsPlugin',
         'isdf' => 'sfIsdfPlugin',
-        'museum' => 'ahgMuseumPlugin',
-        'dam' => 'ahgDAMPlugin',
-        'gallery' => 'ahgGalleryPlugin',
-        'library' => 'ahgLibraryPlugin',
     ];
     public static $DEFAULT_MODULES = [
         'informationobject' => false,
@@ -199,7 +212,7 @@ class QubitMetadataRoute extends QubitRoute
             switch ($parameters['module']) {
                 case 'informationobject':
                     if (false !== $code = $this->getDefaultTemplate($parameters['module'])) {
-                        $parameters['module'] = self::$METADATA_PLUGINS[$code];
+                        $parameters['module'] = self::getPluginForTemplate($code);
                     }
 
                     break;
@@ -274,7 +287,8 @@ class QubitMetadataRoute extends QubitRoute
         if (isset($params['slug'])) {
             // Set the metadata template
             if (isset($params['module'])) {
-                if (false !== $key = array_search($params['module'], self::$METADATA_PLUGINS)) {
+                $key = self::getTemplateForPlugin($params['module']);
+                if ($key !== null) {
                     $params['template'] = $key;
                 }
 
@@ -298,7 +312,49 @@ class QubitMetadataRoute extends QubitRoute
             throw new sfConfigurationException(sprintf('The metadata code "%s" is not valid.', $code));
         }
 
-        return self::$METADATA_PLUGINS[$code];
+        return self::getPluginForTemplate($code);
+    }
+
+    /**
+     * Get the plugin name for a template code.
+     *
+     * Checks MetadataTemplateRegistry first (for dynamically registered plugins),
+     * then falls back to legacy $METADATA_PLUGINS array.
+     */
+    protected static function getPluginForTemplate(string $code): ?string
+    {
+        // Check registry first (dynamic registration)
+        if (class_exists('\\AtomExtensions\\Services\\MetadataTemplateRegistry')) {
+            $plugin = \AtomExtensions\Services\MetadataTemplateRegistry::getPluginForTemplate($code);
+            if ($plugin !== null) {
+                return $plugin;
+            }
+        }
+
+        // Fallback to legacy array
+        return self::$METADATA_PLUGINS[$code] ?? null;
+    }
+
+    /**
+     * Get the template code for a plugin name (reverse lookup).
+     *
+     * Checks MetadataTemplateRegistry first, then falls back to legacy array.
+     */
+    protected static function getTemplateForPlugin(string $plugin): ?string
+    {
+        // Check registry first
+        if (class_exists('\\AtomExtensions\\Services\\MetadataTemplateRegistry')) {
+            $map = \AtomExtensions\Services\MetadataTemplateRegistry::getTemplatePluginMap();
+            $key = array_search($plugin, $map, true);
+            if ($key !== false) {
+                return $key;
+            }
+        }
+
+        // Fallback to legacy array
+        $key = array_search($plugin, self::$METADATA_PLUGINS, true);
+
+        return $key !== false ? $key : null;
     }
 
     /**

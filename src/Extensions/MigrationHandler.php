@@ -2,15 +2,16 @@
 
 namespace AtomFramework\Extensions;
 
+use AtomFramework\Helpers\PathResolver;
 use Illuminate\Database\Capsule\Manager as DB;
 
 class MigrationHandler
 {
     protected string $pluginsPath;
 
-    public function __construct(string $pluginsPath = '/usr/share/nginx/atom/plugins')
+    public function __construct(?string $pluginsPath = null)
     {
-        $this->pluginsPath = $pluginsPath;
+        $this->pluginsPath = $pluginsPath ?? PathResolver::getPluginsDir();
     }
 
     /**

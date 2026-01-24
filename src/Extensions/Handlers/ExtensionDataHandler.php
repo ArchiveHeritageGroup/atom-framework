@@ -2,6 +2,7 @@
 
 namespace AtomFramework\Extensions\Handlers;
 
+use AtomFramework\Helpers\PathResolver;
 use Illuminate\Database\Capsule\Manager as DB;
 
 class ExtensionDataHandler
@@ -10,8 +11,8 @@ class ExtensionDataHandler
 
     public function __construct()
     {
-        $this->backupPath = '/usr/share/nginx/archive/data/backups/extensions';
-        
+        $this->backupPath = PathResolver::getDataDir() . '/backups/extensions';
+
         if (!is_dir($this->backupPath)) {
             @mkdir($this->backupPath, 0755, true);
         }

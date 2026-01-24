@@ -34,7 +34,7 @@ class ExtensionCommand
     {
         $this->argv = $argv;
         $this->manager = new ExtensionManager();
-        $pluginsPath = $this->manager->getSetting('extensions_path', null, '/usr/share/nginx/atom/plugins');
+        $pluginsPath = $this->manager->getSetting('extensions_path', null, '/var/www/atom/plugins');
         $this->fetcher = new PluginFetcher($pluginsPath);
         $this->migrationHandler = new MigrationHandler($pluginsPath);
         $this->interactive = !in_array('--no-interaction', $argv) && !in_array('-n', $argv);
@@ -182,7 +182,7 @@ class ExtensionCommand
         $this->line('');
 
         // Check if plugin exists locally
-        $pluginsPath = $this->manager->getSetting('extensions_path', null, '/usr/share/nginx/atom/plugins');
+        $pluginsPath = $this->manager->getSetting('extensions_path', null, '/var/www/atom/plugins');
         $pluginPath = "{$pluginsPath}/{$name}";
 
         if (!is_dir($pluginPath)) {
@@ -756,10 +756,10 @@ class ExtensionCommand
         }
 
         $this->line('');
-        $pluginsPath = rtrim($this->manager->getSetting('extensions_path', null, '/usr/share/nginx/atom/atom-ahg-plugins'), '/');
+        $pluginsPath = rtrim($this->manager->getSetting('extensions_path', null, '/var/www/atom/atom-ahg-plugins'), '/');
         
         // Also check plugins directory for symlinks
-        $atomRoot = getenv('ATOM_ROOT') ?: '/usr/share/nginx/atom';
+        $atomRoot = getenv('ATOM_ROOT') ?: '/var/www/atom';
         $pluginsDir = $atomRoot . '/plugins';
 
         // Get list of plugins to upgrade
@@ -922,7 +922,7 @@ class ExtensionCommand
         }
 
         $this->line('');
-        $pluginsPath = $this->manager->getSetting('extensions_path', null, '/usr/share/nginx/atom/plugins');
+        $pluginsPath = $this->manager->getSetting('extensions_path', null, '/var/www/atom/plugins');
 
         // Get list of extensions to update
         $toUpdate = [];
@@ -1192,7 +1192,7 @@ class ExtensionCommand
     }
     protected function createBackup(string $name): ?string
     {
-        $pluginsPath = $this->manager->getSetting('extensions_path', null, '/usr/share/nginx/atom/plugins');
+        $pluginsPath = $this->manager->getSetting('extensions_path', null, '/var/www/atom/plugins');
         $pluginPath = "{$pluginsPath}/{$name}";
         $backupDir = dirname($pluginsPath) . '/backups/extensions';
 
@@ -1235,7 +1235,7 @@ class ExtensionCommand
      */
     protected function runUpdateMigrations(string $name, string $fromVersion, string $toVersion): void
     {
-        $pluginsPath = $this->manager->getSetting('extensions_path', null, '/usr/share/nginx/atom/plugins');
+        $pluginsPath = $this->manager->getSetting('extensions_path', null, '/var/www/atom/plugins');
         $migrationsPath = "{$pluginsPath}/{$name}/schema/migrations";
 
         if (!is_dir($migrationsPath)) {
@@ -1275,7 +1275,7 @@ class ExtensionCommand
      */
     protected function clearCache(): void
     {
-        $cacheDir = defined('ATOM_ROOT') ? ATOM_ROOT . '/cache' : '/usr/share/nginx/atom/cache';
+        $cacheDir = defined('ATOM_ROOT') ? ATOM_ROOT . '/cache' : '/var/www/atom/cache';
 
         if (is_dir($cacheDir)) {
             $this->removeDirectory($cacheDir, false);
