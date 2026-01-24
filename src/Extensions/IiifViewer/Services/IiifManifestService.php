@@ -250,20 +250,20 @@ class IiifManifestService
             'items' => []
         ];
         
-        // Generate canvases
+        // Generate canvases - Cantaloupe uses semicolon syntax: image.tif;1
         if ($pageCount > 1) {
-            for ($i = 0; $i < $pageCount; $i++) {
-                $pageIdentifier = $identifier . '[' . $i . ']';
+            for ($i = 1; $i <= $pageCount; $i++) {
+                $pageIdentifier = $identifier . ';' . $i;
                 $pageDimensions = $this->getImageDimensions($pageIdentifier) ?: $dimensions;
-                $manifest['items'][] = $this->createImageCanvas($pageIdentifier, $pageDimensions, $i + 1, $lang);
+                $manifest['items'][] = $this->createImageCanvas($pageIdentifier, $pageDimensions, $i, $lang);
             }
         } else {
             $manifest['items'][] = $this->createImageCanvas($identifier, $dimensions, 1, $lang);
         }
-        
+
         return $manifest;
     }
-    
+
     /**
      * Generate collection manifest
      */
@@ -358,14 +358,14 @@ class IiifManifestService
             $iiifId = $this->buildIiifIdentifier($do->path, $do->name);
             $dimensions = $this->getImageDimensions($iiifId);
             
-            // Check for multi-page (TIFF)
+            // Check for multi-page (TIFF) - Cantaloupe uses semicolon syntax: image.tif;1
             $pageCount = $this->detectPageCount($iiifId);
-            
+
             if ($pageCount > 1) {
-                for ($i = 0; $i < $pageCount; $i++) {
-                    $pageId = $iiifId . '[' . $i . ']';
+                for ($i = 1; $i <= $pageCount; $i++) {
+                    $pageId = $iiifId . ';' . $i;
                     $pageDimensions = $this->getImageDimensions($pageId) ?: $dimensions;
-                    $canvases[] = $this->createImageCanvas($pageId, $pageDimensions, $startIndex + $i, $lang, $do->id);
+                    $canvases[] = $this->createImageCanvas($pageId, $pageDimensions, $startIndex + $i - 1, $lang, $do->id);
                 }
             } else {
                 $canvases[] = $this->createImageCanvas($iiifId, $dimensions, $startIndex, $lang, $do->id);
@@ -455,8 +455,8 @@ class IiifManifestService
             $pageCount = 1; // Fallback
         }
         
-        for ($i = 0; $i < $pageCount; $i++) {
-            $pageIdentifier = $pdfIdentifier . '[' . $i . ']';
+        for ($i = 1; $i <= $pageCount; $i++) {
+            $pageIdentifier = $pdfIdentifier . ';' . $i;
             $dimensions = $this->getImageDimensions($pageIdentifier);
             
             // If Cantaloupe can't serve this page, use fallback dimensions
@@ -464,13 +464,13 @@ class IiifManifestService
                 $dimensions = ['width' => 612, 'height' => 792]; // Letter size at 72 DPI
             }
             
-            $canvasId = $this->baseUrl . '/iiif/canvas/pdf-' . $do->id . '/' . ($i + 1);
+            $canvasId = $this->baseUrl . '/iiif/canvas/pdf-' . $do->id . '/' . $i;
             $imageUri = $this->cantaloupeUrl . '/' . urlencode($pageIdentifier);
-            
+
             $canvases[] = [
                 'id' => $canvasId,
                 'type' => 'Canvas',
-                'label' => $this->langMap('Page ' . ($startIndex + $i), $lang),
+                'label' => $this->langMap('Page ' . ($startIndex + $i - 1), $lang),
                 'width' => $dimensions['width'],
                 'height' => $dimensions['height'],
                 'thumbnail' => [[
@@ -791,20 +791,20 @@ class IiifManifestService
             ]
         ];
         
-        // Generate canvases
+        // Generate canvases - Cantaloupe uses semicolon syntax: image.tif;1
         if ($pageCount > 1) {
-            for ($i = 0; $i < $pageCount; $i++) {
-                $pageIdentifier = $identifier . '[' . $i . ']';
+            for ($i = 1; $i <= $pageCount; $i++) {
+                $pageIdentifier = $identifier . ';' . $i;
                 $pageDimensions = $this->getImageDimensions($pageIdentifier) ?: $dimensions;
-                $manifest['sequences'][0]['canvases'][] = $this->createCanvas21($pageIdentifier, $pageDimensions, $i + 1);
+                $manifest['sequences'][0]['canvases'][] = $this->createCanvas21($pageIdentifier, $pageDimensions, $i);
             }
         } else {
             $manifest['sequences'][0]['canvases'][] = $this->createCanvas21($identifier, $dimensions, 1);
         }
-        
+
         return $manifest;
     }
-    
+
     private function createCanvas21(string $identifier, array $dimensions, int $pageNum): array
     {
         $canvasId = $this->baseUrl . '/iiif/canvas/' . urlencode($identifier);
@@ -948,9 +948,12 @@ class IiifManifestService
     public function getImageDimensions(string $identifier): array
     {
         $infoUrl = $this->cantaloupeUrl . '/' . urlencode($identifier) . '/info.json';
-        
+
         $context = stream_context_create([
-            'http' => ['timeout' => 5],
+            'http' => [
+                'timeout' => 5,
+                'header' => 'User-Agent: Mozilla/5.0 AtoM-IIIF-Service/1.0'
+            ],
             'ssl' => ['verify_peer' => false, 'verify_peer_name' => false]
         ]);
         
@@ -971,33 +974,39 @@ class IiifManifestService
     
     private function detectPageCount(string $identifier): int
     {
-        $page1Url = $this->cantaloupeUrl . '/' . urlencode($identifier . '[1]') . '/info.json';
-        
+        // Cantaloupe uses semicolon syntax for multi-page TIFFs: image.tif;1
+        // Page numbering starts at 1
+        $page1Url = $this->cantaloupeUrl . '/' . urlencode($identifier . ';1') . '/info.json';
+
         $context = stream_context_create([
-            'http' => ['timeout' => 3],
+            'http' => [
+                'timeout' => 3,
+                'header' => 'User-Agent: Mozilla/5.0 AtoM-IIIF-Service/1.0'
+            ],
             'ssl' => ['verify_peer' => false, 'verify_peer_name' => false]
         ]);
-        
+
         $response = @file_get_contents($page1Url, false, $context);
-        
+
         if (!$response) {
             return 1;
         }
-        
-        $count = 2;
+
+        $count = 1; // Start at 1 since we know page 1 exists
         $max = 100;
-        
-        while ($count <= $max) {
-            $testUrl = $this->cantaloupeUrl . '/' . urlencode($identifier . '[' . $count . ']') . '/info.json';
+
+        while ($count < $max) {
+            $nextPage = $count + 1;
+            $testUrl = $this->cantaloupeUrl . '/' . urlencode($identifier . ';' . $nextPage) . '/info.json';
             $testResponse = @file_get_contents($testUrl, false, $context);
-            
+
             if (!$testResponse) {
                 break;
             }
-            
-            $count++;
+
+            $count = $nextPage;
         }
-        
+
         return $count;
     }
     

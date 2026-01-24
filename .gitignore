@@ -2,3 +2,29 @@
 /dist/*.run
 /dist/*.deb
 .env
+
+# Backup and temporary files
+.backups/
+*.bak
+*.bak.*
+*.old
+*.broken
+*.qubit
+*.snippets
+*.orig
+*.tmp
+*~
+
+# IDE and editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# PHP tools
+.php-cs-fixer.cache
+.phpunit.result.cache
+
+# OS files
+.DS_Store
+Thumbs.db
