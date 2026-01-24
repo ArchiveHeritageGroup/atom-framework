@@ -34,6 +34,7 @@ class MetadataTemplateRegistry
      * @var array<string, array{plugin: string, module: string}>
      */
     private static array $coreTemplates = [
+        // Core AtoM templates
         'dc' => ['plugin' => 'sfDcPlugin', 'module' => 'sfDcPlugin'],
         'isad' => ['plugin' => 'sfIsadPlugin', 'module' => 'sfIsadPlugin'],
         'isdf' => ['plugin' => 'sfIsdfPlugin', 'module' => 'sfIsdfPlugin'],
@@ -41,6 +42,12 @@ class MetadataTemplateRegistry
         'mods' => ['plugin' => 'sfModsPlugin', 'module' => 'sfModsPlugin'],
         'rad' => ['plugin' => 'sfRadPlugin', 'module' => 'sfRadPlugin'],
         'skos' => ['plugin' => 'sfSkosPlugin', 'module' => 'sfSkosPlugin'],
+        'dacs' => ['plugin' => 'arDacsPlugin', 'module' => 'arDacsPlugin'],
+        // GLAM/DAM templates - plugin field contains module name for routing compatibility
+        'museum' => ['plugin' => 'museum', 'module' => 'museum'],
+        'library' => ['plugin' => 'library', 'module' => 'library'],
+        'gallery' => ['plugin' => 'gallery', 'module' => 'gallery'],
+        'dam' => ['plugin' => 'dam', 'module' => 'dam'],
     ];
 
     /**

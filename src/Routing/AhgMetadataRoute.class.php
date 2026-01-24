@@ -276,7 +276,27 @@ class AhgMetadataRoute extends QubitMetadataRoute
             throw new sfConfigurationException(sprintf('The metadata code "%s" is not valid.', $code));
         }
 
-        return self::getPluginForTemplate($code);
+        return self::getModuleForTemplate($code);
+    }
+
+    /**
+     * Get the module name for a template code.
+     *
+     * For GLAM/DAM templates, the module name differs from the plugin name.
+     * E.g., ahgMuseumPlugin has module 'museum'.
+     */
+    protected static function getModuleForTemplate(string $code): ?string
+    {
+        // Check registry first (has separate module info)
+        if (class_exists('\\AtomExtensions\\Services\\MetadataTemplateRegistry')) {
+            $module = \AtomExtensions\Services\MetadataTemplateRegistry::getModuleForTemplate($code);
+            if ($module !== null) {
+                return $module;
+            }
+        }
+
+        // Fallback to legacy array (plugin name = module name for core plugins)
+        return self::$METADATA_PLUGINS[$code] ?? null;
     }
 
     /**

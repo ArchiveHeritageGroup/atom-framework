@@ -2,20 +2,90 @@
 
 namespace AtomExtensions\Services;
 
+use Illuminate\Database\Capsule\Manager as DB;
+
 /**
- * @deprecated This class has been moved to ahgSecurityClearancePlugin.
- * @see \AhgSecurityClearance\Services\AccessRequestService (ahgSecurityClearancePlugin/lib/Services/AccessRequestService.php)
+ * Access Request Service
  * 
- * This stub is provided for backward compatibility only.
- * Please update your code to use the new location.
+ * Handles access request operations including approver checks
  */
+class AccessRequestService
+{
+    /**
+     * Check if a user is an approver for access requests
+     *
+     * @param int $userId
+     * @return bool
+     */
+    public static function isApprover(int $userId): bool
+    {
+        if (!$userId) {
+            return false;
+        }
 
-trigger_error(
-    'AtomExtensions\Services\AccessRequestService is deprecated. Use AhgSecurityClearance\Services\AccessRequestService from ahgSecurityClearancePlugin instead.',
-    E_USER_DEPRECATED
-);
+        try {
+            // Check if approvers table exists and user is in it
+            $exists = DB::table('access_request_approver')
+                ->where('user_id', $userId)
+                ->where('is_active', 1)
+                ->exists();
+            
+            return $exists;
+        } catch (\Exception $e) {
+            // Table may not exist yet, or plugin not installed
+            return false;
+        }
+    }
 
-throw new \RuntimeException(
-    'AccessRequestService has moved to ahgSecurityClearancePlugin/lib/Services/AccessRequestService.php. ' .
-    'Please update your imports to use AhgSecurityClearance\Services\AccessRequestService.'
-);
+    /**
+     * Get count of pending access requests
+     *
+     * @return int
+     */
+    public static function getPendingCount(): int
+    {
+        try {
+            return DB::table('access_request')
+                ->where('status', 'pending')
+                ->count();
+        } catch (\Exception $e) {
+            return 0;
+        }
+    }
+
+    /**
+     * Get pending requests for a specific approver
+     *
+     * @param int $userId
+     * @return \Illuminate\Support\Collection
+     */
+    public static function getPendingForApprover(int $userId)
+    {
+        try {
+            return DB::table('access_request')
+                ->where('status', 'pending')
+                ->orderBy('created_at', 'desc')
+                ->get();
+        } catch (\Exception $e) {
+            return collect([]);
+        }
+    }
+
+    /**
+     * Check if user has any pending requests
+     *
+     * @param int $userId
+     * @return bool
+     */
+    public static function userHasPendingRequests(int $userId): bool
+    {
+        try {
+            return DB::table('access_request')
+                ->where('user_id', $userId)
+                ->where('status', 'pending')
+                ->exists();
+        } catch (\Exception $e) {
+            return false;
+        }
+    }
+}
