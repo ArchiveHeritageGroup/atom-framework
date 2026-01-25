@@ -1,0 +1,37 @@
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                    CLAUDE CODE RULES - QUICK REFERENCE                       ║
+╠══════════════════════════════════════════════════════════════════════════════╣
+║                                                                              ║
+║  🚫 NEVER DO:                                                                ║
+║  ├── Modify bin/install, bin/release, database/install.sql without approval ║
+║  ├── Add INSERT INTO atom_plugin in data files                              ║
+║  ├── Use Laravel Query Builder for Plugin Manager (use PDO)                 ║
+║  ├── Modify core AtoM table schemas                                         ║
+║  ├── Use ADD COLUMN IF NOT EXISTS (MySQL doesn't support it)                ║
+║  └── Modify locked plugins without approval                                 ║
+║                                                                              ║
+║  🔒 LOCKED PLUGINS:                                                          ║
+║  ├── ahgLibraryPlugin                                                       ║
+║  ├── ahgBackupPlugin                                                        ║
+║  ├── ahgAuditTrailPlugin                                                    ║
+║  ├── ahgResearchPlugin                                                      ║
+║  ├── ahgThemeB5Plugin                                                       ║
+║  └── ahgSecurityClearancePlugin                                             ║
+║                                                                              ║
+║  ✅ ALWAYS DO:                                                               ║
+║  ├── Read CLAUDE.md first                                                   ║
+║  ├── Show proposed changes before implementing                              ║
+║  ├── Wait for explicit approval                                             ║
+║  ├── Test on 192.168.0.112 first, then 192.168.0.154                       ║
+║  └── Use Laravel Query Builder (except Plugin Manager)                      ║
+║                                                                              ║
+║  📁 PATHS:                                                                   ║
+║  ├── Framework: /usr/share/nginx/archive/atom-framework                     ║
+║  ├── Plugins:   /usr/share/nginx/archive/plugins                            ║
+║  └── Config:    /usr/share/nginx/archive/config/config.php                  ║
+║                                                                              ║
+║  🗄️ DATABASE:                                                                ║
+║  ├── Dev (112): root@localhost / archive                                    ║
+║  └── Test (154): atom@localhost / atom (pass: AtoM@123)                     ║
+║                                                                              ║
+╚══════════════════════════════════════════════════════════════════════════════╝

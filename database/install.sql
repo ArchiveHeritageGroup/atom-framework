@@ -5737,3 +5737,169 @@ INSERT IGNORE INTO `tk_label_i18n` (`tk_label_id`, `culture`, `name`, `descripti
 (10, 'en', 'TK Verified', 'Verified by community.'),
 (11, 'en', 'TK-CO', 'Open to commercialization with permission.'),
 (12, 'en', 'TK Open to Commercialization', 'Approved for outreach activities.');
+
+-- =============================================================================
+-- Heritage Contributions Module
+-- =============================================================================
+
+-- Table: heritage_contributor
+CREATE TABLE IF NOT EXISTS `heritage_contributor` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `email` varchar(255) NOT NULL,
+  `display_name` varchar(100) NOT NULL,
+  `password_hash` varchar(255) NOT NULL,
+  `avatar_url` varchar(500) DEFAULT NULL,
+  `bio` text,
+  `trust_level` enum('new','contributor','trusted','expert') DEFAULT 'new',
+  `email_verified` tinyint(1) DEFAULT '0',
+  `email_verify_token` varchar(100) DEFAULT NULL,
+  `email_verify_expires` timestamp NULL DEFAULT NULL,
+  `password_reset_token` varchar(100) DEFAULT NULL,
+  `password_reset_expires` timestamp NULL DEFAULT NULL,
+  `total_contributions` int DEFAULT '0',
+  `approved_contributions` int DEFAULT '0',
+  `rejected_contributions` int DEFAULT '0',
+  `points` int DEFAULT '0',
+  `badges` json DEFAULT NULL,
+  `preferences` json DEFAULT NULL,
+  `is_active` tinyint(1) DEFAULT '1',
+  `last_login_at` timestamp NULL DEFAULT NULL,
+  `last_contribution_at` timestamp NULL DEFAULT NULL,
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `email` (`email`),
+  KEY `idx_email` (`email`),
+  KEY `idx_trust_level` (`trust_level`),
+  KEY `idx_points` (`points` DESC),
+  KEY `idx_verified` (`email_verified`),
+  KEY `idx_active` (`is_active`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Table: heritage_contribution_type
+CREATE TABLE IF NOT EXISTS `heritage_contribution_type` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `code` varchar(50) NOT NULL,
+  `name` varchar(100) NOT NULL,
+  `description` text,
+  `icon` varchar(50) DEFAULT 'bi-pencil',
+  `color` varchar(20) DEFAULT 'primary',
+  `requires_validation` tinyint(1) DEFAULT '1',
+  `points_value` int DEFAULT '10',
+  `min_trust_level` enum('new','contributor','trusted','expert') DEFAULT 'new',
+  `display_order` int DEFAULT '100',
+  `is_active` tinyint(1) DEFAULT '1',
+  `config_json` json DEFAULT NULL,
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `code` (`code`),
+  KEY `idx_active` (`is_active`),
+  KEY `idx_order` (`display_order`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Table: heritage_contribution
+CREATE TABLE IF NOT EXISTS `heritage_contribution` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `contributor_id` int NOT NULL,
+  `information_object_id` int NOT NULL,
+  `contribution_type_id` int NOT NULL,
+  `content` json NOT NULL,
+  `status` enum('pending','approved','rejected','superseded') DEFAULT 'pending',
+  `reviewed_by` int DEFAULT NULL,
+  `reviewed_at` timestamp NULL DEFAULT NULL,
+  `review_notes` text,
+  `points_awarded` int DEFAULT '0',
+  `version_number` int DEFAULT '1',
+  `is_featured` tinyint(1) DEFAULT '0',
+  `view_count` int DEFAULT '0',
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_contributor` (`contributor_id`),
+  KEY `idx_object` (`information_object_id`),
+  KEY `idx_type` (`contribution_type_id`),
+  KEY `idx_status` (`status`),
+  KEY `idx_reviewed_by` (`reviewed_by`),
+  KEY `idx_created` (`created_at`),
+  KEY `idx_featured` (`is_featured`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Table: heritage_contribution_version
+CREATE TABLE IF NOT EXISTS `heritage_contribution_version` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `contribution_id` int NOT NULL,
+  `version_number` int NOT NULL,
+  `content` json NOT NULL,
+  `created_by` int NOT NULL,
+  `change_summary` varchar(255) DEFAULT NULL,
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_contribution` (`contribution_id`),
+  KEY `idx_version` (`contribution_id`,`version_number`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Table: heritage_contributor_session
+CREATE TABLE IF NOT EXISTS `heritage_contributor_session` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `contributor_id` int NOT NULL,
+  `token` varchar(100) NOT NULL,
+  `ip_address` varchar(45) DEFAULT NULL,
+  `user_agent` varchar(500) DEFAULT NULL,
+  `expires_at` timestamp NOT NULL,
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `token` (`token`),
+  KEY `idx_contributor` (`contributor_id`),
+  KEY `idx_token` (`token`),
+  KEY `idx_expires` (`expires_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Table: heritage_contributor_badge
+CREATE TABLE IF NOT EXISTS `heritage_contributor_badge` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `code` varchar(50) NOT NULL,
+  `name` varchar(100) NOT NULL,
+  `description` text,
+  `icon` varchar(50) DEFAULT 'bi-award',
+  `color` varchar(20) DEFAULT 'primary',
+  `criteria_type` enum('contribution_count','approval_rate','points','type_specific','manual') DEFAULT 'contribution_count',
+  `criteria_value` int DEFAULT '0',
+  `criteria_config` json DEFAULT NULL,
+  `points_bonus` int DEFAULT '0',
+  `is_active` tinyint(1) DEFAULT '1',
+  `display_order` int DEFAULT '100',
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `code` (`code`),
+  KEY `idx_active` (`is_active`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Table: heritage_contributor_badge_award
+CREATE TABLE IF NOT EXISTS `heritage_contributor_badge_award` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `contributor_id` int NOT NULL,
+  `badge_id` int NOT NULL,
+  `awarded_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_contributor_badge` (`contributor_id`,`badge_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Seed: Contribution Types
+INSERT IGNORE INTO `heritage_contribution_type` (`code`, `name`, `description`, `icon`, `color`, `requires_validation`, `points_value`, `display_order`) VALUES
+('transcription', 'Transcription', 'Transcribe handwritten or typed documents into searchable text', 'bi-file-text', 'primary', 1, 25, 1),
+('identification', 'Identification', 'Identify people, places, or objects in photographs and documents', 'bi-person-badge', 'success', 1, 15, 2),
+('context', 'Historical Context', 'Add historical context, personal memories, or background information', 'bi-book', 'info', 1, 20, 3),
+('correction', 'Correction', 'Suggest corrections to existing metadata or descriptions', 'bi-pencil-square', 'warning', 1, 10, 4),
+('translation', 'Translation', 'Translate content into other languages', 'bi-translate', 'secondary', 1, 30, 5),
+('tag', 'Tags/Keywords', 'Add relevant tags and keywords to improve discoverability', 'bi-tags', 'dark', 0, 5, 6);
+
+-- Seed: Contributor Badges
+INSERT IGNORE INTO `heritage_contributor_badge` (`code`, `name`, `description`, `icon`, `color`, `criteria_type`, `criteria_value`, `display_order`) VALUES
+('first_contribution', 'First Steps', 'Made your first contribution', 'bi-star', 'warning', 'contribution_count', 1, 1),
+('contributor_10', 'Active Contributor', 'Made 10 approved contributions', 'bi-star-fill', 'warning', 'contribution_count', 10, 2),
+('contributor_50', 'Dedicated Contributor', 'Made 50 approved contributions', 'bi-trophy', 'warning', 'contribution_count', 50, 3),
+('contributor_100', 'Heritage Champion', 'Made 100 approved contributions', 'bi-trophy-fill', 'primary', 'contribution_count', 100, 4),
+('transcriber', 'Transcription Expert', 'Completed 25 transcriptions', 'bi-file-text-fill', 'primary', 'type_specific', 25, 10),
+('identifier', 'Sharp Eye', 'Identified people in 25 photographs', 'bi-eye', 'success', 'type_specific', 25, 11),
+('historian', 'Local Historian', 'Added context to 25 records', 'bi-book-fill', 'info', 'type_specific', 25, 12),
+('perfectionist', 'High Quality', 'Maintained 95% approval rate on 20+ contributions', 'bi-check-circle-fill', 'success', 'approval_rate', 95, 20);
