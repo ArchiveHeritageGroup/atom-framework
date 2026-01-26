@@ -549,11 +549,16 @@ class SearchOrchestrator
 
     /**
      * Merge parsed filters with user-selected filters.
+     *
+     * Note: Auto-detected filters from query parsing are NOT included here.
+     * They are used for entity-based search strategies to find additional results,
+     * not as mandatory filters that would exclude keyword matches.
      */
     private function mergeFilters(array $parsedFilters, array $userFilters): array
     {
-        // User filters take precedence
-        return array_merge($parsedFilters, $userFilters);
+        // Only use user-selected filters, not auto-detected ones
+        // Auto-detected entities are handled via entitySearch for result boosting
+        return $userFilters;
     }
 
     /**

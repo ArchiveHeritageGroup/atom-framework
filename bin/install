@@ -264,10 +264,10 @@ echo -e "${BLUE}Step 7: Patching QubitMetadataRoute...${NC}"
 ROUTE_FILE="${ATOM_ROOT}/lib/routing/QubitMetadataRoute.class.php"
 if [ -f "$ROUTE_FILE" ]; then
     if ! grep -q "ahgLibraryPlugin" "$ROUTE_FILE"; then
-        sed -i "/'isdf' => 'sfIsdfPlugin',/a\        'library' => 'ahgLibraryPlugin'," "$ROUTE_FILE"
-        sed -i "/'isdf' => 'sfIsdfPlugin',/a\        'gallery' => 'ahgGalleryPlugin'," "$ROUTE_FILE"
-        sed -i "/'isdf' => 'sfIsdfPlugin',/a\        'dam' => 'ahgDAMPlugin'," "$ROUTE_FILE"
-        sed -i "/'isdf' => 'sfIsdfPlugin',/a\        'museum' => 'ahgMuseumPlugin'," "$ROUTE_FILE"
+        sed -i "/'isdf' => 'sfIsdfPlugin',/a\        'library' => 'library'," "$ROUTE_FILE"
+        sed -i "/'isdf' => 'sfIsdfPlugin',/a\        'gallery' => 'gallery'," "$ROUTE_FILE"
+        sed -i "/'isdf' => 'sfIsdfPlugin',/a\        'dam' => 'dam'," "$ROUTE_FILE"
+        sed -i "/'isdf' => 'sfIsdfPlugin',/a\        'museum' => 'museum'," "$ROUTE_FILE"
         echo -e "  ${GREEN}✓${NC} Added GLAM plugins to METADATA_PLUGINS"
     fi
     if ! grep -q "museum.*dam.*gallery.*library" "$ROUTE_FILE"; then

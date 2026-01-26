@@ -569,6 +569,75 @@ class BackupService
         ];
     }
 
+    private function backupFuseki(string $backupDir): array
+    {
+        $fusekiEndpoint = $this->settings->get('fuseki_endpoint', 'http://localhost:3030/ric');
+        $outputFile = $backupDir . '/fuseki_dump.nq';
+
+        // Try to export all triples from Fuseki
+        $exportUrl = rtrim($fusekiEndpoint, '/') . '/data';
+
+        $ch = curl_init();
+        curl_setopt_array($ch, [
+            CURLOPT_URL => $exportUrl,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_HTTPHEADER => ['Accept: application/n-quads'],
+            CURLOPT_TIMEOUT => 600, // 10 minutes for large datasets
+            CURLOPT_CONNECTTIMEOUT => 30,
+        ]);
+
+        $response = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $error = curl_error($ch);
+        curl_close($ch);
+
+        if ($httpCode !== 200 || $response === false) {
+            // Try alternative: use Fuseki backup endpoint
+            $backupUrl = str_replace('/ric', '/$/backup/ric', rtrim($fusekiEndpoint, '/'));
+            $ch = curl_init();
+            curl_setopt_array($ch, [
+                CURLOPT_URL => $backupUrl,
+                CURLOPT_POST => true,
+                CURLOPT_RETURNTRANSFER => true,
+                CURLOPT_TIMEOUT => 600,
+            ]);
+            $backupResponse = curl_exec($ch);
+            $backupCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            curl_close($ch);
+
+            if ($backupCode === 200) {
+                return [
+                    'status' => 'success',
+                    'method' => 'fuseki_backup_endpoint',
+                    'note' => 'Backup triggered via Fuseki admin endpoint',
+                ];
+            }
+
+            return [
+                'status' => 'failed',
+                'reason' => $error ?: "HTTP {$httpCode}",
+                'note' => 'Could not export Fuseki data',
+            ];
+        }
+
+        // Write the exported data
+        file_put_contents($outputFile, $response);
+
+        // Compress it
+        $gzFile = $outputFile . '.gz';
+        $cmd = "gzip -c '{$outputFile}' > '{$gzFile}' && rm '{$outputFile}'";
+        exec($cmd, $output, $returnCode);
+
+        $finalFile = $returnCode === 0 ? $gzFile : $outputFile;
+
+        return [
+            'status' => 'success',
+            'file' => $finalFile,
+            'size' => file_exists($finalFile) ? filesize($finalFile) : 0,
+            'format' => 'n-quads',
+        ];
+    }
+
     private function cleanupOldBackups(): void
     {
         $backupPath = $this->settings->get('backup_path', '/var/backups/atom');

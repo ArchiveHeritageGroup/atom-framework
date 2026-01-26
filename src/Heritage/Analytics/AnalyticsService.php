@@ -103,7 +103,7 @@ class AnalyticsService
         $ctr = $totalSearches > 0 ? round(($searchesWithClicks / $totalSearches) * 100, 1) : 0;
 
         return [
-            'avg_results' => round($avgResults ?? 0, 1),
+            'avg_results' => round((float) ($avgResults ?? 0), 1),
             'zero_result_rate' => $totalSearches > 0 ? round(($zeroResults / $totalSearches) * 100, 1) : 0,
             'click_through_rate' => $ctr,
         ];
