@@ -26,10 +26,16 @@ class AhgMetadataRoute extends QubitMetadataRoute
         'mods' => 'sfModsPlugin',
         'dacs' => 'arDacsPlugin',
         'isdf' => 'sfIsdfPlugin',
+        // GLAM sector templates
+        'museum' => 'museum',
+        'dam' => 'dam',
+        'gallery' => 'gallery',
+        'library' => 'library',
     ];
 
     protected static $IO_ALLOWED_VALUES = [
         'isad', 'dc', 'mods', 'rad', 'ead', 'dacs',
+        'museum', 'dam', 'gallery', 'library',
     ];
 
     // GLAM sector codes that require ahgThemeB5Plugin

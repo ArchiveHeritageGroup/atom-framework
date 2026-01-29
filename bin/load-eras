@@ -1,0 +1,163 @@
+#!/bin/bash
+# =============================================================================
+# Load historical eras from PeriodO (perio.do)
+# =============================================================================
+
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+FRAMEWORK_DIR="$(dirname "$SCRIPT_DIR")"
+DATA_DIR="${FRAMEWORK_DIR}/data/eras"
+
+mkdir -p "$DATA_DIR"
+
+echo "Downloading era datasets..."
+
+# PeriodO - Comprehensive historical periods
+echo "  → PeriodO dataset..."
+curl -sL --compressed -H "Accept: application/json" "http://n2t.net/ark:/99152/p0d.json" -o "${DATA_DIR}/periodo.json"
+echo "    ✓ Downloaded $(du -h ${DATA_DIR}/periodo.json | cut -f1)"
+
+# Extract and convert to simple format
+echo ""
+echo "Converting to usable format..."
+
+php << 'PHPCODE'
+<?php
+$dataDir = '/usr/share/nginx/archive/atom-framework/data/eras';
+$input = file_get_contents("$dataDir/periodo.json");
+$data = json_decode($input, true);
+
+if (!$data) {
+    echo "Error: Could not parse JSON\n";
+    exit(1);
+}
+
+$eras = [];
+$count = 0;
+$skipped = 0;
+
+// PeriodO structure: authorities -> [id] -> periods -> [id] -> period data
+if (isset($data['authorities'])) {
+    foreach ($data['authorities'] as $authorityId => $authority) {
+        if (!isset($authority['periods']) || !is_array($authority['periods'])) {
+            continue;
+        }
+
+        foreach ($authority['periods'] as $periodId => $period) {
+            // Get label from localizedLabels.en or label field
+            $label = null;
+            if (isset($period['localizedLabels']['en'][0])) {
+                $label = $period['localizedLabels']['en'][0];
+            } elseif (isset($period['label'])) {
+                $label = $period['label'];
+            }
+
+            if (!$label) {
+                $skipped++;
+                continue;
+            }
+
+            // Parse years (can be negative for BCE)
+            $startYear = null;
+            $endYear = null;
+
+            if (isset($period['start']['in']['year'])) {
+                $startYear = (int) $period['start']['in']['year'];
+            }
+            if (isset($period['stop']['in']['year'])) {
+                $endYear = (int) $period['stop']['in']['year'];
+            }
+
+            // Skip if no valid dates or ancient periods (before year 1)
+            if ($startYear === null || $endYear === null) {
+                $skipped++;
+                continue;
+            }
+
+            // Skip BCE periods for now (year < 1)
+            if ($startYear < 1 || $endYear < 1) {
+                $skipped++;
+                continue;
+            }
+
+            // Validate label length
+            if (strlen($label) < 3 || strlen($label) > 100) {
+                $skipped++;
+                continue;
+            }
+
+            $key = strtolower(trim($label));
+
+            // Skip duplicates (keep first occurrence)
+            if (isset($eras[$key])) {
+                continue;
+            }
+
+            // Format dates
+            $start = sprintf('%04d-01-01', $startYear);
+            $end = sprintf('%04d-12-31', $endYear);
+
+            $eras[$key] = [
+                'label' => $label,
+                'start' => $start,
+                'end' => $end,
+                'source' => 'periodo'
+            ];
+            $count++;
+        }
+    }
+}
+
+// Sort by key
+ksort($eras);
+
+// Output as PHP array
+$output = "<?php\n";
+$output .= "// Auto-generated from PeriodO dataset (perio.do)\n";
+$output .= "// Generated: " . date('Y-m-d H:i:s') . "\n";
+$output .= "// Total eras: $count (skipped: $skipped)\n\n";
+$output .= "return [\n";
+
+foreach ($eras as $key => $era) {
+    $output .= sprintf(
+        "    '%s' => ['%s', '%s'], // %s\n",
+        addslashes($key),
+        $era['start'],
+        $era['end'],
+        $era['label']
+    );
+}
+
+$output .= "];\n";
+
+file_put_contents("$dataDir/periodo-eras.php", $output);
+echo "Extracted $count eras to periodo-eras.php (skipped $skipped)\n";
+
+// Also output SQL for database
+$sql = "-- Auto-generated from PeriodO dataset\n";
+$sql .= "-- Generated: " . date('Y-m-d H:i:s') . "\n\n";
+$sql .= "INSERT INTO heritage_era (term, label, start_date, end_date, category, source) VALUES\n";
+
+$values = [];
+foreach ($eras as $key => $era) {
+    $values[] = sprintf(
+        "('%s', '%s', '%s', '%s', 'periodo', 'periodo')",
+        addslashes($key),
+        addslashes($era['label']),
+        $era['start'],
+        $era['end']
+    );
+}
+$sql .= implode(",\n", $values);
+$sql .= "\nON DUPLICATE KEY UPDATE label = VALUES(label), start_date = VALUES(start_date), end_date = VALUES(end_date);\n";
+
+file_put_contents("$dataDir/periodo-eras.sql", $sql);
+echo "Generated SQL: periodo-eras.sql\n";
+PHPCODE
+
+echo ""
+echo "Done! Era data available at: ${DATA_DIR}/"
+echo ""
+echo "To import to database:"
+echo "  mysql -u root archive < ${DATA_DIR}/periodo-eras.sql"

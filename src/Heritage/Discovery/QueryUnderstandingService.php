@@ -475,20 +475,9 @@ class QueryUnderstandingService
             }
         }
 
-        // Era references
-        $eraMap = [
-            'victorian' => ['1837-01-01', '1901-12-31'],
-            'edwardian' => ['1901-01-01', '1910-12-31'],
-            'pre-war' => ['1900-01-01', '1913-12-31'],
-            'inter-war' => ['1918-01-01', '1939-12-31'],
-            'post-war' => ['1945-01-01', '1960-12-31'],
-            'world war i' => ['1914-01-01', '1918-12-31'],
-            'world war ii' => ['1939-01-01', '1945-12-31'],
-            'wwi' => ['1914-01-01', '1918-12-31'],
-            'wwii' => ['1939-01-01', '1945-12-31'],
-            'apartheid' => ['1948-01-01', '1994-12-31'],
-            'colonial' => ['1652-01-01', '1910-12-31'],
-        ];
+        // Era references from database (heritage_era table)
+        // Populated from install.sql + optional PeriodO import via bin/load-eras
+        $eraMap = $this->getErasFromDatabase();
 
         foreach ($eraMap as $term => $range) {
             if (stripos($query, $term) !== false) {
@@ -737,5 +726,38 @@ class QueryUnderstandingService
             ->limit(5)
             ->get()
             ->toArray();
+    }
+
+    /**
+     * Get eras from database (heritage_era table).
+     * Cached for performance.
+     */
+    private function getErasFromDatabase(): array
+    {
+        static $cache = null;
+
+        if ($cache !== null) {
+            return $cache;
+        }
+
+        try {
+            $rows = DB::table('heritage_era')
+                ->where('is_enabled', 1)
+                ->select('term', 'start_date', 'end_date')
+                ->get();
+
+            $cache = [];
+            foreach ($rows as $row) {
+                $cache[$row->term] = [
+                    $row->start_date,
+                    $row->end_date,
+                ];
+            }
+
+            return $cache;
+        } catch (\Exception $e) {
+            // Fallback to empty if table doesn't exist
+            return [];
+        }
     }
 }

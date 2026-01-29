@@ -5607,6 +5607,7 @@ CREATE TABLE IF NOT EXISTS security_classification_object (
 -- Required plugins into atom_plugin (for Symfony/AtoM loading)
 INSERT INTO atom_plugin (name, class_name, is_enabled, is_core, is_locked, load_order, category, created_at, updated_at)
 VALUES
+('ahgCorePlugin', 'ahgCorePluginConfiguration', 1, 1, 1, 5, 'ahg', NOW(), NOW()),
 ('ahgThemeB5Plugin', 'ahgThemeB5PluginConfiguration', 0, 1, 1, 10, 'theme', NOW(), NOW()),
 ('ahgSecurityClearancePlugin', 'ahgSecurityClearancePluginConfiguration', 1, 1, 1, 20, 'ahg', NOW(), NOW()),
 ('ahgDisplayPlugin', 'ahgDisplayPluginConfiguration', 1, 1, 1, 30, 'ahg', NOW(), NOW())
@@ -5615,6 +5616,7 @@ ON DUPLICATE KEY UPDATE is_core = 1, is_locked = 1;
 -- Required plugins into atom_extension (for extension manager)
 INSERT INTO atom_extension (machine_name, display_name, version, description, status, protection_level, installed_at, enabled_at, created_at)
 VALUES
+('ahgCorePlugin', 'AHG Core', '1.0.0', 'Core framework components required by all AHG plugins', 'enabled', 'system', NOW(), NOW(), NOW()),
 ('ahgThemeB5Plugin', 'AHG Bootstrap 5 Theme', '1.0.0', 'AHG Bootstrap 5 theme with enhanced UI', 'enabled', 'system', NOW(), NOW(), NOW()),
 ('ahgSecurityClearancePlugin', 'Security Clearance', '1.0.0', 'Security classification system for records', 'enabled', 'system', NOW(), NOW(), NOW()),
 ('ahgDisplayPlugin', 'Display Mode Manager', '1.0.0', 'Display mode switching for GLAM sectors', 'enabled', 'system', NOW(), NOW(), NOW())
@@ -5737,6 +5739,85 @@ INSERT IGNORE INTO `tk_label_i18n` (`tk_label_id`, `culture`, `name`, `descripti
 (10, 'en', 'TK Verified', 'Verified by community.'),
 (11, 'en', 'TK-CO', 'Open to commercialization with permission.'),
 (12, 'en', 'TK Open to Commercialization', 'Approved for outreach activities.');
+
+-- =============================================================================
+-- Heritage Era Reference Data
+-- Core historical eras for search query understanding
+-- Additional eras can be loaded from PeriodO via: bin/load-eras
+-- =============================================================================
+
+CREATE TABLE IF NOT EXISTS `heritage_era` (
+    `id` INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    `term` VARCHAR(100) NOT NULL,
+    `label` VARCHAR(255) NOT NULL,
+    `start_date` DATE NOT NULL,
+    `end_date` DATE NOT NULL,
+    `category` VARCHAR(50) DEFAULT 'general',
+    `region` VARCHAR(50) DEFAULT NULL,
+    `source` VARCHAR(50) DEFAULT 'system',
+    `is_enabled` TINYINT(1) DEFAULT 1,
+    `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY `uk_term` (`term`),
+    KEY `idx_category` (`category`),
+    KEY `idx_region` (`region`),
+    KEY `idx_enabled` (`is_enabled`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Core eras (installed by default, covers common GLAM queries)
+INSERT INTO `heritage_era` (`term`, `label`, `start_date`, `end_date`, `category`, `region`, `source`) VALUES
+-- World Wars
+('ww1', 'World War I', '1914-01-01', '1918-12-31', 'war', 'global', 'system'),
+('wwi', 'World War I', '1914-01-01', '1918-12-31', 'war', 'global', 'system'),
+('world war 1', 'World War I', '1914-01-01', '1918-12-31', 'war', 'global', 'system'),
+('world war i', 'World War I', '1914-01-01', '1918-12-31', 'war', 'global', 'system'),
+('first world war', 'First World War', '1914-01-01', '1918-12-31', 'war', 'global', 'system'),
+('great war', 'Great War', '1914-01-01', '1918-12-31', 'war', 'global', 'system'),
+('ww2', 'World War II', '1939-01-01', '1945-12-31', 'war', 'global', 'system'),
+('wwii', 'World War II', '1939-01-01', '1945-12-31', 'war', 'global', 'system'),
+('world war 2', 'World War II', '1939-01-01', '1945-12-31', 'war', 'global', 'system'),
+('world war ii', 'World War II', '1939-01-01', '1945-12-31', 'war', 'global', 'system'),
+('second world war', 'Second World War', '1939-01-01', '1945-12-31', 'war', 'global', 'system'),
+('cold war', 'Cold War', '1947-01-01', '1991-12-31', 'war', 'global', 'system'),
+('pre-war', 'Pre-War', '1900-01-01', '1913-12-31', 'period', 'global', 'system'),
+('inter-war', 'Inter-War', '1918-01-01', '1939-12-31', 'period', 'global', 'system'),
+('post-war', 'Post-War', '1945-01-01', '1960-12-31', 'period', 'global', 'system'),
+-- British
+('victorian', 'Victorian Era', '1837-01-01', '1901-12-31', 'period', 'britain', 'system'),
+('edwardian', 'Edwardian Era', '1901-01-01', '1910-12-31', 'period', 'britain', 'system'),
+('georgian', 'Georgian Era', '1714-01-01', '1837-12-31', 'period', 'britain', 'system'),
+('tudor', 'Tudor Period', '1485-01-01', '1603-12-31', 'period', 'britain', 'system'),
+('elizabethan', 'Elizabethan Era', '1558-01-01', '1603-12-31', 'period', 'britain', 'system'),
+-- American
+('civil war', 'American Civil War', '1861-01-01', '1865-12-31', 'war', 'america', 'system'),
+('american civil war', 'American Civil War', '1861-01-01', '1865-12-31', 'war', 'america', 'system'),
+('great depression', 'Great Depression', '1929-01-01', '1939-12-31', 'period', 'america', 'system'),
+('roaring twenties', 'Roaring Twenties', '1920-01-01', '1929-12-31', 'period', 'america', 'system'),
+('civil rights era', 'Civil Rights Era', '1954-01-01', '1968-12-31', 'period', 'america', 'system'),
+-- European
+('medieval', 'Medieval Period', '0500-01-01', '1500-12-31', 'period', 'europe', 'system'),
+('middle ages', 'Middle Ages', '0500-01-01', '1500-12-31', 'period', 'europe', 'system'),
+('renaissance', 'Renaissance', '1400-01-01', '1600-12-31', 'period', 'europe', 'system'),
+('enlightenment', 'Age of Enlightenment', '1685-01-01', '1815-12-31', 'period', 'europe', 'system'),
+('french revolution', 'French Revolution', '1789-01-01', '1799-12-31', 'period', 'europe', 'system'),
+('holocaust', 'Holocaust', '1941-01-01', '1945-12-31', 'period', 'europe', 'system'),
+-- South Africa
+('apartheid', 'Apartheid Era', '1948-01-01', '1994-12-31', 'period', 'africa', 'system'),
+('post-apartheid', 'Post-Apartheid', '1994-01-01', '2030-12-31', 'period', 'africa', 'system'),
+('colonial', 'Colonial Era (SA)', '1652-01-01', '1910-12-31', 'period', 'africa', 'system'),
+('boer war', 'Boer War', '1899-01-01', '1902-12-31', 'war', 'africa', 'system'),
+('anglo-boer war', 'Anglo-Boer War', '1899-01-01', '1902-12-31', 'war', 'africa', 'system'),
+('great trek', 'Great Trek', '1836-01-01', '1852-12-31', 'period', 'africa', 'system'),
+('liberation struggle', 'Liberation Struggle', '1960-01-01', '1994-12-31', 'period', 'africa', 'system'),
+-- Art movements
+('baroque', 'Baroque', '1600-01-01', '1750-12-31', 'art', 'europe', 'system'),
+('impressionism', 'Impressionism', '1860-01-01', '1890-12-31', 'art', 'europe', 'system'),
+('art deco', 'Art Deco', '1920-01-01', '1940-12-31', 'art', 'global', 'system'),
+('modernism', 'Modernism', '1900-01-01', '1970-12-31', 'art', 'global', 'system'),
+-- General
+('industrial revolution', 'Industrial Revolution', '1760-01-01', '1840-12-31', 'period', 'global', 'system'),
+('digital age', 'Digital Age', '1990-01-01', '2030-12-31', 'period', 'global', 'system')
+ON DUPLICATE KEY UPDATE label = VALUES(label);
 
 -- =============================================================================
 -- Heritage Contributions Module
