@@ -272,9 +272,19 @@ class ExtensionManager implements ExtensionManagerContract
             throw new \RuntimeException("Extension '{$machineName}' not found or missing extension.json");
         }
 
-        // Install dependencies first
+        // Check composer dependencies first
+        $missingComposer = $this->checkComposerDependencies($machineName);
+        if (!empty($missingComposer)) {
+            $packageList = implode(' ', $missingComposer);
+            throw new \RuntimeException(
+                "Missing composer dependencies: " . implode(', ', $missingComposer) . "\n" .
+                "Install with: cd atom-framework && composer require {$packageList}"
+            );
+        }
+
+        // Install plugin dependencies first (excludes composer packages)
         if ($installDependencies) {
-            $dependencies = $manifest['dependencies'] ?? [];
+            $dependencies = $this->getDependencies($machineName);
             foreach ($dependencies as $dep) {
                 if (!$this->isInstalled($dep)) {
                     echo "  Installing dependency: {$dep}\n";
@@ -779,10 +789,13 @@ class ExtensionManager implements ExtensionManagerContract
         }
     }
 
-        protected function checkDependencies(array $manifest): void
+    protected function checkDependencies(array $manifest): void
     {
+        // Filter out composer packages (contain '/')
         $dependencies = $manifest['dependencies'] ?? [];
-        foreach ($dependencies as $dep) {
+        $pluginDeps = array_filter($dependencies, fn($dep) => strpos($dep, '/') === false);
+
+        foreach ($pluginDeps as $dep) {
             if (!$this->isEnabled($dep)) {
                 throw new \RuntimeException("Required dependency '{$dep}' is not installed or enabled.");
             }
