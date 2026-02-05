@@ -1,1 +1,0 @@
-/usr/share/nginx/archive/atom-ahg-plugins/ahgDisplayPlugin/bin/sync-library-display.php

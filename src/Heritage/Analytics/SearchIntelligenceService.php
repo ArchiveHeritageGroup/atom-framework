@@ -140,7 +140,7 @@ class SearchIntelligenceService
             'conversion_rate' => $stats->with_results > 0
                 ? round(($stats->with_clicks / $stats->with_results) * 100, 1)
                 : 0,
-            'avg_clicks' => round($stats->avg_clicks_per_search ?? 0, 2),
+            'avg_clicks' => round((float) ($stats->avg_clicks_per_search ?? 0), 2),
         ];
     }
 

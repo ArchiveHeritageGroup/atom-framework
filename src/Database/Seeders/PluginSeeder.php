@@ -13,10 +13,10 @@ class PluginSeeder
     protected const DEPENDENCIES = [
         'sfPluginAdminPlugin' => ['sfPropelPlugin'],
         'qtAccessionPlugin' => ['sfPropelPlugin'],
-        'arElasticSearchPlugin' => ['sfPropelPlugin'],
+        'arOpenSearchPlugin' => ['sfPropelPlugin'],
         'sfHistoryPlugin' => ['sfPropelPlugin'],
         'sfTranslatePlugin' => ['sfPropelPlugin'],
-        'ahgSecurityClearancePlugin' => ['qbAclPlugin', 'arElasticSearchPlugin'],
+        'ahgSecurityClearancePlugin' => ['qbAclPlugin', 'arOpenSearchPlugin'],
         'ahgAccessRequestPlugin' => ['sfPropelPlugin', 'qbAclPlugin'],
         'ahgAuditTrailPlugin' => ['sfPropelPlugin'],
         'ahgIiifCollectionPlugin' => ['sfPropelPlugin'],
@@ -37,7 +37,7 @@ class PluginSeeder
     protected const CATEGORIES = [
         'qbAclPlugin' => 'core',
         'sfPropelPlugin' => 'core',
-        'arElasticSearchPlugin' => 'core',
+        'arOpenSearchPlugin' => 'core',
         'sfPluginAdminPlugin' => 'core',
         'sfDrupalPlugin' => 'core',
         'sfHistoryPlugin' => 'core',
@@ -67,14 +67,14 @@ class PluginSeeder
     protected const CORE_PLUGINS = [
         'qbAclPlugin',
         'sfPropelPlugin',
-        'arElasticSearchPlugin',
+        'arOpenSearchPlugin',
         'sfPluginAdminPlugin',
     ];
 
     protected const DESCRIPTIONS = [
         'qbAclPlugin' => 'Access Control List management for AtoM permissions',
         'sfPropelPlugin' => 'Propel ORM integration for database operations',
-        'arElasticSearchPlugin' => 'Elasticsearch integration for search functionality',
+        'arOpenSearchPlugin' => 'OpenSearch 3.4+ integration for search functionality',
         'sfPluginAdminPlugin' => 'Plugin administration interface',
         'sfDrupalPlugin' => 'Drupal integration for user management',
         'sfHistoryPlugin' => 'Browser history and session management',
@@ -172,7 +172,7 @@ class PluginSeeder
             return match ($pluginName) {
                 'sfPropelPlugin' => 10,
                 'qbAclPlugin' => 20,
-                'arElasticSearchPlugin' => 30,
+                'arOpenSearchPlugin' => 30,
                 'sfPluginAdminPlugin' => 40,
                 default => 50,
             };

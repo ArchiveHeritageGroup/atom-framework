@@ -50,12 +50,41 @@ class SearchAccessFilterService
             ->pluck('orh.object_id')
             ->toArray();
 
-        // Embargoed
-        $embargoed = DB::table('extended_rights')
-            ->whereNotNull('expiry_date')
-            ->where('expiry_date', '>', $today)
-            ->pluck('object_id')
-            ->toArray();
+        // Embargoed - query rights_embargo table for full embargoes
+        // Only full embargoes should hide from search; other types allow metadata viewing
+        $embargoedQuery = DB::table('rights_embargo')
+            ->where('status', 'active')
+            ->where('embargo_type', 'full')
+            ->where('start_date', '<=', $today)
+            ->where(function ($q) use ($today) {
+                $q->whereNull('end_date') // Perpetual embargo
+                    ->orWhere('end_date', '>=', $today);
+            });
+
+        // If user is authenticated, check for embargo exceptions
+        if ($userId) {
+            $userExceptions = DB::table('embargo_exception as ee')
+                ->join('rights_embargo as re', 're.id', '=', 'ee.embargo_id')
+                ->where('ee.exception_type', 'user')
+                ->where('ee.exception_id', $userId)
+                ->where(function ($q) {
+                    $now = date('Y-m-d');
+                    $q->whereNull('ee.valid_from')->orWhere('ee.valid_from', '<=', $now);
+                })
+                ->where(function ($q) {
+                    $now = date('Y-m-d');
+                    $q->whereNull('ee.valid_until')->orWhere('ee.valid_until', '>=', $now);
+                })
+                ->pluck('re.object_id')
+                ->toArray();
+
+            // Exclude objects where user has an exception
+            if (!empty($userExceptions)) {
+                $embargoedQuery->whereNotIn('object_id', $userExceptions);
+            }
+        }
+
+        $embargoed = $embargoedQuery->pluck('object_id')->toArray();
 
         return array_unique(array_merge($classRestricted, $donorRestricted, $embargoed));
     }

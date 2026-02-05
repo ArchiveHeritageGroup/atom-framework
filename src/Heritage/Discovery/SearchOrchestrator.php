@@ -542,6 +542,48 @@ class SearchOrchestrator
                     });
                 }
                 break;
+
+            case 'authority':
+                $sourceRef = $condition['source_reference'] ?? '';
+                $values = $condition['values'] ?? [];
+
+                if ($sourceRef === 'place' && !empty($values)) {
+                    // Place filter - join via object_term_relation with taxonomy 42 (Places)
+                    $otrAlias = 'otr_' . $alias;
+                    $tiAlias = 'ti_' . $alias;
+                    $tAlias = 't_' . $alias;
+
+                    $query->join("object_term_relation as {$otrAlias}", 'io.id', '=', "{$otrAlias}.object_id")
+                        ->join("term as {$tAlias}", "{$otrAlias}.term_id", '=', "{$tAlias}.id")
+                        ->join("term_i18n as {$tiAlias}", "{$tAlias}.id", '=', "{$tiAlias}.id")
+                        ->where("{$tAlias}.taxonomy_id", 42) // Places taxonomy
+                        ->where("{$tiAlias}.culture", $this->culture)
+                        ->whereIn("{$tiAlias}.name", $values);
+                } elseif ($sourceRef === 'actor' && !empty($values)) {
+                    // Creator/actor filter - join via relation or event
+                    $relAlias = 'rel_' . $alias;
+                    $aiAlias = 'ai_' . $alias;
+
+                    $query->join("relation as {$relAlias}", 'io.id', '=', "{$relAlias}.subject_id")
+                        ->join("actor_i18n as {$aiAlias}", "{$relAlias}.object_id", '=', "{$aiAlias}.id")
+                        ->where("{$aiAlias}.culture", $this->culture)
+                        ->whereIn("{$aiAlias}.authorized_form_of_name", $values);
+                }
+                break;
+
+            case 'entity_cache':
+                // NER entity cache filter
+                $entityType = $condition['entity_type'] ?? '';
+                $whereValues = $condition['where']['values'] ?? [];
+
+                if (!empty($entityType) && !empty($whereValues)) {
+                    $ecAlias = 'ec_' . $alias;
+                    $query->join("heritage_entity_cache as {$ecAlias}", 'io.id', '=', "{$ecAlias}.object_id")
+                        ->where("{$ecAlias}.entity_type", $entityType)
+                        ->where("{$ecAlias}.confidence_score", '>=', 0.70)
+                        ->whereIn("{$ecAlias}.normalized_value", $whereValues);
+                }
+                break;
         }
 
         return $query;

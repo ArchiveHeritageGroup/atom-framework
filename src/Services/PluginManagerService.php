@@ -18,7 +18,7 @@ class PluginManagerService implements PluginManagerContract
 
     protected const CORE_PLUGINS = [
         'sfPropelPlugin',
-        'arElasticSearchPlugin',
+        'arOpenSearchPlugin',
         'qbAclPlugin',
     ];
 

@@ -133,7 +133,7 @@ class ModuleDiscoveryService
             'sfPropelPlugin',
             'qbAclPlugin',
             'sfWebBrowserPlugin',
-            'arElasticSearchPlugin',
+            'arOpenSearchPlugin',
             'arDominionB5Plugin',
         ];
     }

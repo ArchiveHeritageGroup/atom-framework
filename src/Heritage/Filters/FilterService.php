@@ -283,6 +283,7 @@ class FilterService
             'authority' => $this->buildAuthorityCondition($filter, $values),
             'field' => $this->buildFieldCondition($filter, $values),
             'custom' => $this->buildCustomCondition($filter, $values),
+            'entity_cache' => $this->buildEntityCacheCondition($filter, $values),
             default => null,
         };
     }
@@ -385,6 +386,48 @@ class FilterService
         return [
             'type' => 'custom',
             'conditions' => $conditions,
+        ];
+    }
+
+    /**
+     * Build entity cache filter condition.
+     *
+     * Used for NER-extracted entity filters (ner_person, ner_organization, ner_place).
+     *
+     * @param object $filter Filter configuration object
+     * @param array  $values Selected normalized entity values
+     *
+     * @return array Condition specification for search
+     */
+    private function buildEntityCacheCondition(object $filter, array $values): array
+    {
+        // Parse source_reference: "entity_cache:person" or just "person"
+        $entityType = $filter->source_reference ?? 'person';
+        if (str_contains($entityType, ':')) {
+            $parts = explode(':', $entityType);
+            $entityType = $parts[1] ?? 'person';
+        }
+
+        // Generate unique alias for join
+        $alias = 'ec_' . preg_replace('/[^a-z]/', '', $entityType);
+
+        return [
+            'type' => 'entity_cache',
+            'entity_type' => $entityType,
+            'join' => [
+                'table' => 'heritage_entity_cache',
+                'alias' => $alias,
+                'on' => "io.id = {$alias}.object_id",
+                'conditions' => [
+                    ['column' => "{$alias}.entity_type", 'operator' => '=', 'value' => $entityType],
+                    ['column' => "{$alias}.confidence_score", 'operator' => '>=', 'value' => 0.70],
+                ],
+            ],
+            'where' => [
+                'column' => "{$alias}.normalized_value",
+                'operator' => 'IN',
+                'values' => $values,
+            ],
         ];
     }
 }

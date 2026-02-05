@@ -317,14 +317,14 @@ class DiscoveryService
      */
     private function getAuthorityItems(string $authorityType, int $limit, int $offset): array
     {
-        // Map authority type to AtoM entity type
-        $typeIds = [
-            'actor' => 132, // Corporate body, Person, Family
-            'place' => 420, // Place authority
-        ];
-
         $culture = $this->culture;
 
+        // Places are stored in taxonomy ID 42 in AtoM, not in actor table
+        if ($authorityType === 'place') {
+            return $this->getPlaceItems($limit, $offset);
+        }
+
+        // For actor-based authorities (creators, people, organizations)
         $query = DB::table('actor as a')
             ->join('actor_i18n as ai', function ($join) use ($culture) {
                 $join->on('a.id', '=', 'ai.id')
@@ -356,6 +356,66 @@ class DiscoveryService
                 'name' => $actor->name,
                 'slug' => $actor->slug,
                 'count' => $actor->item_count,
+            ])
+            ->toArray();
+
+        return ['items' => $items, 'total' => $total];
+    }
+
+    /**
+     * Get place items from Places taxonomy (ID 42) and place access points.
+     */
+    private function getPlaceItems(int $limit, int $offset): array
+    {
+        $culture = $this->culture;
+        $placesTaxonomyId = 42; // AtoM Places taxonomy
+
+        // Query places from taxonomy terms linked via object_term_relation
+        $query = DB::table('term as t')
+            ->join('term_i18n as ti', function ($join) use ($culture) {
+                $join->on('t.id', '=', 'ti.id')
+                    ->where('ti.culture', '=', $culture);
+            })
+            ->leftJoin('object_term_relation as otr', 't.id', '=', 'otr.term_id')
+            ->where('t.taxonomy_id', $placesTaxonomyId)
+            ->whereNotNull('ti.name')
+            ->where('ti.name', '!=', '')
+            ->groupBy('t.id', 'ti.name')
+            ->select(
+                't.id',
+                'ti.name',
+                DB::raw('COUNT(DISTINCT otr.object_id) as item_count')
+            )
+            ->having('item_count', '>', 0)
+            ->orderByDesc('item_count');
+
+        // Get total count - select only t.id to avoid duplicate column issue
+        $countQuery = DB::table('term as t')
+            ->join('term_i18n as ti', function ($join) use ($culture) {
+                $join->on('t.id', '=', 'ti.id')
+                    ->where('ti.culture', '=', $culture);
+            })
+            ->leftJoin('object_term_relation as otr', 't.id', '=', 'otr.term_id')
+            ->where('t.taxonomy_id', $placesTaxonomyId)
+            ->whereNotNull('ti.name')
+            ->where('ti.name', '!=', '')
+            ->select('t.id')
+            ->groupBy('t.id')
+            ->havingRaw('COUNT(DISTINCT otr.object_id) > 0');
+
+        $total = DB::table(DB::raw("({$countQuery->toSql()}) as sub"))
+            ->mergeBindings($countQuery)
+            ->count();
+
+        $items = $query
+            ->offset($offset)
+            ->limit($limit)
+            ->get()
+            ->map(fn ($place) => [
+                'id' => $place->id,
+                'name' => $place->name,
+                'count' => $place->item_count,
+                'slug' => $this->slugify($place->name),
             ])
             ->toArray();
 

@@ -351,8 +351,8 @@ class GlamIdentifierService
                 ->where('object_id', $objectId)->value('issn'),
             self::TYPE_LCCN => DB::table('library_item')
                 ->where('object_id', $objectId)->value('lccn'),
-            self::TYPE_DOI => DB::table('library_item')
-                ->where('object_id', $objectId)->value('doi'),
+            self::TYPE_DOI => $this->getMintedDoi($objectId)
+                ?? DB::table('library_item')->where('object_id', $objectId)->value('doi'),
             self::TYPE_BARCODE => DB::table('library_item')
                 ->where('object_id', $objectId)->value('barcode')
                 ?? DB::table('museum_object')->where('object_id', $objectId)->value('barcode'),
@@ -364,5 +364,131 @@ class GlamIdentifierService
                 ->where('id', $objectId)->value('identifier'),
             default => null
         };
+    }
+
+    // =========================================
+    // DOI INTEGRATION
+    // =========================================
+
+    /**
+     * Get minted DOI for an object from ahg_doi table.
+     *
+     * @param int $objectId Information object ID
+     *
+     * @return string|null DOI string or null
+     */
+    public function getMintedDoi(int $objectId): ?string
+    {
+        return DB::table('ahg_doi')
+            ->where('information_object_id', $objectId)
+            ->whereIn('status', ['findable', 'registered', 'draft'])
+            ->value('doi');
+    }
+
+    /**
+     * Check if a record has a minted DOI.
+     *
+     * @param int $objectId Information object ID
+     *
+     * @return bool
+     */
+    public function hasMintedDoi(int $objectId): bool
+    {
+        return DB::table('ahg_doi')
+            ->where('information_object_id', $objectId)
+            ->whereIn('status', ['findable', 'registered', 'draft'])
+            ->exists();
+    }
+
+    /**
+     * Get full DOI record for an object.
+     *
+     * @param int $objectId Information object ID
+     *
+     * @return object|null DOI record with doi, status, minted_at, url
+     */
+    public function getDoiRecord(int $objectId): ?object
+    {
+        $doi = DB::table('ahg_doi')
+            ->where('information_object_id', $objectId)
+            ->first(['doi', 'status', 'minted_at', 'last_sync_at']);
+
+        if ($doi) {
+            $doi->url = 'https://doi.org/' . $doi->doi;
+        }
+
+        return $doi;
+    }
+
+    /**
+     * Get DOI display info for a record (for UI display).
+     *
+     * @param int $objectId Information object ID
+     *
+     * @return array|null Array with doi, url, status, minted_at or null
+     */
+    public function getDoiDisplayInfo(int $objectId): ?array
+    {
+        $record = $this->getDoiRecord($objectId);
+
+        if (!$record) {
+            return null;
+        }
+
+        return [
+            'doi' => $record->doi,
+            'url' => $record->url,
+            'status' => $record->status,
+            'minted_at' => $record->minted_at,
+            'is_active' => in_array($record->status, ['findable', 'registered']),
+        ];
+    }
+
+    /**
+     * Get all identifiers for a record including minted DOI.
+     *
+     * @param int         $objectId Information object ID
+     * @param string|null $sector   Sector to get identifiers for
+     *
+     * @return array Array of identifier info with type, value, label
+     */
+    public function getAllIdentifiers(int $objectId, ?string $sector = null): array
+    {
+        if (!$sector) {
+            $sector = $this->detectObjectSector($objectId);
+        }
+
+        $identifiers = [];
+        $types = $this->getIdentifierTypesForSector($sector);
+
+        foreach ($types as $type => $config) {
+            $value = $this->getIdentifierValue($objectId, $type);
+            if (!empty($value)) {
+                $identifiers[] = [
+                    'type' => $type,
+                    'value' => $value,
+                    'label' => $config['label'],
+                    'icon' => $config['icon'],
+                    'primary' => $config['primary'] ?? false,
+                ];
+            }
+        }
+
+        // Always include minted DOI if not already included
+        if (!in_array(self::TYPE_DOI, array_column($identifiers, 'type'))) {
+            $mintedDoi = $this->getMintedDoi($objectId);
+            if ($mintedDoi) {
+                $identifiers[] = [
+                    'type' => self::TYPE_DOI,
+                    'value' => $mintedDoi,
+                    'label' => 'DOI',
+                    'icon' => 'link',
+                    'primary' => false,
+                    'minted' => true,
+                ];
+            }
+        }
+
+        return $identifiers;
     }
 }

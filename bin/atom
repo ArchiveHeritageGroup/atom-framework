@@ -117,18 +117,46 @@ function runFrameworkInstall(): void
     echo "Installing AtoM Framework...\n";
     echo str_repeat('═', 60) . "\n";
 
-    // Run composer install
-    echo "→ Running composer install...\n";
+    // Step 1: Run composer install
+    echo "→ Step 1: Running composer install...\n";
     chdir(FRAMEWORK_ROOT);
     passthru("composer install --no-dev --optimize-autoloader 2>&1");
 
-    // Run migrations
+    // Step 2: Create plugin symlinks
+    echo "\n→ Step 2: Creating plugin symlinks...\n";
+    $ahgPlugins = ATOM_ROOT . '/atom-ahg-plugins';
+    $pluginsDir = ATOM_ROOT . '/plugins';
+
+    if (is_dir($ahgPlugins)) {
+        $plugins = glob($ahgPlugins . '/ahg*', GLOB_ONLYDIR);
+        foreach ($plugins as $pluginPath) {
+            $pluginName = basename($pluginPath);
+            $linkPath = $pluginsDir . '/' . $pluginName;
+
+            if (!is_link($linkPath)) {
+                if (symlink($pluginPath, $linkPath)) {
+                    echo "  \033[32m✓\033[0m Linked {$pluginName}\n";
+                } else {
+                    echo "  \033[31m✗\033[0m Failed to link {$pluginName}\n";
+                }
+            } else {
+                echo "  \033[33m→\033[0m {$pluginName} already linked\n";
+            }
+        }
+    } else {
+        echo "  \033[33m⚠\033[0m atom-ahg-plugins not found at {$ahgPlugins}\n";
+    }
+
+    // Step 3: Run migrations
+    echo "\n→ Step 3: Running migrations...\n";
     require_once FRAMEWORK_ROOT . '/src/Database/MigrationRunner.php';
     require_once FRAMEWORK_ROOT . '/src/Console/MigrateCommand.php';
     $migrate = new \AtomFramework\Console\MigrateCommand();
     $migrate->run(['up']);
 
     echo "\n\033[32m✓ Framework installed successfully\033[0m\n";
+    echo "\nNote: For full installation (database tables, themes, patches), run:\n";
+    echo "  ./bin/install\n";
 }
 
 function runFrameworkUpdate(array $args): int

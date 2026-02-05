@@ -23,14 +23,12 @@ class ExtensionManager implements ExtensionManagerContract
     }
 
     /**
-     * Discover all extensions with extension.json in plugins directory
+     * Discover all extensions with extension.json in plugins directory and atom-ahg-plugins
      */
     public function discover(bool $includeThemes = false): Collection
     {
         $extensions = collect();
-        if (!is_dir($this->pluginsPath)) {
-            return $extensions;
-        }
+        $found = []; // Track found plugins to avoid duplicates
 
         $enabledInAtomPlugin = [];
         try {
@@ -38,24 +36,96 @@ class ExtensionManager implements ExtensionManagerContract
             $enabledInAtomPlugin = array_flip($rows);
         } catch (\Exception $e) {}
 
-        $dirs = glob($this->pluginsPath . '/*Plugin', GLOB_ONLYDIR);
-        foreach ($dirs as $dir) {
-            $manifestPath = $dir . '/extension.json';
-            if (file_exists($manifestPath)) {
-                $manifest = $this->loadManifest($manifestPath);
-                if ($manifest) {
-                    if (!$includeThemes && (!empty($manifest["is_theme"]) || ($manifest["category"] ?? "") === "theme")) {
-                        continue;
+        // Directories to scan: plugins/ and atom-ahg-plugins/
+        $dirsToScan = [];
+
+        if (is_dir($this->pluginsPath)) {
+            $dirsToScan[] = $this->pluginsPath;
+        }
+
+        // Also check atom-ahg-plugins directory (where local plugins live)
+        $ahgPluginsPath = $this->getAhgPluginsPath();
+        if ($ahgPluginsPath && is_dir($ahgPluginsPath)) {
+            $dirsToScan[] = $ahgPluginsPath;
+        }
+
+        foreach ($dirsToScan as $basePath) {
+            $dirs = glob($basePath . '/*Plugin', GLOB_ONLYDIR);
+            foreach ($dirs as $dir) {
+                // Follow symlinks to get real path for manifest
+                $realDir = is_link($dir) ? readlink($dir) : $dir;
+                if (!$realDir || !is_dir($realDir)) {
+                    continue;
+                }
+
+                $manifestPath = $realDir . '/extension.json';
+                if (file_exists($manifestPath)) {
+                    $manifest = $this->loadManifest($manifestPath);
+                    if ($manifest) {
+                        $machineName = $manifest['machine_name'] ?? basename($dir);
+
+                        // Skip if already found (avoid duplicates from symlinks)
+                        if (isset($found[$machineName])) {
+                            continue;
+                        }
+                        $found[$machineName] = true;
+
+                        if (!$includeThemes && (!empty($manifest["is_theme"]) || ($manifest["category"] ?? "") === "theme")) {
+                            continue;
+                        }
+                        $manifest['path'] = $realDir;
+                        $manifest['is_registered'] = $this->repository->exists($machineName)
+                            || isset($enabledInAtomPlugin[$machineName]);
+                        $extensions->push($manifest);
                     }
-                    $manifest['path'] = $dir;
-                    $machineName = $manifest['machine_name'] ?? basename($dir);
-                    $manifest['is_registered'] = $this->repository->exists($machineName)
-                        || isset($enabledInAtomPlugin[$machineName]);
-                    $extensions->push($manifest);
                 }
             }
         }
         return $extensions;
+    }
+
+    /**
+     * Get the path to atom-ahg-plugins directory
+     */
+    public function getAhgPluginsPath(): ?string
+    {
+        // Try common locations relative to plugins path
+        $atomRoot = dirname($this->pluginsPath);
+        $possiblePaths = [
+            $atomRoot . '/atom-ahg-plugins',
+            dirname($atomRoot) . '/atom-ahg-plugins',
+        ];
+
+        foreach ($possiblePaths as $path) {
+            if (is_dir($path)) {
+                return $path;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Check if a plugin exists locally (in plugins/ or atom-ahg-plugins/)
+     */
+    public function findLocalPluginPath(string $machineName): ?string
+    {
+        // Check plugins/ directory first (including symlinks)
+        $pluginPath = $this->pluginsPath . '/' . $machineName;
+        if (is_dir($pluginPath)) {
+            return is_link($pluginPath) ? readlink($pluginPath) : $pluginPath;
+        }
+
+        // Check atom-ahg-plugins/ directory
+        $ahgPluginsPath = $this->getAhgPluginsPath();
+        if ($ahgPluginsPath) {
+            $ahgPath = $ahgPluginsPath . '/' . $machineName;
+            if (is_dir($ahgPath)) {
+                return $ahgPath;
+            }
+        }
+
+        return null;
     }
 
     public function all(): Collection
@@ -85,12 +155,49 @@ class ExtensionManager implements ExtensionManagerContract
     }
 
     /**
-     * Get dependencies from extension.json
+     * Get plugin dependencies from extension.json (excludes composer packages)
      */
     public function getDependencies(string $machineName): array
     {
         $manifest = $this->findManifest($machineName);
-        return $manifest['dependencies'] ?? [];
+        $deps = $manifest['dependencies'] ?? [];
+
+        // Filter out composer packages (contain '/')
+        return array_values(array_filter($deps, fn($dep) => strpos($dep, '/') === false));
+    }
+
+    /**
+     * Get composer dependencies from extension.json
+     */
+    public function getComposerDependencies(string $machineName): array
+    {
+        $manifest = $this->findManifest($machineName);
+        $deps = $manifest['dependencies'] ?? [];
+
+        // Only return composer packages (contain '/')
+        return array_values(array_filter($deps, fn($dep) => strpos($dep, '/') !== false));
+    }
+
+    /**
+     * Check if composer dependencies are installed
+     */
+    public function checkComposerDependencies(string $machineName): array
+    {
+        $deps = $this->getComposerDependencies($machineName);
+        $missing = [];
+
+        foreach ($deps as $package) {
+            // Check if package is installed in vendor
+            $parts = explode('/', $package);
+            $vendorPath = dirname($this->pluginsPath) . '/vendor/' . $package;
+            $frameworkVendor = dirname($this->pluginsPath) . '/atom-framework/vendor/' . $package;
+
+            if (!is_dir($vendorPath) && !is_dir($frameworkVendor)) {
+                $missing[] = $package;
+            }
+        }
+
+        return $missing;
     }
 
     /**
@@ -108,16 +215,42 @@ class ExtensionManager implements ExtensionManagerContract
     public function findAllDependents(string $machineName): array
     {
         $dependents = [];
-        $dirs = glob($this->pluginsPath . '/*Plugin', GLOB_ONLYDIR);
-        
-        foreach ($dirs as $dir) {
-            $manifestPath = $dir . '/extension.json';
-            if (file_exists($manifestPath)) {
-                $manifest = $this->loadManifest($manifestPath);
-                if ($manifest) {
-                    $deps = $manifest['dependencies'] ?? [];
-                    if (in_array($machineName, $deps)) {
-                        $dependents[] = $manifest['machine_name'] ?? basename($dir);
+        $found = []; // Track processed plugins to avoid duplicates
+
+        // Scan both plugins/ and atom-ahg-plugins/
+        $dirsToScan = [];
+        if (is_dir($this->pluginsPath)) {
+            $dirsToScan[] = $this->pluginsPath;
+        }
+        $ahgPluginsPath = $this->getAhgPluginsPath();
+        if ($ahgPluginsPath && is_dir($ahgPluginsPath)) {
+            $dirsToScan[] = $ahgPluginsPath;
+        }
+
+        foreach ($dirsToScan as $basePath) {
+            $dirs = glob($basePath . '/*Plugin', GLOB_ONLYDIR);
+            foreach ($dirs as $dir) {
+                $realDir = is_link($dir) ? readlink($dir) : $dir;
+                if (!$realDir || !is_dir($realDir)) {
+                    continue;
+                }
+
+                $manifestPath = $realDir . '/extension.json';
+                if (file_exists($manifestPath)) {
+                    $manifest = $this->loadManifest($manifestPath);
+                    if ($manifest) {
+                        $pluginName = $manifest['machine_name'] ?? basename($dir);
+
+                        // Skip if already processed
+                        if (isset($found[$pluginName])) {
+                            continue;
+                        }
+                        $found[$pluginName] = true;
+
+                        $deps = $manifest['dependencies'] ?? [];
+                        if (in_array($machineName, $deps)) {
+                            $dependents[] = $pluginName;
+                        }
                     }
                 }
             }
@@ -280,6 +413,16 @@ class ExtensionManager implements ExtensionManagerContract
             throw new \RuntimeException("Cannot enable extension pending removal. Use restore first.");
         }
 
+        // Check composer dependencies
+        $missingComposer = $this->checkComposerDependencies($machineName);
+        if (!empty($missingComposer)) {
+            $packageList = implode(' ', $missingComposer);
+            throw new \RuntimeException(
+                "Missing composer dependencies: " . implode(', ', $missingComposer) . "\n" .
+                "Install with: cd atom-framework && composer require {$packageList}"
+            );
+        }
+
         // Enable dependencies first
         if ($enableDependencies) {
             $dependencies = $this->getDependencies($machineName);
@@ -336,6 +479,16 @@ class ExtensionManager implements ExtensionManagerContract
      */
     protected function enableInAtomPlugin(string $machineName, bool $enableDependencies = true): bool
     {
+        // Check composer dependencies first
+        $missingComposer = $this->checkComposerDependencies($machineName);
+        if (!empty($missingComposer)) {
+            $packageList = implode(' ', $missingComposer);
+            throw new \RuntimeException(
+                "Missing composer dependencies: " . implode(', ', $missingComposer) . "\n" .
+                "Install with: cd atom-framework && composer require {$packageList}"
+            );
+        }
+
         if ($enableDependencies) {
             $dependencies = $this->getDependencies($machineName);
             foreach ($dependencies as $dep) {
@@ -577,8 +730,22 @@ class ExtensionManager implements ExtensionManagerContract
 
     protected function findManifest(string $machineName): ?array
     {
+        // First try plugins/ directory (including symlinks)
         $path = $this->pluginsPath . '/' . $machineName . '/extension.json';
-        return $this->loadManifest($path);
+        if (file_exists($path)) {
+            return $this->loadManifest($path);
+        }
+
+        // Also check atom-ahg-plugins/ directory
+        $localPath = $this->findLocalPluginPath($machineName);
+        if ($localPath) {
+            $manifestPath = $localPath . '/extension.json';
+            if (file_exists($manifestPath)) {
+                return $this->loadManifest($manifestPath);
+            }
+        }
+
+        return null;
     }
 
     /**

@@ -181,11 +181,36 @@ class ExtensionCommand
 
         $this->line('');
 
-        // Check if plugin exists locally
+        // Check if plugin exists locally (plugins/ or atom-ahg-plugins/)
         $pluginsPath = $this->manager->getSetting('extensions_path', null, '/var/www/atom/plugins');
         $pluginPath = "{$pluginsPath}/{$name}";
 
-        if (!is_dir($pluginPath)) {
+        // First check if already in plugins/ directory
+        $localPath = null;
+        if (is_dir($pluginPath)) {
+            $localPath = is_link($pluginPath) ? readlink($pluginPath) : $pluginPath;
+        } else {
+            // Check if it exists in atom-ahg-plugins/
+            $localPath = $this->manager->findLocalPluginPath($name);
+
+            if ($localPath) {
+                // Plugin exists in atom-ahg-plugins/, create symlink
+                $this->info("→ Found local plugin at {$localPath}");
+                $this->line("  Creating symlink in plugins/...");
+
+                if (!is_dir($pluginsPath)) {
+                    mkdir($pluginsPath, 0755, true);
+                }
+
+                if (symlink($localPath, $pluginPath)) {
+                    $this->success("Symlink created: {$pluginPath} → {$localPath}");
+                } else {
+                    $this->warning("Could not create symlink. Continuing with local path.");
+                }
+            }
+        }
+
+        if (!$localPath && !is_dir($pluginPath)) {
             $this->info("→ Plugin not found locally. Fetching from GitHub...");
 
             if ($this->fetcher->fetch($name)) {

@@ -15,6 +15,7 @@ use Illuminate\Database\Capsule\Manager as DB;
  * - Authorities (actors, places)
  * - Fields (dates, repositories)
  * - Custom values (from heritage_filter_value)
+ * - Entity cache (NER extracted entities)
  */
 class FilterValueResolver
 {
@@ -60,6 +61,7 @@ class FilterValueResolver
             'authority' => $this->resolveAuthorityValues($sourceReference, $institutionId, $limit),
             'field' => $this->resolveFieldValues($sourceReference, $institutionId, $limit),
             'custom' => $this->resolveCustomValues($institutionFilterId, $limit),
+            'entity_cache' => $this->resolveEntityCacheValues($sourceReference, $institutionId, $this->culture, $limit),
             default => [],
         };
     }
@@ -395,6 +397,82 @@ class FilterValueResolver
         }
 
         return $query->count();
+    }
+
+    /**
+     * Resolve entity cache values (NER-extracted entities).
+     *
+     * Source reference format: "entity_cache:person" or "entity_cache:organization"
+     *
+     * @param string|null $sourceReference Source reference with entity type
+     * @param int|null    $institutionId   Institution filter
+     * @param string      $culture         Culture code
+     * @param int         $limit           Maximum values
+     *
+     * @return array Entity values with counts and confidence badges
+     */
+    private function resolveEntityCacheValues(
+        ?string $sourceReference,
+        ?int $institutionId,
+        string $culture,
+        int $limit
+    ): array {
+        // Parse source_reference: "entity_cache:person" or just "person"
+        $entityType = $sourceReference;
+        if (str_contains($sourceReference ?? '', ':')) {
+            $parts = explode(':', $sourceReference);
+            $entityType = $parts[1] ?? 'person';
+        }
+
+        if (!$entityType) {
+            return [];
+        }
+
+        // Confidence threshold for display
+        $minConfidence = 0.70;
+
+        $query = DB::table('heritage_entity_cache as ec')
+            ->join('information_object as io', 'ec.object_id', '=', 'io.id')
+            ->join('status as st', function ($join) {
+                $join->on('io.id', '=', 'st.object_id')
+                    ->where('st.type_id', '=', 158);
+            })
+            ->where('st.status_id', 160) // Published only
+            ->where('ec.entity_type', $entityType)
+            ->where('ec.confidence_score', '>=', $minConfidence)
+            ->groupBy('ec.normalized_value', 'ec.entity_value')
+            ->havingRaw('COUNT(DISTINCT ec.object_id) > 0')
+            ->orderByRaw('COUNT(DISTINCT ec.object_id) DESC')
+            ->limit($limit);
+
+        if ($institutionId !== null) {
+            $query->where('io.repository_id', $institutionId);
+        }
+
+        return $query->select(
+            'ec.normalized_value as value',
+            'ec.entity_value as label',
+            DB::raw('COUNT(DISTINCT ec.object_id) as count'),
+            DB::raw('AVG(ec.confidence_score) as avg_confidence'),
+            DB::raw('ec.extraction_method')
+        )->get()->map(function ($item) {
+            // Determine confidence badge based on average confidence
+            $badge = 'medium';
+            if ($item->avg_confidence >= 0.90) {
+                $badge = 'high';
+            } elseif ($item->avg_confidence < 0.80) {
+                $badge = 'low';
+            }
+
+            return [
+                'value' => $item->value,
+                'label' => $item->label,
+                'count' => (int) $item->count,
+                'confidence' => round((float) $item->avg_confidence, 2),
+                'badge' => $badge,
+                'source' => 'ner',
+            ];
+        })->toArray();
     }
 
     /**
