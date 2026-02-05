@@ -261,6 +261,12 @@ class ExtensionManager implements ExtensionManagerContract
         if (!$extension) {
             $plugin = DB::table('atom_plugin')->where('name', $machineName)->first();
             if (!$plugin) {
+                // Check if plugin exists locally (has extension.json and symlink)
+                $manifest = $this->findManifest($machineName);
+                if ($manifest) {
+                    // Plugin exists locally - enable it via atom_plugin
+                    return $this->enableInAtomPlugin($machineName, $enableDependencies);
+                }
                 throw new \RuntimeException("Extension '{$machineName}' is not installed.");
             }
             return $this->enableInAtomPlugin($machineName, $enableDependencies);
