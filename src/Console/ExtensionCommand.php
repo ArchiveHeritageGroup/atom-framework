@@ -173,9 +173,11 @@ class ExtensionCommand
         $autoTables = in_array('--with-tables', $args) || in_array('-t', $args);
         $skipTables = in_array('--skip-tables', $args) || in_array('-s', $args);
         $noEnable = in_array('--no-enable', $args);
+        $withCron = in_array('--with-cron', $args);
+        $skipCron = in_array('--skip-cron', $args);
 
         if (!$name) {
-            $this->error('Usage: php bin/atom extension:install <machine_name> [--with-tables|-t] [--skip-tables|-s] [--no-enable]');
+            $this->error('Usage: php bin/atom extension:install <machine_name> [--with-tables|-t] [--skip-tables|-s] [--no-enable] [--with-cron] [--skip-cron]');
             return 1;
         }
 
@@ -318,6 +320,11 @@ class ExtensionCommand
             $this->line("Run 'php bin/atom extension:enable {$name}' to enable it.");
         }
 
+        // Check for cron jobs in extension.json
+        if (!$skipCron) {
+            $this->installCronJobs($name, $withCron);
+        }
+
         $this->line('');
 
         return 0;
@@ -394,9 +401,11 @@ class ExtensionCommand
     protected function enable(array $args): int
     {
         $name = $args[0] ?? null;
+        $withCron = in_array('--with-cron', $args);
+        $skipCron = in_array('--skip-cron', $args);
 
         if (!$name) {
-            $this->error('Usage: php bin/atom extension:enable <machine_name>');
+            $this->error('Usage: php bin/atom extension:enable <machine_name> [--with-cron] [--skip-cron]');
             return 1;
         }
 
@@ -420,6 +429,12 @@ class ExtensionCommand
 
         $this->line('');
         $this->success("Extension '{$name}' enabled.");
+
+        // Check for cron jobs in extension.json
+        if (!$skipCron) {
+            $this->installCronJobs($name, $withCron);
+        }
+
         $this->line('');
 
         return 0;
@@ -467,6 +482,9 @@ class ExtensionCommand
             $this->line('');
             $this->warning(sprintf('Note: %s records still exist in the database.', number_format($check['record_count'])));
         }
+
+        // Check for cron jobs to remove
+        $this->removeCronJobs($name);
 
         $this->line('');
 
@@ -1500,10 +1518,12 @@ class ExtensionCommand
         }
 
         $this->line('');
-        $this->line('Install Options:');
+        $this->line('Install/Enable Options:');
         $this->line('  --with-tables, -t    Create database tables automatically');
         $this->line('  --skip-tables, -s    Skip table creation');
         $this->line('  --no-enable          Install without enabling');
+        $this->line('  --with-cron          Install cron jobs automatically');
+        $this->line('  --skip-cron          Skip cron job installation');
         $this->line('  --no-interaction, -n Non-interactive mode');
         $this->line('');
         $this->line('Uninstall Options:');
@@ -1530,6 +1550,199 @@ class ExtensionCommand
         $this->error("Unknown command: {$command}");
         $this->line("Run 'php bin/atom extension:help' for available commands.");
         return 1;
+    }
+
+    /**
+     * Check extension.json for cron jobs and offer to install them.
+     */
+    protected function installCronJobs(string $name, bool $autoCron = false): void
+    {
+        $pluginPath = $this->resolvePluginPath($name);
+        if (!$pluginPath) {
+            return;
+        }
+
+        $manifestPath = $pluginPath . '/extension.json';
+        if (!file_exists($manifestPath)) {
+            return;
+        }
+
+        $manifest = json_decode(file_get_contents($manifestPath), true);
+        if (!is_array($manifest) || empty($manifest['cron']['jobs'])) {
+            return;
+        }
+
+        $jobs = $manifest['cron']['jobs'];
+        $this->line('');
+        $this->info("→ This extension has " . count($jobs) . " cron job(s):");
+        $this->line('');
+
+        foreach ($jobs as $i => $job) {
+            $this->line("  " . ($i + 1) . ". " . ($job['name'] ?? 'unnamed'));
+            $this->line("     Schedule:    " . ($job['schedule'] ?? '—'));
+            $this->line("     Command:     " . ($job['command'] ?? '—'));
+            if (!empty($job['description'])) {
+                $this->line("     Description: " . $job['description']);
+            }
+            $this->line('');
+        }
+
+        if (!$this->interactive && !$autoCron) {
+            $this->line("  Run with --with-cron to install automatically.");
+            $this->line("  Or manually: " . ($manifest['cron']['install'] ?? "copy cron file to /etc/cron.d/"));
+            return;
+        }
+
+        $installCron = $autoCron;
+        if (!$autoCron && $this->interactive) {
+            echo "  Install cron jobs for {$name}? [Y/n]: ";
+            $answer = strtolower(trim(fgets(STDIN)));
+            $installCron = ($answer === '' || $answer === 'y' || $answer === 'yes');
+        }
+
+        if (!$installCron) {
+            $this->line("  Skipping cron job installation.");
+            $this->line("  To install manually later:");
+            if (!empty($manifest['cron']['install'])) {
+                $this->line("    " . $manifest['cron']['install']);
+            } else {
+                $this->line("    Add the jobs above to your system crontab or /etc/cron.d/");
+            }
+            return;
+        }
+
+        // Check for pre-built cron.d file
+        $cronDFile = $pluginPath . '/config/cron.d/' . $this->cronFileName($name);
+        $cronDTarget = '/etc/cron.d/' . $this->cronFileName($name);
+
+        if (file_exists($cronDFile)) {
+            // Plugin provides a ready-made cron.d file - copy it
+            $this->info("→ Installing cron.d file...");
+            if (@copy($cronDFile, $cronDTarget)) {
+                @chmod($cronDTarget, 0644);
+                $this->success("Cron file installed: {$cronDTarget}");
+            } else {
+                // Try with sudo
+                $result = 0;
+                $cmd = "sudo cp " . escapeshellarg($cronDFile) . " " . escapeshellarg($cronDTarget);
+                passthru($cmd, $result);
+                if ($result === 0) {
+                    passthru("sudo chmod 644 " . escapeshellarg($cronDTarget));
+                    $this->success("Cron file installed: {$cronDTarget}");
+                } else {
+                    $this->warning("  Could not install cron file automatically.");
+                    $this->line("  Install manually: sudo cp {$cronDFile} {$cronDTarget}");
+                }
+            }
+        } else {
+            // Generate cron.d file from extension.json jobs
+            $this->info("→ Generating cron.d file from extension.json...");
+
+            $cronContent = "# Cron jobs for {$name}\n";
+            $cronContent .= "# Auto-generated by: php bin/atom extension:enable {$name}\n";
+            $cronContent .= "# " . date('Y-m-d H:i:s') . "\n\n";
+
+            foreach ($jobs as $job) {
+                if (!empty($job['description'])) {
+                    $cronContent .= "# {$job['description']}\n";
+                }
+                $schedule = $job['schedule'] ?? '0 * * * *';
+                $command = $job['command'] ?? '';
+                if ($command) {
+                    $cronContent .= "{$schedule} www-data {$command} >> /var/log/ahg-cron.log 2>&1\n";
+                }
+            }
+
+            if (@file_put_contents($cronDTarget, $cronContent)) {
+                @chmod($cronDTarget, 0644);
+                $this->success("Cron file generated: {$cronDTarget}");
+            } else {
+                // Try writing to a temp location and copying with sudo
+                $tmpFile = sys_get_temp_dir() . '/' . $this->cronFileName($name);
+                file_put_contents($tmpFile, $cronContent);
+                $result = 0;
+                passthru("sudo cp " . escapeshellarg($tmpFile) . " " . escapeshellarg($cronDTarget), $result);
+                @unlink($tmpFile);
+                if ($result === 0) {
+                    passthru("sudo chmod 644 " . escapeshellarg($cronDTarget));
+                    $this->success("Cron file generated: {$cronDTarget}");
+                } else {
+                    $this->warning("  Could not write cron file automatically.");
+                    $this->line("  Generated content:");
+                    $this->line($cronContent);
+                }
+            }
+        }
+    }
+
+    /**
+     * Remove cron jobs when a plugin is disabled.
+     */
+    protected function removeCronJobs(string $name): void
+    {
+        $cronDTarget = '/etc/cron.d/' . $this->cronFileName($name);
+
+        if (!file_exists($cronDTarget)) {
+            return;
+        }
+
+        $this->line('');
+        $this->warning("  Cron file found: {$cronDTarget}");
+
+        if ($this->interactive) {
+            echo "  Remove cron jobs for {$name}? [Y/n]: ";
+            $answer = strtolower(trim(fgets(STDIN)));
+            if ($answer !== '' && $answer !== 'y' && $answer !== 'yes') {
+                $this->line("  Keeping cron file.");
+                return;
+            }
+        }
+
+        if (@unlink($cronDTarget)) {
+            $this->success("Cron file removed: {$cronDTarget}");
+        } else {
+            $result = 0;
+            passthru("sudo rm -f " . escapeshellarg($cronDTarget), $result);
+            if ($result === 0) {
+                $this->success("Cron file removed: {$cronDTarget}");
+            } else {
+                $this->warning("  Could not remove cron file. Remove manually:");
+                $this->line("    sudo rm {$cronDTarget}");
+            }
+        }
+    }
+
+    /**
+     * Resolve the filesystem path for a plugin.
+     */
+    protected function resolvePluginPath(string $name): ?string
+    {
+        $pluginsPath = $this->manager->getSetting('extensions_path', null, '/var/www/atom/plugins');
+        $pluginPath = "{$pluginsPath}/{$name}";
+
+        if (is_dir($pluginPath)) {
+            return is_link($pluginPath) ? readlink($pluginPath) : $pluginPath;
+        }
+
+        $localPath = $this->manager->findLocalPluginPath($name);
+        if ($localPath) {
+            return $localPath;
+        }
+
+        return null;
+    }
+
+    /**
+     * Generate a cron.d filename from plugin name.
+     * e.g. ahgSemanticSearchPlugin → ahg-semantic-search
+     */
+    protected function cronFileName(string $name): string
+    {
+        // Remove "Plugin" suffix
+        $base = preg_replace('/Plugin$/', '', $name);
+        // Convert camelCase to kebab-case
+        $kebab = strtolower(preg_replace('/([a-z])([A-Z])/', '$1-$2', $base));
+        return $kebab;
     }
 
     // Output helpers
