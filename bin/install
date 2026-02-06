@@ -162,7 +162,7 @@ CURRENT_PLUGINS=$(mysql_cmd -N -e "SELECT value FROM setting_i18n WHERE id = 1;"
 if echo "$CURRENT_PLUGINS" | grep -q "ahgThemeB5Plugin"; then
     echo -e "  ${YELLOW}→${NC} Plugins already configured"
 else
-    mysql_cmd -e "UPDATE setting_i18n SET value = 'a:16:{i:0;s:10:\"sfDcPlugin\";i:1;s:18:\"arDominionB5Plugin\";i:2;s:13:\"ahgCorePlugin\";i:3;s:16:\"ahgThemeB5Plugin\";i:4;s:26:\"ahgSecurityClearancePlugin\";i:5;s:11:\"sfEacPlugin\";i:6;s:11:\"sfEadPlugin\";i:7;s:13:\"sfIsaarPlugin\";i:8;s:12:\"sfIsadPlugin\";i:9;s:12:\"arDacsPlugin\";i:10;s:12:\"sfIsdfPlugin\";i:11;s:14:\"sfIsdiahPlugin\";i:12;s:12:\"sfModsPlugin\";i:13;s:11:\"sfRadPlugin\";i:14;s:12:\"sfSkosPlugin\";i:15;s:16:\"ahgDisplayPlugin\";}' WHERE id = 1;"
+    mysql_cmd -e "UPDATE setting_i18n SET value = 'a:17:{i:0;s:10:\"sfDcPlugin\";i:1;s:18:\"arDominionB5Plugin\";i:2;s:13:\"ahgCorePlugin\";i:3;s:16:\"ahgThemeB5Plugin\";i:4;s:26:\"ahgSecurityClearancePlugin\";i:5;s:11:\"sfEacPlugin\";i:6;s:11:\"sfEadPlugin\";i:7;s:13:\"sfIsaarPlugin\";i:8;s:12:\"sfIsadPlugin\";i:9;s:12:\"arDacsPlugin\";i:10;s:12:\"sfIsdfPlugin\";i:11;s:14:\"sfIsdiahPlugin\";i:12;s:12:\"sfModsPlugin\";i:13;s:11:\"sfRadPlugin\";i:14;s:12:\"sfSkosPlugin\";i:15;s:16:\"ahgDisplayPlugin\";i:16;s:17:\"ahgSettingsPlugin\";}' WHERE id = 1;"
     echo -e "  ${GREEN}✓${NC} Enabled core plugins"
 fi
 
@@ -183,7 +183,7 @@ echo -e "${BLUE}Step 6b: Loading plugin data...${NC}"
 
 # MVP plugins only - other plugins install their tables via:
 #   php bin/atom extension:enable <name>
-MVP_PLUGINS="ahgCorePlugin ahgThemeB5Plugin ahgSecurityClearancePlugin ahgDisplayPlugin ahgAuditTrailPlugin ahgBackupPlugin"
+MVP_PLUGINS="ahgCorePlugin ahgThemeB5Plugin ahgSecurityClearancePlugin ahgDisplayPlugin ahgSettingsPlugin ahgAuditTrailPlugin ahgBackupPlugin"
 
 for plugin in $MVP_PLUGINS; do
     DB_SQL="${AHG_PLUGINS}/${plugin}/database/install.sql"
@@ -215,6 +215,7 @@ INSERT INTO atom_plugin (name, class_name, version, is_enabled, is_core, is_lock
 ('ahgThemeB5Plugin', 'ahgThemeB5PluginConfiguration', '1.2.0', 0, 1, 1, 10, 'theme', 'Bootstrap 5 theme', NOW(), NOW()),
 ('ahgSecurityClearancePlugin', 'ahgSecurityClearancePluginConfiguration', '1.0.0', 1, 1, 1, 20, 'ahg', 'Security classification system', NOW(), NOW()),
 ('ahgDisplayPlugin', 'ahgDisplayPluginConfiguration', '1.0.0', 1, 1, 1, 30, 'ahg', 'GLAM browse and display profiles', NOW(), NOW()),
+('ahgSettingsPlugin', 'ahgSettingsPluginConfiguration', '1.0.1', 1, 1, 1, 15, 'admin', 'Admin settings and plugin management', NOW(), NOW()),
 ('ahgAuditTrailPlugin', 'ahgAuditTrailPluginConfiguration', '1.0.0', 1, 0, 0, 40, 'ahg', 'Compliance audit trail', NOW(), NOW()),
 ('ahgBackupPlugin', 'ahgBackupPluginConfiguration', '1.0.0', 1, 0, 0, 50, 'ahg', 'Backup and restore', NOW(), NOW())
 ON DUPLICATE KEY UPDATE is_enabled = 1, version = VALUES(version), updated_at = NOW();
@@ -223,6 +224,7 @@ echo -e "  ${GREEN}✓${NC} ahgCorePlugin enabled (locked)"
 echo -e "  ${GREEN}✓${NC} ahgThemeB5Plugin enabled (locked)"
 echo -e "  ${GREEN}✓${NC} ahgSecurityClearancePlugin enabled (locked)"
 echo -e "  ${GREEN}✓${NC} ahgDisplayPlugin enabled (locked)"
+echo -e "  ${GREEN}✓${NC} ahgSettingsPlugin enabled (locked)"
 echo -e "  ${GREEN}✓${NC} ahgAuditTrailPlugin enabled"
 echo -e "  ${GREEN}✓${NC} ahgBackupPlugin enabled"
 echo ""
