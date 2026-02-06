@@ -181,20 +181,24 @@ echo -e "  ${GREEN}✓${NC} Cache cleared"
 echo ""
 echo -e "${BLUE}Step 6b: Loading plugin data...${NC}"
 
-# Auto-discover all plugins with database/install.sql
-PLUGIN_COUNT=0
-for DB_SQL in "${AHG_PLUGINS}"/ahg*/database/install.sql; do
-    [ -f "$DB_SQL" ] || continue
-    plugin=$(basename "$(dirname "$(dirname "$DB_SQL")")")
-    echo -e "  ${YELLOW}→${NC} Loading $plugin..."
-    if mysql_cmd_file "$DB_SQL"; then
-        echo -e "  ${GREEN}✓${NC} $plugin loaded"
+# MVP plugins only - other plugins install their tables via:
+#   php bin/atom extension:enable <name>
+MVP_PLUGINS="ahgCorePlugin ahgThemeB5Plugin ahgSecurityClearancePlugin ahgDisplayPlugin ahgAuditTrailPlugin ahgBackupPlugin"
+
+for plugin in $MVP_PLUGINS; do
+    DB_SQL="${AHG_PLUGINS}/${plugin}/database/install.sql"
+    if [ -f "$DB_SQL" ]; then
+        echo -e "  ${YELLOW}→${NC} Loading $plugin..."
+        if mysql_cmd_file "$DB_SQL"; then
+            echo -e "  ${GREEN}✓${NC} $plugin loaded"
+        else
+            echo -e "  ${YELLOW}⚠${NC} $plugin had warnings (may be expected)"
+        fi
     else
-        echo -e "  ${YELLOW}⚠${NC} $plugin had warnings (may be expected)"
+        echo -e "  ${YELLOW}⚠${NC} $plugin has no database/install.sql"
     fi
-    PLUGIN_COUNT=$((PLUGIN_COUNT + 1))
 done
-echo -e "  Processed ${PLUGIN_COUNT} plugins"
+echo -e "  Additional plugins: php bin/atom extension:enable <name>"
 
 echo -e "${GREEN}✓ Plugin data loaded${NC}"
 
@@ -204,40 +208,26 @@ echo -e "${GREEN}✓ Plugin data loaded${NC}"
 echo ""
 echo -e "${BLUE}Step 6c: Enabling required plugins...${NC}"
 
+# MVP plugins: locked/core + essential operational
 mysql_cmd -e "
-INSERT INTO atom_plugin (name, class_name, version, is_enabled, is_core, is_locked, load_order, category, created_at, updated_at) VALUES
-('ahgCorePlugin', 'ahgCorePluginConfiguration', '1.0.0', 1, 1, 1, 5, 'ahg', NOW(), NOW()),
-('ahgThemeB5Plugin', 'ahgThemeB5PluginConfiguration', '1.2.0', 0, 1, 1, 10, 'theme', NOW(), NOW()),
-('ahgSecurityClearancePlugin', 'ahgSecurityClearancePluginConfiguration', '1.0.0', 1, 1, 1, 20, 'ahg', NOW(), NOW()),
-('ahgDisplayPlugin', 'ahgDisplayPluginConfiguration', '1.0.0', 1, 1, 1, 30, 'ahg', NOW(), NOW())
-ON DUPLICATE KEY UPDATE is_core = 1, is_locked = 1, version = VALUES(version), updated_at = NOW();
+INSERT INTO atom_plugin (name, class_name, version, is_enabled, is_core, is_locked, load_order, category, description, created_at, updated_at) VALUES
+('ahgCorePlugin', 'ahgCorePluginConfiguration', '1.0.0', 1, 1, 1, 5, 'ahg', 'Core framework plugin', NOW(), NOW()),
+('ahgThemeB5Plugin', 'ahgThemeB5PluginConfiguration', '1.2.0', 0, 1, 1, 10, 'theme', 'Bootstrap 5 theme', NOW(), NOW()),
+('ahgSecurityClearancePlugin', 'ahgSecurityClearancePluginConfiguration', '1.0.0', 1, 1, 1, 20, 'ahg', 'Security classification system', NOW(), NOW()),
+('ahgDisplayPlugin', 'ahgDisplayPluginConfiguration', '1.0.0', 1, 1, 1, 30, 'ahg', 'GLAM browse and display profiles', NOW(), NOW()),
+('ahgAuditTrailPlugin', 'ahgAuditTrailPluginConfiguration', '1.0.0', 1, 0, 0, 40, 'ahg', 'Compliance audit trail', NOW(), NOW()),
+('ahgBackupPlugin', 'ahgBackupPluginConfiguration', '1.0.0', 1, 0, 0, 50, 'ahg', 'Backup and restore', NOW(), NOW())
+ON DUPLICATE KEY UPDATE is_enabled = 1, version = VALUES(version), updated_at = NOW();
 "
 echo -e "  ${GREEN}✓${NC} ahgCorePlugin enabled (locked)"
 echo -e "  ${GREEN}✓${NC} ahgThemeB5Plugin enabled (locked)"
 echo -e "  ${GREEN}✓${NC} ahgSecurityClearancePlugin enabled (locked)"
 echo -e "  ${GREEN}✓${NC} ahgDisplayPlugin enabled (locked)"
-
-# Enable optional but recommended plugins
-mysql_cmd -e "
-INSERT INTO atom_plugin (name, class_name, version, is_enabled, is_core, is_locked, load_order, category, description, created_at, updated_at) VALUES
-('ahgPreservationPlugin', 'ahgPreservationPluginConfiguration', '1.0.0', 1, 0, 0, 100, 'preservation', 'Digital preservation: checksums, fixity, PREMIS events', NOW(), NOW()),
-('ahgReportBuilderPlugin', 'ahgReportBuilderPluginConfiguration', '1.0.0', 1, 0, 0, 100, 'reporting', 'Custom report builder with charts and scheduling', NOW(), NOW())
-ON DUPLICATE KEY UPDATE is_enabled = 1, version = VALUES(version), updated_at = NOW();
-"
-echo -e "  ${GREEN}✓${NC} ahgPreservationPlugin enabled"
-echo -e "  ${GREEN}✓${NC} ahgReportBuilderPlugin enabled"
-
-# Register GLAM sector plugins (optional - user enables as needed)
-mysql_cmd -e "
-INSERT INTO atom_plugin (name, class_name, version, is_enabled, is_core, is_locked, load_order, category, description, created_at, updated_at) VALUES
-('ahgLoanPlugin', 'ahgLoanPluginConfiguration', '1.0.0', 0, 0, 0, 150, 'ahg', 'Shared loan management for all GLAM sectors (Museum, Gallery, Archive, DAM). Spectrum 5.0 compliant.', NOW(), NOW()),
-('ahgMuseumPlugin', 'ahgMuseumPluginConfiguration', '1.0.0', 0, 0, 0, 140, 'ahg', 'Museum collections management with CCO metadata standard', NOW(), NOW()),
-('ahgGalleryPlugin', 'ahgGalleryPluginConfiguration', '1.0.0', 0, 0, 0, 140, 'ahg', 'Gallery and artwork management with exhibition support', NOW(), NOW()),
-('ahgDAMPlugin', 'ahgDAMPluginConfiguration', '1.0.0', 0, 0, 0, 140, 'ahg', 'Digital Asset Management with IPTC/XMP metadata', NOW(), NOW()),
-('ahgLibraryPlugin', 'ahgLibraryPluginConfiguration', '1.0.0', 0, 0, 0, 140, 'ahg', 'Library cataloging with ISBN, ISSN, call numbers', NOW(), NOW())
-ON DUPLICATE KEY UPDATE description = VALUES(description), version = VALUES(version), updated_at = NOW();
-"
-echo -e "  ${GREEN}✓${NC} GLAM plugins registered (enable via admin panel)"
+echo -e "  ${GREEN}✓${NC} ahgAuditTrailPlugin enabled"
+echo -e "  ${GREEN}✓${NC} ahgBackupPlugin enabled"
+echo ""
+echo -e "  Additional plugins: ${YELLOW}php bin/atom extension:enable <name>${NC}"
+echo -e "  Discover available: ${YELLOW}php bin/atom extension:discover${NC}"
 
 # =============================================================================
 # Step 6d: Sync plugin versions from extension.json
