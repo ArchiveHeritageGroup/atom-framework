@@ -181,10 +181,19 @@ echo -e "  ${GREEN}✓${NC} Cache cleared"
 echo ""
 echo -e "${BLUE}Step 6b: Loading plugin data...${NC}"
 
-AHG_DATA_PLUGINS="ahgThemeB5Plugin ahgDisplayPlugin ahgLibraryPlugin ahgSecurityClearancePlugin ahgDAMPlugin ahgAuditTrailPlugin ahgResearchPlugin ahgSpectrumPlugin ahgMuseumPlugin ahgGalleryPlugin ahgConditionPlugin ahgDonorAgreementPlugin ahgAccessRequestPlugin ahgRightsPlugin ahgExtendedRightsPlugin ahgPrivacyPlugin ahgVendorPlugin ahgHeritageAccountingPlugin ahg3DModelPlugin ahgBackupPlugin ahgIiifCollectionPlugin ahgRicExplorerPlugin ahgPreservationPlugin ahgReportBuilderPlugin ahgLoanPlugin"
+AHG_DATA_PLUGINS="ahgCorePlugin ahgThemeB5Plugin ahgDisplayPlugin ahgLibraryPlugin ahgSecurityClearancePlugin ahgDAMPlugin ahgAuditTrailPlugin ahgResearchPlugin ahgSpectrumPlugin ahgMuseumPlugin ahgGalleryPlugin ahgConditionPlugin ahgDonorAgreementPlugin ahgAccessRequestPlugin ahgRightsPlugin ahgExtendedRightsPlugin ahgPrivacyPlugin ahgVendorPlugin ahgHeritageAccountingPlugin ahg3DModelPlugin ahgBackupPlugin ahgIiifCollectionPlugin ahgRicExplorerPlugin ahgPreservationPlugin ahgReportBuilderPlugin ahgLoanPlugin"
 
 for plugin in $AHG_DATA_PLUGINS; do
     DATA_SQL="${PLUGINS_DIR}/${plugin}/data/install.sql"
+    DB_SQL="${PLUGINS_DIR}/${plugin}/database/install.sql"
+    if [ -f "$DB_SQL" ]; then
+        echo -e "  ${YELLOW}→${NC} Loading $plugin (database)..."
+        if mysql_cmd_file "$DB_SQL"; then
+            echo -e "  ${GREEN}✓${NC} $plugin database loaded"
+        else
+            echo -e "  ${YELLOW}⚠${NC} $plugin database had warnings (may be expected)"
+        fi
+    fi
     if [ -f "$DATA_SQL" ]; then
         echo -e "  ${YELLOW}→${NC} Loading $plugin..."
         if mysql_cmd_file "$DATA_SQL"; then
@@ -307,11 +316,11 @@ echo "Step 10: Copying dist assets..."
 mkdir -p "${ATOM_ROOT}/dist/icons"
 
 # Copy icons from theme plugin
-if [ -d "${AHG_PLUGINS}/ahgThemeB5Plugin/dist/icons" ]; then
-    cp -r "${AHG_PLUGINS}/ahgThemeB5Plugin/dist/icons/"* "${ATOM_ROOT}/dist/icons/" 2>/dev/null
+if [ -d "${AHG_PLUGINS}/ahgThemeB5Plugin/web/dist/icons" ]; then
+    cp -r "${AHG_PLUGINS}/ahgThemeB5Plugin/web/dist/icons/"* "${ATOM_ROOT}/dist/icons/" 2>/dev/null
     echo "  ✓ Copied icons to dist/icons/"
 else
-    echo "  ⚠ No icons found in ahgThemeB5Plugin/dist/icons/"
+    echo "  ⚠ No icons found in ahgThemeB5Plugin/web/dist/icons/"
 fi
 
 
@@ -338,10 +347,10 @@ echo "Step 12: Copying dist assets..."
 
 mkdir -p "${ATOM_ROOT}/dist/icons"
 
-if [ -d "${AHG_PLUGINS}/ahgThemeB5Plugin/dist/icons" ]; then
-    cp -r "${AHG_PLUGINS}/ahgThemeB5Plugin/dist/icons/"* "${ATOM_ROOT}/dist/icons/" 2>/dev/null
-    echo "  ✓ Copied $(ls ${AHG_PLUGINS}/ahgThemeB5Plugin/dist/icons/ | wc -l) icons to dist/icons/"
+if [ -d "${AHG_PLUGINS}/ahgThemeB5Plugin/web/dist/icons" ]; then
+    cp -r "${AHG_PLUGINS}/ahgThemeB5Plugin/web/dist/icons/"* "${ATOM_ROOT}/dist/icons/" 2>/dev/null
+    echo "  ✓ Copied $(ls ${AHG_PLUGINS}/ahgThemeB5Plugin/web/dist/icons/ | wc -l) icons to dist/icons/"
 else
-    echo "  ⚠ No icons found in ahgThemeB5Plugin/dist/icons/"
+    echo "  ⚠ No icons found in ahgThemeB5Plugin/web/dist/icons/"
 fi
 
