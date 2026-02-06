@@ -169,9 +169,10 @@ function runFrameworkUpdate(array $args): int
     // Pull latest from git
     chdir(FRAMEWORK_ROOT);
     echo "→ Pulling latest from {$branch}...\n";
-    passthru("git pull origin {$branch} 2>&1", $returnVar);
+    $errors = [];
+    forceGitPull(FRAMEWORK_ROOT, $branch, $errors, 'Framework');
 
-    if ($returnVar !== 0) {
+    if (!empty($errors)) {
         echo "\033[31m✗ Git pull failed\033[0m\n";
         return 1;
     }
@@ -205,10 +206,7 @@ function runFullUpdate(array $args): int
     echo "└─────────────────────────────────────────────────────────────┘\n";
 
     chdir(FRAMEWORK_ROOT);
-    passthru("git pull origin {$branch} 2>&1", $returnVar);
-    if ($returnVar !== 0) {
-        $errors[] = "Framework git pull failed";
-    }
+    forceGitPull(FRAMEWORK_ROOT, $branch, $errors, 'Framework');
 
     // 2. Update plugins
     echo "\n┌─────────────────────────────────────────────────────────────┐\n";
@@ -218,10 +216,7 @@ function runFullUpdate(array $args): int
     $pluginsDir = ATOM_ROOT . '/atom-ahg-plugins';
     if (is_dir($pluginsDir)) {
         chdir($pluginsDir);
-        passthru("git pull origin {$branch} 2>&1", $returnVar);
-        if ($returnVar !== 0) {
-            $errors[] = "Plugins git pull failed";
-        }
+        forceGitPull($pluginsDir, $branch, $errors, 'Plugins');
     }
 
     // 3. Composer install
@@ -260,6 +255,32 @@ function runFullUpdate(array $args): int
             echo "  → {$error}\n";
         }
         return 1;
+    }
+}
+
+function forceGitPull(string $dir, string $branch, array &$errors, string $label): void
+{
+    // Fix dubious ownership for deployment targets
+    exec("git config --global --add safe.directory " . escapeshellarg($dir) . " 2>&1");
+
+    // Fetch latest
+    passthru("git fetch origin {$branch} 2>&1", $fetchResult);
+    if ($fetchResult !== 0) {
+        $errors[] = "{$label} git fetch failed";
+
+        return;
+    }
+
+    // Check for local changes
+    $localChanges = trim(shell_exec("git status --porcelain 2>&1") ?? '');
+    if ($localChanges !== '') {
+        echo "  → Discarding local changes on deployment target...\n";
+    }
+
+    // Reset to match remote exactly
+    passthru("git reset --hard origin/{$branch} 2>&1", $resetResult);
+    if ($resetResult !== 0) {
+        $errors[] = "{$label} git reset failed";
     }
 }
 
