@@ -180,42 +180,48 @@ class LandingConfigService
      */
     private function getRecentActivity(?int $institutionId = null, int $limit = 5): array
     {
-        // Try to get from audit trail if plugin exists
-        if (!DB::getSchemaBuilder()->hasTable('audit_log')) {
+        // Try to get from audit trail if ahgAuditTrailPlugin is installed
+        // The plugin's audit_log has: action, record_id, table_name, username columns
+        // Core AtoM's audit_log (if present) has a different schema - skip it
+        try {
+            $schema = DB::getSchemaBuilder();
+            if (!$schema->hasTable('audit_log') || !$schema->hasColumn('audit_log', 'action')) {
+                return [];
+            }
+
+            $culture = $this->culture;
+            $query = DB::table('audit_log as al')
+                ->leftJoin('user as u', 'al.user_id', '=', 'u.id')
+                ->leftJoin('information_object_i18n as io', function ($join) use ($culture) {
+                    $join->on('al.record_id', '=', 'io.id')
+                        ->where('io.culture', '=', $culture);
+                })
+                ->where('al.table_name', 'information_object')
+                ->whereIn('al.action', ['create', 'update'])
+                ->whereNotNull('al.record_id')
+                ->orderByDesc('al.created_at')
+                ->limit($limit);
+
+            return $query->select(
+                'al.id',
+                'al.action',
+                'al.record_id',
+                'al.created_at',
+                DB::raw("COALESCE(u.username, al.username, 'System') as user_name"),
+                'io.title as object_title'
+            )
+                ->get()
+                ->map(fn ($row) => [
+                    'user' => $row->user_name ?? 'Anonymous',
+                    'action' => $row->action,
+                    'item_title' => $row->object_title ?? 'Item #' . $row->record_id,
+                    'item_id' => $row->record_id,
+                    'time_ago' => $this->timeAgo($row->created_at),
+                ])
+                ->toArray();
+        } catch (\Exception $e) {
             return [];
         }
-
-        // The audit_log table uses 'action' not 'action_type', and 'record_id' not 'object_id'
-        $culture = $this->culture;
-        $query = DB::table('audit_log as al')
-            ->leftJoin('user as u', 'al.user_id', '=', 'u.id')
-            ->leftJoin('information_object_i18n as io', function ($join) use ($culture) {
-                $join->on('al.record_id', '=', 'io.id')
-                    ->where('io.culture', '=', $culture);
-            })
-            ->where('al.table_name', 'information_object')
-            ->whereIn('al.action', ['create', 'update'])
-            ->whereNotNull('al.record_id')
-            ->orderByDesc('al.created_at')
-            ->limit($limit);
-
-        return $query->select(
-            'al.id',
-            'al.action',
-            'al.record_id',
-            'al.created_at',
-            DB::raw("COALESCE(u.username, al.username, 'System') as user_name"),
-            'io.title as object_title'
-        )
-            ->get()
-            ->map(fn ($row) => [
-                'user' => $row->user_name ?? 'Anonymous',
-                'action' => $row->action,
-                'item_title' => $row->object_title ?? 'Item #' . $row->record_id,
-                'item_id' => $row->record_id,
-                'time_ago' => $this->timeAgo($row->created_at),
-            ])
-            ->toArray();
     }
 
     /**
@@ -326,16 +332,21 @@ class LandingConfigService
 
         // Contributors (users who have created content)
         if ($config['show_contributors'] ?? false) {
-            if (DB::getSchemaBuilder()->hasTable('audit_log')) {
-                $count = DB::table('audit_log')
-                    ->whereIn('action_type', ['create'])
-                    ->distinct('user_id')
-                    ->count('user_id');
+            try {
+                $schema = DB::getSchemaBuilder();
+                if ($schema->hasTable('audit_log') && $schema->hasColumn('audit_log', 'action')) {
+                    $count = DB::table('audit_log')
+                        ->whereIn('action', ['create'])
+                        ->distinct('user_id')
+                        ->count('user_id');
 
-                $stats['total_contributors'] = [
-                    'value' => $count,
-                    'label' => 'Contributors',
-                ];
+                    $stats['total_contributors'] = [
+                        'value' => $count,
+                        'label' => 'Contributors',
+                    ];
+                }
+            } catch (\Exception $e) {
+                // audit_log schema incompatible - skip
             }
         }
 
