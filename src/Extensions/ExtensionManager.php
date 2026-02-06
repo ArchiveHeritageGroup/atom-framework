@@ -265,7 +265,25 @@ class ExtensionManager implements ExtensionManagerContract
     public function install(string $machineName, bool $installDependencies = true): bool
     {
         if ($this->isInstalled($machineName)) {
-            throw new \RuntimeException("Extension '{$machineName}' is already installed.");
+            // Allow reinstall if previously uninstalled (pending_removal)
+            $extension = $this->repository->findByMachineName($machineName);
+            $plugin = DB::table('atom_plugin')->where('name', $machineName)->first();
+
+            $isPendingRemoval = ($extension && $extension->status === 'pending_removal')
+                || ($plugin && isset($plugin->status) && $plugin->status === 'pending_removal');
+
+            if (!$isPendingRemoval) {
+                throw new \RuntimeException("Extension '{$machineName}' is already installed.");
+            }
+
+            // Clean up old records for fresh reinstall
+            if ($extension) {
+                $this->repository->cancelPendingDeletion($machineName);
+                DB::table('atom_extension')->where('machine_name', $machineName)->delete();
+            }
+            if ($plugin) {
+                DB::table('atom_plugin')->where('name', $machineName)->delete();
+            }
         }
 
         $manifest = $this->findManifest($machineName);

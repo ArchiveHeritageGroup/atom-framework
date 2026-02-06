@@ -341,10 +341,11 @@ class ExtensionCommand
             return 1;
         }
 
-        // Check protection level
-        $check = ExtensionProtection::canUninstall($name);
-        if (!$check['allowed']) {
-            $this->error($check['reason']);
+        // Check protection level (reuse canDisable - same rules apply)
+        $protection = new ExtensionProtection();
+        $check = $protection->canDisable($name);
+        if (!$check['can_disable']) {
+            $this->error("Cannot uninstall {$name}: {$check['reason']}");
             return 1;
         }
         $this->line('');
@@ -409,20 +410,23 @@ class ExtensionCommand
             return 1;
         }
 
-        // Run install.sql if it exists (safe - uses CREATE TABLE IF NOT EXISTS)
-        $migrationHandler = new \AtomFramework\Extensions\MigrationHandler(
-            defined('ATOM_ROOT') ? ATOM_ROOT . '/plugins' : ''
-        );
-
-        $sqlPath = $migrationHandler->getSqlFilePath($name);
-        if ($sqlPath) {
-            $this->line("  Running database setup for {$name}...");
-            try {
-                $migrationHandler->runSqlFile($name);
-                $this->line("  Database tables ready.");
-            } catch (\Exception $e) {
-                $this->warning("  Database warning: " . substr($e->getMessage(), 0, 120));
+        // Check plugin was installed first (exists in atom_plugin table and not pending_removal)
+        try {
+            $plugin = \Illuminate\Database\Capsule\Manager::table('atom_plugin')
+                ->where('name', $name)
+                ->first();
+            if (!$plugin) {
+                $this->error("Extension '{$name}' is not installed.");
+                $this->line("  Run 'php bin/atom extension:install {$name}' first.");
+                return 1;
             }
+            if (isset($plugin->status) && $plugin->status === 'pending_removal') {
+                $this->error("Extension '{$name}' was uninstalled (pending removal).");
+                $this->line("  Run 'php bin/atom extension:install {$name}' to reinstall.");
+                return 1;
+            }
+        } catch (\Exception $e) {
+            // If atom_plugin table doesn't exist, fall through
         }
 
         $this->manager->enable($name);
