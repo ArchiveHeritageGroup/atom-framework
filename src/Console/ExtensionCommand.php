@@ -400,6 +400,22 @@ class ExtensionCommand
             return 1;
         }
 
+        // Run install.sql if it exists (safe - uses CREATE TABLE IF NOT EXISTS)
+        $migrationHandler = new \AtomFramework\Extensions\MigrationHandler(
+            defined('ATOM_ROOT') ? ATOM_ROOT . '/plugins' : ''
+        );
+
+        $sqlPath = $migrationHandler->getSqlFilePath($name);
+        if ($sqlPath) {
+            $this->line("  Running database setup for {$name}...");
+            try {
+                $migrationHandler->runSqlFile($name);
+                $this->line("  Database tables ready.");
+            } catch (\Exception $e) {
+                $this->warning("  Database warning: " . substr($e->getMessage(), 0, 120));
+            }
+        }
+
         $this->manager->enable($name);
 
         $this->line('');
@@ -864,6 +880,10 @@ class ExtensionCommand
             // Find install.sql
             $installSql = null;
             $paths = [
+                $info['path'] . '/database/install.sql',
+                $pluginsPath . '/' . $machineName . '/database/install.sql',
+                $pluginsDir . '/' . $machineName . '/database/install.sql',
+                // Legacy fallback
                 $info['path'] . '/data/install.sql',
                 $pluginsPath . '/' . $machineName . '/data/install.sql',
                 $pluginsDir . '/' . $machineName . '/data/install.sql',

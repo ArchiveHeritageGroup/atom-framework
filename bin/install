@@ -181,28 +181,20 @@ echo -e "  ${GREEN}✓${NC} Cache cleared"
 echo ""
 echo -e "${BLUE}Step 6b: Loading plugin data...${NC}"
 
-AHG_DATA_PLUGINS="ahgCorePlugin ahgThemeB5Plugin ahgDisplayPlugin ahgLibraryPlugin ahgSecurityClearancePlugin ahgDAMPlugin ahgAuditTrailPlugin ahgResearchPlugin ahgSpectrumPlugin ahgMuseumPlugin ahgGalleryPlugin ahgConditionPlugin ahgDonorAgreementPlugin ahgAccessRequestPlugin ahgRightsPlugin ahgExtendedRightsPlugin ahgPrivacyPlugin ahgVendorPlugin ahgHeritageAccountingPlugin ahg3DModelPlugin ahgBackupPlugin ahgIiifCollectionPlugin ahgRicExplorerPlugin ahgPreservationPlugin ahgReportBuilderPlugin ahgLoanPlugin"
-
-for plugin in $AHG_DATA_PLUGINS; do
-    DATA_SQL="${PLUGINS_DIR}/${plugin}/data/install.sql"
-    DB_SQL="${PLUGINS_DIR}/${plugin}/database/install.sql"
-    if [ -f "$DB_SQL" ]; then
-        echo -e "  ${YELLOW}→${NC} Loading $plugin (database)..."
-        if mysql_cmd_file "$DB_SQL"; then
-            echo -e "  ${GREEN}✓${NC} $plugin database loaded"
-        else
-            echo -e "  ${YELLOW}⚠${NC} $plugin database had warnings (may be expected)"
-        fi
+# Auto-discover all plugins with database/install.sql
+PLUGIN_COUNT=0
+for DB_SQL in "${AHG_PLUGINS}"/ahg*/database/install.sql; do
+    [ -f "$DB_SQL" ] || continue
+    plugin=$(basename "$(dirname "$(dirname "$DB_SQL")")")
+    echo -e "  ${YELLOW}→${NC} Loading $plugin..."
+    if mysql_cmd_file "$DB_SQL"; then
+        echo -e "  ${GREEN}✓${NC} $plugin loaded"
+    else
+        echo -e "  ${YELLOW}⚠${NC} $plugin had warnings (may be expected)"
     fi
-    if [ -f "$DATA_SQL" ]; then
-        echo -e "  ${YELLOW}→${NC} Loading $plugin..."
-        if mysql_cmd_file "$DATA_SQL"; then
-            echo -e "  ${GREEN}✓${NC} $plugin loaded"
-        else
-            echo -e "  ${YELLOW}⚠${NC} $plugin had warnings (may be expected)"
-        fi
-    fi
+    PLUGIN_COUNT=$((PLUGIN_COUNT + 1))
 done
+echo -e "  Processed ${PLUGIN_COUNT} plugins"
 
 echo -e "${GREEN}✓ Plugin data loaded${NC}"
 
