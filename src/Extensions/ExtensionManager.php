@@ -62,7 +62,8 @@ class ExtensionManager implements ExtensionManagerContract
                 if (file_exists($manifestPath)) {
                     $manifest = $this->loadManifest($manifestPath);
                     if ($manifest) {
-                        $machineName = $manifest['machine_name'] ?? basename($dir);
+                        $machineName = $manifest['machine_name'] ?? $manifest['name'] ?? basename($dir);
+                        $manifest['machine_name'] = $machineName;
 
                         // Skip if already found (avoid duplicates from symlinks)
                         if (isset($found[$machineName])) {
