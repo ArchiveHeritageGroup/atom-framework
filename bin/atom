@@ -41,10 +41,11 @@ switch ($module) {
         exit($cmd->run(array_merge([$command], $remaining)));
 
     case 'thesaurus':
-        require_once FRAMEWORK_ROOT . '/src/Services/SemanticSearch/ThesaurusService.php';
-        require_once FRAMEWORK_ROOT . '/src/Services/SemanticSearch/WordNetSyncService.php';
-        require_once FRAMEWORK_ROOT . '/src/Services/SemanticSearch/WikidataSyncService.php';
-        require_once FRAMEWORK_ROOT . '/src/Console/ThesaurusCommand.php';
+        $semanticPlugin = ATOM_ROOT . '/atom-ahg-plugins/ahgSemanticSearchPlugin';
+        require_once $semanticPlugin . '/lib/Services/ThesaurusService.php';
+        require_once $semanticPlugin . '/lib/Services/WordNetSyncService.php';
+        require_once $semanticPlugin . '/lib/Services/WikidataSyncService.php';
+        require_once $semanticPlugin . '/lib/Commands/ThesaurusCommand.php';
         $cmd = new \AtomFramework\Console\ThesaurusCommand(array_merge(['atom', $command], $remaining));
         exit($cmd->run());
 
