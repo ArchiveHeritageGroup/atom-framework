@@ -132,10 +132,11 @@ echo ""
 echo -e "${BLUE}Step 4: Copying dist assets...${NC}"
 
 DIST_DIR="${ATOM_ROOT}/dist"
+mkdir -p "${DIST_DIR}/css" "${DIST_DIR}/js"
 
-if [ -d "${AHG_PLUGINS}/ahgThemeB5Plugin/dist" ]; then
-    cp -f ${AHG_PLUGINS}/ahgThemeB5Plugin/dist/css/* ${DIST_DIR}/css/ 2>/dev/null && echo -e "  ${GREEN}✓${NC} Copied CSS assets" || echo -e "  ${YELLOW}→${NC} No CSS to copy"
-    cp -f ${AHG_PLUGINS}/ahgThemeB5Plugin/dist/js/* ${DIST_DIR}/js/ 2>/dev/null && echo -e "  ${GREEN}✓${NC} Copied JS assets" || echo -e "  ${YELLOW}→${NC} No JS to copy"
+if [ -d "${AHG_PLUGINS}/ahgThemeB5Plugin/web/dist" ]; then
+    cp -f ${AHG_PLUGINS}/ahgThemeB5Plugin/web/dist/css/* ${DIST_DIR}/css/ 2>/dev/null && echo -e "  ${GREEN}✓${NC} Copied CSS assets" || echo -e "  ${YELLOW}→${NC} No CSS to copy"
+    cp -f ${AHG_PLUGINS}/ahgThemeB5Plugin/web/dist/js/* ${DIST_DIR}/js/ 2>/dev/null && echo -e "  ${GREEN}✓${NC} Copied JS assets" || echo -e "  ${YELLOW}→${NC} No JS to copy"
 else
     echo -e "  ${YELLOW}⚠${NC} AHG theme dist folder not found"
 fi
