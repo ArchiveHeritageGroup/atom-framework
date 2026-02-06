@@ -292,7 +292,7 @@ class NumberingService
             'object_id' => $objectId,
             'year_context' => date('Y'),
             'month_context' => date('n'),
-            'created_at' => now(),
+            'created_at' => date('Y-m-d H:i:s'),
         ]);
     }
 
@@ -379,8 +379,8 @@ class NumberingService
             'allow_manual_override' => $data['allow_manual_override'] ?? 1,
             'is_active' => $data['is_active'] ?? 1,
             'is_default' => $data['is_default'] ?? 0,
-            'created_at' => now(),
-            'updated_at' => now(),
+            'created_at' => date('Y-m-d H:i:s'),
+            'updated_at' => date('Y-m-d H:i:s'),
         ]);
     }
 
@@ -402,7 +402,7 @@ class NumberingService
                 ->update(['is_default' => 0]);
         }
 
-        $data['updated_at'] = now();
+        $data['updated_at'] = date('Y-m-d H:i:s');
         DB::table('numbering_scheme')->where('id', $id)->update($data);
     }
 
