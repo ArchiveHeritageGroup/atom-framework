@@ -32,6 +32,10 @@ class MediaHelper
             'application/vnd.rn-realmedia' => 'video/mp4',
             'video/x-ms-vob'        => 'video/mp4',
             'application/mxf'       => 'video/mp4',
+            'video/x-f4v'           => 'video/mp4',
+            'video/mpeg'            => 'video/mp4',
+            'video/x-m2ts'          => 'video/mp4',
+            'video/ogg'             => 'video/mp4',
             // Audio formats needing transcoding
             'audio/aiff'            => 'audio/mpeg',
             'audio/x-aiff'          => 'audio/mpeg',
@@ -56,6 +60,7 @@ class MediaHelper
             // Video
             'asf', 'avi', 'mov', 'wmv', 'flv', 'mkv', 'ts', 'wtv',
             'hevc', '3gp', '3g2', 'rm', 'rmvb', 'vob', 'mxf',
+            'f4v', 'm2ts', 'mts', 'ogv', 'mpeg', 'mpg',
             // Audio
             'aiff', 'aif', 'au', 'snd', 'ac3', '8svx', 'amb',
             'wma', 'ra', 'ram', 'flac',
