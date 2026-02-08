@@ -26,7 +26,7 @@ class ExtensionCommand
         'cleanup' => 'Process pending deletions',
         'discover' => 'Discover extensions & check for updates',
         'upgrade' => 'Upgrade plugin (run install.sql, update DB version)',
-        'update' => 'Update an extension',
+        'update' => 'Update extensions (--all: pull repos, sync new plugins, upgrade, clear cache)',
         'audit' => 'Show audit log',
     ];
 
@@ -999,6 +999,7 @@ class ExtensionCommand
             $ahgPluginsPath = dirname($pluginsPath) . '/atom-ahg-plugins';
             if (is_dir($ahgPluginsPath . '/.git')) {
                 $this->info('Updating atom-ahg-plugins repository...');
+                $gitOutput = [];
                 exec("cd {$ahgPluginsPath} && git pull origin main 2>&1", $gitOutput, $gitCode);
                 if ($gitCode === 0) {
                     $this->success('Repository updated');
@@ -1007,7 +1008,27 @@ class ExtensionCommand
                 }
                 $this->line('');
             }
-            
+
+            // Also pull atom-framework if it's a git repo
+            $frameworkPath = dirname($pluginsPath) . '/atom-framework';
+            if (is_dir($frameworkPath . '/.git')) {
+                $this->info('Updating atom-framework repository...');
+                $fwOutput = [];
+                exec("cd {$frameworkPath} && git pull origin main 2>&1", $fwOutput, $fwCode);
+                if ($fwCode === 0) {
+                    $this->success('Framework updated');
+                } else {
+                    $this->warning('Could not update framework: ' . implode(' ', $fwOutput));
+                }
+                $this->line('');
+            }
+
+            // Discover new plugins from atom-ahg-plugins that need symlinks + install
+            $this->syncNewPlugins($ahgPluginsPath, $pluginsPath);
+
+            // Run upgrade on any plugins where file version > DB version
+            $this->autoUpgradePlugins($pluginsPath);
+
             // Get remote plugins (including themes)
             $remote = $this->fetcher->getRemotePlugins(true);
 
@@ -1249,6 +1270,27 @@ class ExtensionCommand
             }
         }
 
+        // Clear cache after updates
+        if ($updateAll) {
+            $this->line('');
+            $this->info('→ Clearing cache...');
+            $atomRoot = getenv('ATOM_ROOT') ?: (defined('ATOM_ROOT') ? ATOM_ROOT : dirname($pluginsPath));
+            $cacheDir = $atomRoot . '/cache';
+            if (is_dir($cacheDir)) {
+                $this->removeDirectory($cacheDir, false);
+            }
+            @mkdir($cacheDir, 0775, true);
+            // Run symfony cc if available
+            $symfonyCli = $atomRoot . '/symfony';
+            if (file_exists($symfonyCli)) {
+                exec("php {$symfonyCli} cc 2>&1", $ccOutput, $ccCode);
+            }
+            $this->success('Cache cleared');
+
+            $this->line('');
+            $this->warning('→ Restart PHP-FPM to complete: sudo systemctl restart php8.3-fpm');
+        }
+
         $this->line('');
         $this->line('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
         $this->line("  Updated: {$success}  |  Failed: {$failed}");
@@ -1257,6 +1299,207 @@ class ExtensionCommand
 
         return $failed > 0 ? 1 : 0;
     }
+    /**
+     * Discover new plugins in atom-ahg-plugins/ that don't have symlinks or aren't installed.
+     * Creates symlinks and installs them automatically.
+     */
+    protected function syncNewPlugins(string $ahgPluginsPath, string $pluginsPath): void
+    {
+        if (!is_dir($ahgPluginsPath)) {
+            return;
+        }
+
+        $dirs = @scandir($ahgPluginsPath);
+        if (!$dirs) {
+            return;
+        }
+
+        // Get list of plugins already in atom_plugin table
+        $installedPlugins = [];
+        try {
+            $installedPlugins = \Illuminate\Database\Capsule\Manager::table('atom_plugin')
+                ->pluck('name')
+                ->toArray();
+            $installedPlugins = array_flip($installedPlugins);
+        } catch (\Exception $e) {
+            // Table may not exist
+        }
+
+        $newPlugins = [];
+
+        foreach ($dirs as $dir) {
+            if ($dir === '.' || $dir === '..' || !is_dir("{$ahgPluginsPath}/{$dir}")) {
+                continue;
+            }
+
+            // Must have extension.json to be a plugin
+            if (!file_exists("{$ahgPluginsPath}/{$dir}/extension.json")) {
+                continue;
+            }
+
+            $symlinkPath = "{$pluginsPath}/{$dir}";
+
+            // Create symlink if missing
+            if (!file_exists($symlinkPath) && !is_link($symlinkPath)) {
+                $target = "{$ahgPluginsPath}/{$dir}";
+                if (@symlink($target, $symlinkPath)) {
+                    $this->success("Symlink created: {$dir}");
+                } else {
+                    $this->warning("Could not create symlink for {$dir}");
+                    continue;
+                }
+            }
+
+            // Check if plugin needs to be installed (not in atom_plugin table)
+            if (!isset($installedPlugins[$dir])) {
+                $newPlugins[] = $dir;
+            }
+        }
+
+        if (empty($newPlugins)) {
+            return;
+        }
+
+        $this->line('');
+        $this->info('→ New plugins detected after pull:');
+        foreach ($newPlugins as $pluginName) {
+            $this->line("  • {$pluginName}");
+        }
+        $this->line('');
+
+        $installNew = true;
+        if ($this->interactive) {
+            echo "  Install and enable new plugins? [Y/n]: ";
+            $answer = strtolower(trim(fgets(STDIN)));
+            $installNew = ($answer === '' || $answer === 'y' || $answer === 'yes');
+        }
+
+        if (!$installNew) {
+            $this->line('  Skipping new plugin installation.');
+            $this->line('  Install manually: php bin/atom extension:install <name>');
+            return;
+        }
+
+        foreach ($newPlugins as $pluginName) {
+            $this->line('');
+            $this->info("→ Installing {$pluginName}...");
+
+            try {
+                // Run install.sql if it exists
+                $hasSql = $this->migrationHandler->hasSqlFile($pluginName);
+                $hasMigrations = $this->migrationHandler->hasMigrations($pluginName);
+
+                if ($hasSql || $hasMigrations) {
+                    $this->line('  Creating database tables...');
+                    if ($hasMigrations) {
+                        $results = $this->migrationHandler->runMigrations($pluginName);
+                        foreach ($results['success'] as $file) {
+                            $this->success("  {$file}");
+                        }
+                    } elseif ($hasSql) {
+                        $this->migrationHandler->runSqlFile($pluginName);
+                        $this->success('  Tables created');
+                    }
+                }
+
+                // Register and enable in atom_plugin
+                $this->manager->install($pluginName);
+                $this->manager->enable($pluginName);
+                $this->success("{$pluginName} installed and enabled");
+            } catch (\Exception $e) {
+                $this->error("Failed to install {$pluginName}: " . $e->getMessage());
+            }
+        }
+
+        $this->line('');
+    }
+
+    /**
+     * Auto-upgrade plugins where file version > DB version (after git pull).
+     */
+    protected function autoUpgradePlugins(string $pluginsPath): void
+    {
+        $local = $this->manager->discover(true);
+
+        // Get DB versions
+        $dbVersions = [];
+        try {
+            $dbVersions = \Illuminate\Database\Capsule\Manager::table('atom_plugin')
+                ->whereNotNull('version')
+                ->pluck('version', 'name')
+                ->toArray();
+        } catch (\Exception $e) {
+            return;
+        }
+
+        $atomRoot = getenv('ATOM_ROOT') ?: (defined('ATOM_ROOT') ? ATOM_ROOT : dirname($pluginsPath));
+        $upgradeable = [];
+
+        foreach ($local as $plugin) {
+            $name = $plugin['machine_name'] ?? '';
+            $fileVersion = $plugin['version'] ?? '0.0.0';
+            $dbVersion = $dbVersions[$name] ?? '0.0.0';
+
+            if (version_compare($fileVersion, $dbVersion, '>')) {
+                $upgradeable[$name] = [
+                    'file_version' => $fileVersion,
+                    'db_version' => $dbVersion,
+                    'path' => $plugin['path'] ?? null,
+                ];
+            }
+        }
+
+        if (empty($upgradeable)) {
+            return;
+        }
+
+        $this->info('→ Upgrading ' . count($upgradeable) . ' plugin(s) with newer file versions...');
+
+        foreach ($upgradeable as $name => $info) {
+            $this->line("  {$name}: {$info['db_version']} → {$info['file_version']}");
+
+            // Find and run install.sql
+            $sqlPaths = [
+                $info['path'] . '/database/install.sql',
+                "{$pluginsPath}/{$name}/database/install.sql",
+                $info['path'] . '/data/install.sql',
+                "{$pluginsPath}/{$name}/data/install.sql",
+            ];
+
+            foreach ($sqlPaths as $sqlPath) {
+                if ($sqlPath && file_exists($sqlPath)) {
+                    try {
+                        $config = \Illuminate\Database\Capsule\Manager::connection()->getConfig();
+                        $cmd = sprintf(
+                            'mysql -h %s -u %s %s %s < %s 2>&1',
+                            escapeshellarg($config['host'] ?? 'localhost'),
+                            escapeshellarg($config['username'] ?? ''),
+                            !empty($config['password']) ? '-p' . escapeshellarg($config['password']) : '',
+                            escapeshellarg($config['database'] ?? ''),
+                            escapeshellarg($sqlPath)
+                        );
+                        exec($cmd, $output, $rc);
+                    } catch (\Exception $e) {
+                        // Continue on SQL errors (tables may already exist)
+                    }
+                    break;
+                }
+            }
+
+            // Update version in atom_plugin
+            try {
+                \Illuminate\Database\Capsule\Manager::table('atom_plugin')
+                    ->where('name', $name)
+                    ->update(['version' => $info['file_version']]);
+            } catch (\Exception $e) {
+                // Ignore
+            }
+        }
+
+        $this->success('Upgrades complete');
+        $this->line('');
+    }
+
     protected function createBackup(string $name): ?string
     {
         $pluginsPath = $this->manager->getSetting('extensions_path', null, '/var/www/atom/plugins');
