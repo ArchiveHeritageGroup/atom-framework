@@ -26,7 +26,8 @@ mkdir -p "${BACKUP_PATH}"/{database,plugins,framework,config}
 log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" | tee -a "$LOG"; }
 log "Starting backup: ${BACKUP_ID}"
 
-CONFIG_FILE="${ATOM_ROOT}/apps/qubit/config/config.php"
+CONFIG_FILE="${ATOM_ROOT}/config/config.php"
+[ ! -f "$CONFIG_FILE" ] && CONFIG_FILE="${ATOM_ROOT}/apps/qubit/config/config.php"
 [ -f "$CONFIG_FILE" ] && {
     DB_HOST=$(grep -oP "host=\K[^;']+" "$CONFIG_FILE" | head -1)
     DB_NAME=$(grep -oP "dbname=\K[^;']+" "$CONFIG_FILE" | head -1)
@@ -48,7 +49,7 @@ DB_HOST=${DB_HOST:-localhost}; DB_NAME=${DB_NAME:-RIC}; DB_USER=${DB_USER:-root}
 
 [ "$INCLUDE_PLUGINS" = "1" ] && {
     log "Backing up plugins"
-    for p in "${ATOM_ROOT}/plugins"/ar*Plugin "${ATOM_ROOT}/plugins"/sf*Plugin; do
+    for p in "${ATOM_ROOT}/plugins"/ahg*Plugin "${ATOM_ROOT}/plugins"/ar*Plugin "${ATOM_ROOT}/plugins"/sf*Plugin; do
         [ -d "$p" ] && cp -r "$p" "${BACKUP_PATH}/plugins/"
     done
 }
@@ -58,7 +59,7 @@ DB_HOST=${DB_HOST:-localhost}; DB_NAME=${DB_NAME:-RIC}; DB_USER=${DB_USER:-root}
     tar -czf "${BACKUP_PATH}/uploads.tar.gz" -C "${ATOM_ROOT}" uploads
 }
 
-for cfg in apps/qubit/config/config.php apps/qubit/config/settings.yml config/propel.ini; do
+for cfg in config/config.php apps/qubit/config/config.php apps/qubit/config/settings.yml config/propel.ini; do
     [ -f "${ATOM_ROOT}/${cfg}" ] && cp "${ATOM_ROOT}/${cfg}" "${BACKUP_PATH}/config/"
 done
 

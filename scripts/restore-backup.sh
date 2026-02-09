@@ -18,7 +18,8 @@ read -p "Continue? (yes/no): " CONFIRM
 log() { echo "[$(date '+%Y-%m-%d %H:%M:%S')] RESTORE: $1" | tee -a "$LOG"; }
 log "Starting restore: ${BACKUP_ID}"
 
-CONFIG_FILE="${ATOM_ROOT}/apps/qubit/config/config.php"
+CONFIG_FILE="${ATOM_ROOT}/config/config.php"
+[ ! -f "$CONFIG_FILE" ] && CONFIG_FILE="${ATOM_ROOT}/apps/qubit/config/config.php"
 [ -f "$CONFIG_FILE" ] && {
     DB_HOST=$(grep -oP "host=\K[^;']+" "$CONFIG_FILE" | head -1)
     DB_NAME=$(grep -oP "dbname=\K[^;']+" "$CONFIG_FILE" | head -1)
