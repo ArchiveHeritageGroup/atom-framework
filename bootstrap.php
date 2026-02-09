@@ -59,3 +59,14 @@ if (file_exists($configFile)) {
         $capsule->bootEloquent();
     }
 }
+
+// Register global class aliases for non-namespaced plugin action files
+if (!class_exists('AhgActions', false)) {
+    class_alias(\AtomFramework\Actions\AhgActions::class, 'AhgActions');
+}
+if (!class_exists('AhgComponents', false)) {
+    class_alias(\AtomFramework\Actions\AhgComponents::class, 'AhgComponents');
+}
+if (!class_exists('AhgTask', false)) {
+    class_alias(\AtomFramework\Actions\AhgTask::class, 'AhgTask');
+}
