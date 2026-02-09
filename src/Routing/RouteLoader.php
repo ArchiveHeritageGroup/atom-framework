@@ -30,25 +30,25 @@ class RouteLoader
     /**
      * Register a GET route.
      */
-    public function get(string $name, string $url, string $action, array $requirements = []): self
+    public function get(string $name, string $url, string $action, array $requirements = [], array $defaults = []): self
     {
-        return $this->addRoute($name, $url, $action, $requirements, ['get']);
+        return $this->addRoute($name, $url, $action, $requirements, ['get'], $defaults);
     }
 
     /**
      * Register a POST route.
      */
-    public function post(string $name, string $url, string $action, array $requirements = []): self
+    public function post(string $name, string $url, string $action, array $requirements = [], array $defaults = []): self
     {
-        return $this->addRoute($name, $url, $action, $requirements, ['post']);
+        return $this->addRoute($name, $url, $action, $requirements, ['post'], $defaults);
     }
 
     /**
      * Register a route for any HTTP method.
      */
-    public function any(string $name, string $url, string $action, array $requirements = []): self
+    public function any(string $name, string $url, string $action, array $requirements = [], array $defaults = []): self
     {
-        return $this->addRoute($name, $url, $action, $requirements);
+        return $this->addRoute($name, $url, $action, $requirements, [], $defaults);
     }
 
     /**
@@ -66,7 +66,8 @@ class RouteLoader
                 $route['url'],
                 array_merge(
                     ['module' => $this->module, 'action' => $route['action']],
-                    $options
+                    $options,
+                    $route['defaults']
                 ),
                 $route['requirements']
             ));
@@ -84,7 +85,7 @@ class RouteLoader
     /**
      * Add a route definition.
      */
-    private function addRoute(string $name, string $url, string $action, array $requirements, array $methods = []): self
+    private function addRoute(string $name, string $url, string $action, array $requirements, array $methods = [], array $defaults = []): self
     {
         $this->routes[] = [
             'name' => $name,
@@ -92,6 +93,7 @@ class RouteLoader
             'action' => $action,
             'requirements' => $requirements,
             'methods' => $methods,
+            'defaults' => $defaults,
         ];
 
         return $this;
