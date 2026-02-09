@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-$frameworkPath = '/usr/share/nginx/archive/atom-framework';
+$frameworkPath = dirname(__DIR__);
 
 require_once $frameworkPath . '/vendor/autoload.php';
 

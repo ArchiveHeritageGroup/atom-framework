@@ -199,6 +199,64 @@ class PathResolver
     }
 
     /**
+     * Get the root vendor directory.
+     */
+    public static function getVendorDir(): string
+    {
+        return self::getRootDir() . '/vendor';
+    }
+
+    /**
+     * Get the framework vendor directory.
+     */
+    public static function getFrameworkVendorDir(): string
+    {
+        return self::getFrameworkDir() . '/vendor';
+    }
+
+    /**
+     * Get the framework autoload path.
+     */
+    public static function getFrameworkAutoloadPath(): string
+    {
+        return self::getFrameworkVendorDir() . '/autoload.php';
+    }
+
+    /**
+     * Get the root autoload path.
+     */
+    public static function getRootAutoloadPath(): string
+    {
+        return self::getVendorDir() . '/autoload.php';
+    }
+
+    /**
+     * Get a library path, checking framework vendor first, then root vendor.
+     */
+    public static function getLibraryPath(string $package): ?string
+    {
+        $frameworkPath = self::getFrameworkVendorDir() . '/' . $package;
+        if (file_exists($frameworkPath)) {
+            return $frameworkPath;
+        }
+
+        $rootPath = self::getVendorDir() . '/' . $package;
+        if (file_exists($rootPath)) {
+            return $rootPath;
+        }
+
+        return null;
+    }
+
+    /**
+     * Get a base AtoM module action path.
+     */
+    public static function getBaseModulePath(string $module, string $action): string
+    {
+        return self::getRootDir() . '/apps/qubit/modules/' . $module . '/actions/' . $action;
+    }
+
+    /**
      * Reset cached paths (useful for testing).
      */
     public static function reset(): void

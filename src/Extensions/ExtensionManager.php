@@ -4,6 +4,7 @@ namespace AtomFramework\Extensions;
 
 use AtomFramework\Extensions\Contracts\ExtensionManagerContract;
 use AtomFramework\Extensions\Handlers\ExtensionDataHandler;
+use AtomFramework\Helpers\PathResolver;
 use AtomFramework\Repositories\ExtensionRepository;
 use Illuminate\Support\Collection;
 use Illuminate\Database\Capsule\Manager as DB;
@@ -19,7 +20,7 @@ class ExtensionManager implements ExtensionManagerContract
     {
         $this->repository = new ExtensionRepository();
         $this->dataHandler = new ExtensionDataHandler();
-        $this->pluginsPath = $this->repository->getSetting('extensions_path', null, defined('ATOM_ROOT') ? ATOM_ROOT . '/plugins' : '/var/www/atom/plugins');
+        $this->pluginsPath = $this->repository->getSetting('extensions_path', null, PathResolver::getPluginsDir());
     }
 
     /**

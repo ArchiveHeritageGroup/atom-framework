@@ -366,17 +366,11 @@ class DigitalObjectConfig
     // =========================================================================
 
     /**
-     * Get upload directory - uses sfConfig, no hardcoded path
+     * Get upload directory - uses PathResolver, no hardcoded path
      */
     public static function uploadDirectory(): string
     {
-        // Always use sfConfig - never hardcode paths
-        if (class_exists('sfConfig')) {
-            return \sfConfig::get('sf_upload_dir');
-        }
-
-        // Fallback for CLI or non-Symfony context
-        return self::get('upload.directory', '/usr/share/nginx/atom/uploads');
+        return \AtomFramework\Helpers\PathResolver::getUploadsDir();
     }
 
     public static function jpegQuality(): int

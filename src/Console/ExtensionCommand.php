@@ -6,6 +6,7 @@ use AtomFramework\Extensions\ExtensionManager;
 use AtomFramework\Extensions\PluginFetcher;
 use AtomFramework\Extensions\MigrationHandler;
 use AtomFramework\Extensions\ExtensionProtection;
+use AtomFramework\Helpers\PathResolver;
 
 class ExtensionCommand
 {
@@ -34,7 +35,7 @@ class ExtensionCommand
     {
         $this->argv = $argv;
         $this->manager = new ExtensionManager();
-        $pluginsPath = $this->manager->getSetting('extensions_path', null, '/var/www/atom/plugins');
+        $pluginsPath = $this->manager->getSetting('extensions_path', null, PathResolver::getPluginsDir());
         $this->fetcher = new PluginFetcher($pluginsPath);
         $this->migrationHandler = new MigrationHandler($pluginsPath);
         $this->interactive = !in_array('--no-interaction', $argv) && !in_array('-n', $argv);
@@ -184,7 +185,7 @@ class ExtensionCommand
         $this->line('');
 
         // Check if plugin exists locally (plugins/ or atom-ahg-plugins/)
-        $pluginsPath = $this->manager->getSetting('extensions_path', null, '/var/www/atom/plugins');
+        $pluginsPath = $this->manager->getSetting('extensions_path', null, PathResolver::getPluginsDir());
         $pluginPath = "{$pluginsPath}/{$name}";
 
         // First check if already in plugins/ directory
@@ -819,10 +820,10 @@ class ExtensionCommand
         }
 
         $this->line('');
-        $pluginsPath = rtrim($this->manager->getSetting('extensions_path', null, '/var/www/atom/atom-ahg-plugins'), '/');
-        
+        $pluginsPath = rtrim($this->manager->getSetting('extensions_path', null, PathResolver::getPluginsDir()), '/');
+
         // Also check plugins directory for symlinks
-        $atomRoot = getenv('ATOM_ROOT') ?: '/var/www/atom';
+        $atomRoot = PathResolver::getRootDir();
         $pluginsDir = $atomRoot . '/plugins';
 
         // Get list of plugins to upgrade
@@ -990,7 +991,7 @@ class ExtensionCommand
         }
 
         $this->line('');
-        $pluginsPath = $this->manager->getSetting('extensions_path', null, '/var/www/atom/plugins');
+        $pluginsPath = $this->manager->getSetting('extensions_path', null, PathResolver::getPluginsDir());
 
         // Get list of extensions to update
         $toUpdate = [];
@@ -1267,7 +1268,7 @@ class ExtensionCommand
     }
     protected function createBackup(string $name): ?string
     {
-        $pluginsPath = $this->manager->getSetting('extensions_path', null, '/var/www/atom/plugins');
+        $pluginsPath = $this->manager->getSetting('extensions_path', null, PathResolver::getPluginsDir());
         $pluginPath = "{$pluginsPath}/{$name}";
         $backupDir = dirname($pluginsPath) . '/backups/extensions';
 
@@ -1310,7 +1311,7 @@ class ExtensionCommand
      */
     protected function runUpdateMigrations(string $name, string $fromVersion, string $toVersion): void
     {
-        $pluginsPath = $this->manager->getSetting('extensions_path', null, '/var/www/atom/plugins');
+        $pluginsPath = $this->manager->getSetting('extensions_path', null, PathResolver::getPluginsDir());
         $migrationsPath = "{$pluginsPath}/{$name}/schema/migrations";
 
         if (!is_dir($migrationsPath)) {
@@ -1350,7 +1351,7 @@ class ExtensionCommand
      */
     protected function clearCache(): void
     {
-        $cacheDir = defined('ATOM_ROOT') ? ATOM_ROOT . '/cache' : '/var/www/atom/cache';
+        $cacheDir = PathResolver::getCacheDir();
 
         if (is_dir($cacheDir)) {
             $this->removeDirectory($cacheDir, false);
@@ -1730,7 +1731,7 @@ class ExtensionCommand
      */
     protected function resolvePluginPath(string $name): ?string
     {
-        $pluginsPath = $this->manager->getSetting('extensions_path', null, '/var/www/atom/plugins');
+        $pluginsPath = $this->manager->getSetting('extensions_path', null, PathResolver::getPluginsDir());
         $pluginPath = "{$pluginsPath}/{$name}";
 
         if (is_dir($pluginPath)) {

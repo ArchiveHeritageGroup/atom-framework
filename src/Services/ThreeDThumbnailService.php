@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace AtomExtensions\Services;
 
+use AtomFramework\Helpers\PathResolver;
 use Illuminate\Database\Capsule\Manager as DB;
 
 /**
@@ -17,8 +18,8 @@ class ThreeDThumbnailService
 
     public function __construct()
     {
-        $this->toolPath = '/usr/share/nginx/archive/atom-framework/tools/3d-thumbnail';
-        $this->logPath = '/usr/share/nginx/archive/log/3d-thumbnail.log';
+        $this->toolPath = PathResolver::getFrameworkDir() . '/tools/3d-thumbnail';
+        $this->logPath = PathResolver::getLogDir() . '/3d-thumbnail.log';
     }
 
     private function log(string $message, string $level = 'INFO'): void
@@ -89,7 +90,7 @@ class ThreeDThumbnailService
             return false;
         }
 
-        $uploadsPath = '/usr/share/nginx/archive';
+        $uploadsPath = PathResolver::getRootDir();
         $masterPath = $uploadsPath . $digitalObject->path . $digitalObject->name;
 
         if (!file_exists($masterPath)) {

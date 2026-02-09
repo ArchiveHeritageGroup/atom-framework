@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace AtomFramework\Services;
 
+use AtomFramework\Helpers\PathResolver;
 use AtomFramework\Repositories\TiffPdfMergeRepository;
 use Illuminate\Database\Capsule\Manager as DB;
 use Exception;
@@ -30,11 +31,7 @@ class TiffPdfMergeService
         $this->tempDir = $this->settings['temp_directory'] ?? '/tmp/tiff-pdf-merge';
         
         // Get upload directory - handle CLI context
-        if (class_exists('sfConfig') && method_exists('sfConfig', 'get')) {
-            $this->uploadDir = \sfConfig::get('sf_upload_dir', '/usr/share/nginx/archive/uploads');
-        } else {
-            $this->uploadDir = '/usr/share/nginx/archive/uploads';
-        }
+        $this->uploadDir = PathResolver::getUploadsDir();
 
         // Ensure temp directory exists
         if (!is_dir($this->tempDir)) {

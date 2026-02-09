@@ -2,6 +2,7 @@
 
 namespace AtomExtensions\Services;
 
+use AtomFramework\Helpers\PathResolver;
 use Illuminate\Database\Capsule\Manager as DB;
 
 class BackupService
@@ -1010,11 +1011,7 @@ class BackupService
      */
     private function getAtomRoot(): string
     {
-        if (class_exists('sfConfig', false)) {
-            return \sfConfig::get('sf_root_dir', '/usr/share/nginx/archive');
-        }
-        // Fallback: calculate from this file location
-        return dirname(dirname(dirname(__DIR__)));
+        return PathResolver::getRootDir();
     }
 private function restoreFuseki(string $backupDir): void
     {

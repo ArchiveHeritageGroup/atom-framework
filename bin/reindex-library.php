@@ -10,7 +10,8 @@
  * in count() and in_array() calls. This script is a workaround.
  */
 
-require_once '/usr/share/nginx/archive/config/ProjectConfiguration.class.php';
+$atomRoot = dirname(__DIR__, 2);
+require_once $atomRoot . '/config/ProjectConfiguration.class.php';
 $configuration = ProjectConfiguration::getApplicationConfiguration('qubit', 'cli', false);
 sfContext::createInstance($configuration);
 
@@ -27,7 +28,7 @@ $ids = array_slice($argv, 1);
 
 if (empty($ids)) {
     // Get all library item IDs
-    require_once '/usr/share/nginx/archive/atom-framework/bootstrap.php';
+    require_once $atomRoot . '/atom-framework/bootstrap.php';
     $db = \Illuminate\Database\Capsule\Manager::connection();
     $ids = $db->table('library_item')->pluck('information_object_id')->toArray();
     echo "Found " . count($ids) . " library items to reindex\n";
