@@ -981,10 +981,11 @@ class ExtensionCommand
         $updateAll = in_array('--all', $args);
         $noBackup = in_array('--no-backup', $args);
         $force = in_array('--force', $args) || in_array('-f', $args);
+        $noPull = in_array('--no-pull', $args);
 
         if (!$name && !$updateAll) {
             $this->error('Usage: php bin/atom extension:update <machine_name> [--no-backup] [--force]');
-            $this->line('       php bin/atom extension:update --all [--no-backup]');
+            $this->line('       php bin/atom extension:update --all [--no-backup] [--no-pull]');
             return 1;
         }
 
@@ -995,19 +996,26 @@ class ExtensionCommand
         $toUpdate = [];
 
         if ($updateAll) {
-            // Pull latest from atom-ahg-plugins repo
             $ahgPluginsPath = dirname($pluginsPath) . '/atom-ahg-plugins';
-            if (is_dir($ahgPluginsPath . '/.git')) {
-                $this->info('Updating atom-ahg-plugins repository...');
-                exec("cd {$ahgPluginsPath} && git pull origin main 2>&1", $gitOutput, $gitCode);
-                if ($gitCode === 0) {
-                    $this->success('Repository updated');
-                } else {
-                    $this->warning('Could not update repository: ' . implode(' ', $gitOutput));
-                }
+
+            if ($noPull) {
+                $this->info('Skipping git pull (--no-pull)');
                 $this->line('');
+            } else {
+                // Pull latest from atom-ahg-plugins repo
+                if (is_dir($ahgPluginsPath . '/.git')) {
+                    $this->info('Updating atom-ahg-plugins repository...');
+                    $gitOutput = [];
+                    exec("cd {$ahgPluginsPath} && git pull origin main 2>&1", $gitOutput, $gitCode);
+                    if ($gitCode === 0) {
+                        $this->success('Repository updated');
+                    } else {
+                        $this->warning('Could not update repository: ' . implode(' ', $gitOutput));
+                    }
+                    $this->line('');
+                }
             }
-            
+
             // Get remote plugins (including themes)
             $remote = $this->fetcher->getRemotePlugins(true);
 
@@ -1536,6 +1544,7 @@ class ExtensionCommand
         $this->line('');
         $this->line('Update Options:');
         $this->line('  --all                Update all extensions');
+        $this->line('  --no-pull            Skip git pull (use after manual pull)');
         $this->line('  --no-backup          Skip backup before update');
         $this->line('  --force, -f          Force update even if up-to-date');
         $this->line('');
