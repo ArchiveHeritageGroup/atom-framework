@@ -6,6 +6,7 @@ use AtomExtensions\Helpers\CultureHelper;
 use AtomFramework\Helpers\CommonHelper;
 use AtomFramework\Helpers\ResponseHelper;
 use AtomFramework\Services\ConfigService;
+use AtomFramework\Views\BladeRenderer;
 
 /**
  * Base action class for AHG plugins.
@@ -118,6 +119,55 @@ class AhgActions extends \sfActions
     {
         if (!$this->getUser()->isAdministrator()) {
             $this->forward('admin', 'secure');
+        }
+    }
+
+    // ─── Blade Template Rendering ─────────────────────────────────
+
+    /**
+     * Render a Blade template and return it as the response.
+     *
+     * Bypasses Symfony's sfPHPView — the compiled Blade output becomes
+     * the full response body. Use for standalone pages (admin panels,
+     * dashboards, CRUD forms) that don't need Symfony's layout decorator.
+     *
+     * @param string $view   Dot-notation view name (e.g., 'vendor.list')
+     * @param array  $data   Variables to pass to the template
+     * @param int    $status HTTP status code
+     */
+    protected function renderBlade(string $view, array $data = [], int $status = 200): string
+    {
+        $renderer = BladeRenderer::getInstance();
+
+        // Auto-register the calling plugin's view path
+        $this->registerPluginViews($renderer);
+
+        // Merge common template data
+        $data = array_merge([
+            'sf_user' => $this->getUser(),
+            'sf_request' => $this->getRequest(),
+        ], $data);
+
+        $html = $renderer->render($view, $data);
+
+        $this->getResponse()->setStatusCode($status);
+        $this->getResponse()->setContentType('text/html');
+
+        return $this->renderText($html);
+    }
+
+    /**
+     * Auto-detect and register the calling plugin's template directories.
+     */
+    private function registerPluginViews(BladeRenderer $renderer): void
+    {
+        $moduleName = $this->getModuleName();
+        $dirs = $this->getContext()->getConfiguration()->getTemplateDirs($moduleName);
+
+        foreach ($dirs as $dir) {
+            if (is_dir($dir)) {
+                $renderer->addPath($dir);
+            }
         }
     }
 }

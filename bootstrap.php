@@ -70,3 +70,6 @@ if (!class_exists('AhgComponents', false)) {
 if (!class_exists('AhgTask', false)) {
     class_alias(\AtomFramework\Actions\AhgTask::class, 'AhgTask');
 }
+if (!class_exists('BladeRenderer', false)) {
+    class_alias(\AtomFramework\Views\BladeRenderer::class, 'BladeRenderer');
+}
