@@ -18,46 +18,61 @@ $loader->addPsr4('AtomExtensions\\', __DIR__ . '/src/');
 
 use Illuminate\Database\Capsule\Manager as Capsule;
 
-$configFile = ATOM_ROOT_PATH . '/config/config.php';
-if (file_exists($configFile)) {
-    $config = require $configFile;
-    if (isset($config['all']['propel']['param'])) {
-        $dbConfig = $config['all']['propel']['param'];
-
-        // Parse database name from DSN
-        $dsn = $dbConfig['dsn'] ?? '';
-        $database = 'atom';
-        if (preg_match('/dbname=([^;]+)/', $dsn, $matches)) {
-            $database = $matches[1];
-        }
-
-        // Parse host from DSN
-        $host = 'localhost';
-        if (preg_match('/host=([^;]+)/', $dsn, $matches)) {
-            $host = $matches[1];
-        }
-
-        // Parse port from DSN
-        $port = 3306;
-        if (preg_match('/port=([^;]+)/', $dsn, $matches)) {
-            $port = (int)$matches[1];
-        }
-
-        $capsule = new Capsule;
-        $capsule->addConnection([
-            'driver' => 'mysql',
-            'host' => $host,
-            'port' => $port,
-            'database' => $database,
-            'username' => $dbConfig['username'] ?? 'atom',
-            'password' => $dbConfig['password'] ?? '',
-            'charset' => 'utf8mb4',
-            'collation' => 'utf8mb4_unicode_ci',
-            'prefix' => '',
-        ]);
-        $capsule->setAsGlobal();
-        $capsule->bootEloquent();
+/**
+ * Parse database connection config from AtoM's config.php.
+ *
+ * Returns an array suitable for Illuminate Capsule::addConnection(),
+ * or null if the config file is missing/invalid.
+ */
+function atomParseDbConfig(string $rootPath): ?array
+{
+    $configFile = $rootPath . '/config/config.php';
+    if (!file_exists($configFile)) {
+        return null;
     }
+
+    $config = require $configFile;
+    if (!isset($config['all']['propel']['param'])) {
+        return null;
+    }
+
+    $dbConfig = $config['all']['propel']['param'];
+    $dsn = $dbConfig['dsn'] ?? '';
+
+    $database = 'atom';
+    if (preg_match('/dbname=([^;]+)/', $dsn, $matches)) {
+        $database = $matches[1];
+    }
+
+    $host = 'localhost';
+    if (preg_match('/host=([^;]+)/', $dsn, $matches)) {
+        $host = $matches[1];
+    }
+
+    $port = 3306;
+    if (preg_match('/port=([^;]+)/', $dsn, $matches)) {
+        $port = (int) $matches[1];
+    }
+
+    return [
+        'driver' => 'mysql',
+        'host' => $host,
+        'port' => $port,
+        'database' => $database,
+        'username' => $dbConfig['username'] ?? 'atom',
+        'password' => $dbConfig['password'] ?? '',
+        'charset' => 'utf8mb4',
+        'collation' => 'utf8mb4_unicode_ci',
+        'prefix' => '',
+    ];
+}
+
+$dbConnection = atomParseDbConfig(ATOM_ROOT_PATH);
+if (null !== $dbConnection) {
+    $capsule = new Capsule();
+    $capsule->addConnection($dbConnection);
+    $capsule->setAsGlobal();
+    $capsule->bootEloquent();
 }
 
 // Register global class aliases for non-namespaced plugin action files

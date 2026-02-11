@@ -75,6 +75,44 @@ class RouteLoader
     }
 
     /**
+     * Register all defined routes with the Laravel router.
+     *
+     * Converts Symfony-style URL patterns (:param) to Laravel-style ({param})
+     * and registers them with the Illuminate Router. The ActionBridge handles
+     * dispatch to the actual plugin action classes.
+     */
+    public function registerLaravel(\Illuminate\Routing\Router $router, string $bridgeClass = null): void
+    {
+        $bridgeClass = $bridgeClass ?? \AtomFramework\Http\Controllers\ActionBridge::class;
+        $module = $this->module;
+
+        foreach ($this->routes as $route) {
+            // Convert Symfony URL patterns to Laravel: :param → {param}
+            $url = preg_replace('/:([a-zA-Z_]+)/', '{$1}', $route['url']);
+
+            // Build the route handler
+            $handler = $bridgeClass . '@dispatch';
+            $defaults = array_merge($route['defaults'], [
+                '_module' => $module,
+                '_action' => $route['action'],
+            ]);
+
+            // Add requirements as where constraints
+            $methods = !empty($route['methods']) ? $route['methods'] : ['GET', 'POST'];
+
+            $laravelRoute = $router->match(
+                array_map('strtoupper', $methods),
+                $url,
+                $handler
+            )->name($route['name'])->setDefaults($defaults);
+
+            foreach ($route['requirements'] as $param => $pattern) {
+                $laravelRoute->where($param, $pattern);
+            }
+        }
+    }
+
+    /**
      * Get defined routes (for inspection/testing).
      */
     public function getRoutes(): array

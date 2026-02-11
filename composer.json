@@ -1,7 +1,22 @@
-{"name":"archiveheritagegroup/atom-framework","description":"Laravel Query Builder for AtoM","license":"GPL-3.0","require":{"php":">=8.1","illuminate/database":"^10.0",
+{
+    "name": "archiveheritagegroup/atom-framework",
+    "description": "Laravel Query Builder for AtoM",
+    "license": "GPL-3.0",
+    "require": {
+        "php": ">=8.1",
+        "illuminate/database": "^10.0",
+        "illuminate/view": "^10.0",
+        "illuminate/filesystem": "^10.0",
+        "illuminate/events": "^10.0",
+        "illuminate/routing": "^10.0",
+        "illuminate/http": "^10.0",
         "webonyx/graphql-php": "^15.0",
-                "phpoffice/phpspreadsheet": "^5.4",
-                "monolog/monolog": "^3.10",
-                "illuminate/view": "^10.0",
-                "illuminate/filesystem": "^10.0",
-                "illuminate/events": "^10.0"},"autoload":{"psr-4":{"AtomFramework\\":"src/"}}}
+        "phpoffice/phpspreadsheet": "^5.4",
+        "monolog/monolog": "^3.10"
+    },
+    "autoload": {
+        "psr-4": {
+            "AtomFramework\\": "src/"
+        }
+    }
+}
