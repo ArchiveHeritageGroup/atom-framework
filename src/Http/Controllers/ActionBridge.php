@@ -124,7 +124,12 @@ class ActionBridge
         $sfRequest->setParameter('action', $action);
 
         try {
-            // Check if action class extends AhgActions (our modern base)
+            // WP2: Check if action class extends AhgController (new standalone base)
+            if (is_subclass_of($className, AhgController::class)) {
+                return $this->executeAhgController($className, $action, $sfRequest, $module);
+            }
+
+            // Check if action class extends AhgActions (legacy modern base)
             if (is_subclass_of($className, \AtomFramework\Actions\AhgActions::class)
                 || is_subclass_of($className, 'AhgActions')) {
                 return $this->executeAhgAction($className, $action, $sfRequest, $request);
@@ -143,6 +148,19 @@ class ActionBridge
 
             return new \Illuminate\Http\JsonResponse($body, $status);
         }
+    }
+
+    /**
+     * Execute an AhgController-based action (WP2 standalone controllers).
+     *
+     * AhgController subclasses handle their own lifecycle via dispatch().
+     * They return Illuminate\Http\Response objects directly.
+     */
+    private function executeAhgController(string $className, string $action, SfWebRequestAdapter $sfRequest, string $module): \Symfony\Component\HttpFoundation\Response
+    {
+        $instance = new $className();
+
+        return $instance->dispatch($action, $sfRequest, $module);
     }
 
     /**

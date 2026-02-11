@@ -112,6 +112,14 @@ class SfWebRequestAdapter
     }
 
     /**
+     * Get POST parameters (form data).
+     */
+    public function getPostParameters(): array
+    {
+        return $this->request->request->all();
+    }
+
+    /**
      * Magic property access for backward compatibility.
      * Symfony templates often access $request->limit, $request->page, etc.
      */

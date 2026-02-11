@@ -106,4 +106,62 @@ class SfUserAdapter
     {
         return $this;
     }
+
+    // ─── Flash Messages ──────────────────────────────────────────────
+
+    /** @var array<string, string> Flash messages for next request */
+    private array $flash = [];
+
+    /**
+     * Set a flash message (displayed on next request).
+     */
+    public function setFlash(string $name, string $value): void
+    {
+        $this->flash[$name] = $value;
+    }
+
+    /**
+     * Get a flash message.
+     */
+    public function getFlash(string $name, $default = null)
+    {
+        return $this->flash[$name] ?? $default;
+    }
+
+    /**
+     * Check if a flash message exists.
+     */
+    public function hasFlash(string $name): bool
+    {
+        return isset($this->flash[$name]);
+    }
+
+    // ─── Group Membership ───────────────────────────────────────────
+
+    /** @var array<int> Group IDs the user belongs to */
+    private array $groups = [];
+
+    /**
+     * Check if the user belongs to a group (by group ID).
+     *
+     * In AtoM, this checks QubitAclGroup membership. In standalone mode,
+     * group membership is loaded from the session or set programmatically.
+     */
+    public function hasGroup(int $groupId): bool
+    {
+        // Administrator group (100) check — also use credentials
+        if (100 === $groupId && $this->isAdministrator()) {
+            return true;
+        }
+
+        return in_array($groupId, $this->groups);
+    }
+
+    /**
+     * Set group memberships (for standalone mode initialization).
+     */
+    public function setGroups(array $groupIds): void
+    {
+        $this->groups = $groupIds;
+    }
 }

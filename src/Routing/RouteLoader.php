@@ -113,6 +113,57 @@ class RouteLoader
     }
 
     /**
+     * Register routes for a direct AhgController (WP2).
+     *
+     * Maps route definitions directly to controller methods without ActionBridge.
+     * The controller class must extend AhgController and have execute{Action}() methods.
+     *
+     * @param \Illuminate\Routing\Router $router          Laravel router
+     * @param string                     $controllerClass Fully qualified class name
+     */
+    public function registerController(\Illuminate\Routing\Router $router, string $controllerClass): void
+    {
+        $module = $this->module;
+
+        foreach ($this->routes as $route) {
+            // Convert Symfony URL patterns to Laravel: :param → {param}
+            $url = preg_replace('/:([a-zA-Z_]+)/', '{$1}', $route['url']);
+
+            // Build direct closure handler that instantiates the controller
+            $action = $route['action'];
+            $handler = function (\Illuminate\Http\Request $request) use ($controllerClass, $action, $module) {
+                $sfRequest = new \AtomFramework\Http\Compatibility\SfWebRequestAdapter($request);
+
+                // Set route parameters
+                $routeParams = $request->route() ? $request->route()->parameters() : [];
+                foreach ($routeParams as $key => $value) {
+                    if ('_module' !== $key && '_action' !== $key) {
+                        $sfRequest->setParameter($key, $value);
+                    }
+                }
+                $sfRequest->setParameter('module', $module);
+                $sfRequest->setParameter('action', $action);
+
+                $instance = new $controllerClass();
+
+                return $instance->dispatch($action, $sfRequest, $module);
+            };
+
+            $methods = !empty($route['methods']) ? $route['methods'] : ['GET', 'POST'];
+
+            $laravelRoute = $router->match(
+                array_map('strtoupper', $methods),
+                $url,
+                $handler
+            )->name($route['name']);
+
+            foreach ($route['requirements'] as $param => $pattern) {
+                $laravelRoute->where($param, $pattern);
+            }
+        }
+    }
+
+    /**
      * Get defined routes (for inspection/testing).
      */
     public function getRoutes(): array
