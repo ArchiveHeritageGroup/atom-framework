@@ -48,7 +48,7 @@ class AhgActions extends \sfActions
     /**
      * Render a JSON response and return sfView::NONE.
      */
-    protected function renderJson(array $data, int $status = 200): string
+    protected function renderJson(array $data, int $status = 200)
     {
         $this->getResponse()->setStatusCode($status);
         $this->getResponse()->setContentType('application/json');
@@ -61,7 +61,7 @@ class AhgActions extends \sfActions
     /**
      * Render a success JSON response.
      */
-    protected function renderJsonSuccess($data = null, string $message = 'Success'): string
+    protected function renderJsonSuccess($data = null, string $message = 'Success')
     {
         return $this->renderJson(ResponseHelper::success($data, $message));
     }
@@ -69,7 +69,7 @@ class AhgActions extends \sfActions
     /**
      * Render an error JSON response.
      */
-    protected function renderJsonError(string $message, int $code = 400): string
+    protected function renderJsonError(string $message, int $code = 400)
     {
         return $this->renderJson(ResponseHelper::error($message, $code), $code);
     }
@@ -122,7 +122,51 @@ class AhgActions extends \sfActions
         }
     }
 
-    // ─── Blade Template Rendering ─────────────────────────────────
+    // ─── Blade Auto-Detection & Rendering ───────────────────────
+
+    /**
+     * Override execute() to auto-detect blade templates.
+     *
+     * After the action method runs, if it returned null (meaning
+     * "render the default success template"), we check if a
+     * .blade.php version exists. If so, render via BladeRenderer
+     * and return sfView::NONE to skip the PHP template.
+     */
+    public function execute($request)
+    {
+        $result = parent::execute($request);
+
+        // Only auto-detect when the action wants the default success template
+        if ($result !== null) {
+            return $result;
+        }
+
+        return $this->tryBladeAutoRender();
+    }
+
+    /**
+     * Check if a blade template exists for the current action and render it.
+     *
+     * @return string|null sfView::NONE if blade rendered, null to fall back to PHP
+     */
+    private function tryBladeAutoRender()
+    {
+        $templateName = $this->getActionName() . 'Success';
+        $bladeFile = $templateName . '.blade.php';
+        $moduleName = $this->getModuleName();
+
+        $dirs = $this->getContext()->getConfiguration()->getTemplateDirs($moduleName);
+
+        foreach ($dirs as $dir) {
+            if (file_exists($dir . '/' . $bladeFile)) {
+                $data = $this->getVarHolder()->getAll();
+
+                return $this->renderBlade($templateName, $data);
+            }
+        }
+
+        return null;
+    }
 
     /**
      * Render a Blade template and return it as the response.
@@ -142,6 +186,10 @@ class AhgActions extends \sfActions
         // Auto-register the calling plugin's view path
         $this->registerPluginViews($renderer);
 
+        // Ensure Symfony's view_instance is set in context.
+        // Blade templates that call get_partial() / get_component_slot() need it.
+        $this->ensureViewInstance();
+
         // Merge common template data
         $data = array_merge([
             'sf_user' => $this->getUser(),
@@ -154,6 +202,35 @@ class AhgActions extends \sfActions
         $this->getResponse()->setContentType('text/html');
 
         return $this->renderText($html);
+    }
+
+    /**
+     * Ensure Symfony's view_instance is set in the context.
+     *
+     * When Blade bypasses sfPHPView, Symfony helpers like get_component_slot()
+     * and get_partial() may need view_instance to be present. This creates a
+     * minimal sfPHPView and configures it so those helpers work correctly.
+     */
+    private function ensureViewInstance(): void
+    {
+        $context = $this->getContext();
+
+        if ($context->has('view_instance')) {
+            return;
+        }
+
+        try {
+            $view = new \sfPHPView(
+                $context,
+                $this->getModuleName(),
+                $this->getActionName(),
+                ''
+            );
+            $view->configure();
+        } catch (\Exception $e) {
+            // Fallback: set a minimal view instance so get_component_slot doesn't crash
+            // configure() may fail if view.yml doesn't exist for this module
+        }
     }
 
     /**

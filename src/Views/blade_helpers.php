@@ -7,6 +7,28 @@
  * Loaded once by BladeRenderer on initialization.
  */
 
+// Ensure common Symfony helpers (including I18N for __()) are loaded for Blade templates.
+// I18N MUST be loaded before any fallback declaration to avoid redeclare conflicts.
+if (!function_exists('url_for') || !function_exists('__')) {
+    try {
+        sfApplicationConfiguration::getActive()->loadHelpers(['I18N', 'Url', 'Tag', 'Asset', 'Partial', 'Escaping', 'Qubit']);
+    } catch (\Exception $e) {
+        // Helpers may already be loaded or unavailable
+    }
+}
+
+// Fallback __() only if Symfony's I18N helper could not be loaded (e.g. CLI context)
+if (!function_exists('__')) {
+    function __(string $text, array $args = [], string $catalogue = 'messages'): string
+    {
+        if (!empty($args)) {
+            return strtr($text, $args);
+        }
+
+        return $text;
+    }
+}
+
 if (!function_exists('atom_url')) {
     /**
      * Generate a URL from a named Symfony route.

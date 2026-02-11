@@ -21,7 +21,7 @@ if (class_exists('sfContext') && sfContext::hasInstance()) {
 
 $controller = new AdminDisplaySettingsController();
 
-$action = $_GET['action'] ?? $_POST['action'] ?? 'index';
+$action = $_GET['action'] ?? $_POST['action'] ?? $_POST['form_action'] ?? 'index';
 $request = array_merge($_GET, $_POST);
 
 try {
