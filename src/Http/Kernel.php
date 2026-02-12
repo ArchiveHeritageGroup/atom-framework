@@ -2,6 +2,7 @@
 
 namespace AtomFramework\Http;
 
+use AtomFramework\Bridges\PropelBridge;
 use AtomFramework\Http\Compatibility\EscaperShim;
 use AtomFramework\Http\Compatibility\SfConfigShim;
 use AtomFramework\Http\Compatibility\SfContextAdapter;
@@ -93,6 +94,11 @@ class Kernel
 
         // 2. Boot database
         $this->bootDatabase();
+
+        // 2b. Optionally boot Propel bridge (enables Qubit model classes)
+        if (ConfigService::getBool('app_propel_bridge', false)) {
+            PropelBridge::boot($this->rootDir);
+        }
 
         // 3. Load settings from database
         ConfigService::loadFromDatabase('en');

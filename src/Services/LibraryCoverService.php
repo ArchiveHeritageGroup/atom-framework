@@ -63,7 +63,7 @@ class LibraryCoverService
             // Use QubitDigitalObject to create proper digital object with derivatives
             // Try to get from Propel identity map first (for new saves in same request)
             $informationObject = \QubitInformationObject::getById($informationObjectId);
-            if (!$informationObject) {
+            if (!$informationObject && class_exists('Propel') && \Propel::isInit()) {
                 // Force refresh from database
                 \Propel::getConnection()->commit();
                 $informationObject = \QubitInformationObject::getById($informationObjectId);
