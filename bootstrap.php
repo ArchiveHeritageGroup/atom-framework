@@ -75,6 +75,20 @@ if (null !== $dbConnection) {
     $capsule->bootEloquent();
 }
 
+// Global helper functions for term lookups (replaces QubitTerm::getById for read-only access).
+if (!function_exists('term_name')) {
+    function term_name($id, ?string $culture = null): string
+    {
+        return \AtomFramework\Helpers\TermHelper::name($id, $culture);
+    }
+}
+if (!function_exists('term_exists')) {
+    function term_exists($id): bool
+    {
+        return \AtomFramework\Helpers\TermHelper::exists($id);
+    }
+}
+
 // Detect standalone CLI mode (bin/atom sets ATOM_CLI_MODE).
 // In CLI mode: skip Symfony-dependent aliases, load standalone helpers.
 // In web mode: register aliases (Symfony classes available), skip helpers (Symfony provides them).
