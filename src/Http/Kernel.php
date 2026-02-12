@@ -2,6 +2,7 @@
 
 namespace AtomFramework\Http;
 
+use AtomFramework\Http\Compatibility\EscaperShim;
 use AtomFramework\Http\Compatibility\SfConfigShim;
 use AtomFramework\Http\Compatibility\SfContextAdapter;
 use AtomFramework\Http\Controllers\ActionBridge;
@@ -76,10 +77,18 @@ class Kernel
             return;
         }
 
-        // 1. Register sfConfig shim if Symfony isn't loaded
+        // 1. Register shims if Symfony isn't loaded
         if (!class_exists('\sfConfig', false)) {
             SfConfigShim::register();
             SfConfigShim::bootstrap($this->rootDir);
+        }
+
+        if (!class_exists('\sfContext', false)) {
+            class_alias(SfContextAdapter::class, 'sfContext');
+        }
+
+        if (!class_exists('\sfOutputEscaper', false)) {
+            EscaperShim::register();
         }
 
         // 2. Boot database

@@ -88,3 +88,10 @@ if (!class_exists('AhgTask', false)) {
 if (!class_exists('BladeRenderer', false)) {
     class_alias(\AtomFramework\Views\BladeRenderer::class, 'BladeRenderer');
 }
+
+// Load standalone template helpers only when Symfony is NOT loaded.
+// Symfony's own helper files (AssetHelper, UrlHelper, etc.) do NOT use function_exists()
+// guards, so loading our shims first would cause "Cannot redeclare" fatal errors.
+if (!class_exists('sfActions', false)) {
+    require_once __DIR__ . '/src/Helpers/TemplateHelpers.php';
+}

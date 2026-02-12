@@ -403,6 +403,10 @@ class AhgController extends AhgControllerBase
         $renderer = BladeRenderer::getInstance();
         $this->registerPluginViews($renderer);
 
+        // Ensure Symfony's view_instance is set in context.
+        // Blade templates that call get_partial() / get_component_slot() need it.
+        $this->ensureViewInstance();
+
         $data = array_merge([
             'sf_user' => $this->getUser(),
             'sf_request' => $this->getRequest(),
@@ -411,6 +415,48 @@ class AhgController extends AhgControllerBase
         $html = $renderer->render($view, $data);
 
         return $this->renderText($html);
+    }
+
+    /**
+     * Ensure Symfony's view_instance is set in the context.
+     *
+     * When Blade bypasses sfPHPView, Symfony helpers like get_component_slot()
+     * and get_partial() may need view_instance to be present.
+     */
+    private function ensureViewInstance(): void
+    {
+        if (!class_exists('sfContext', false)) {
+            return;
+        }
+
+        try {
+            $context = \sfContext::getInstance();
+        } catch (\Exception $e) {
+            return;
+        }
+
+        if ($context->has('view_instance')) {
+            return;
+        }
+
+        try {
+            $moduleName = class_exists('sfActions', false)
+                ? $this->getModuleName()
+                : ($this->moduleName ?? '');
+            $actionName = class_exists('sfActions', false)
+                ? $this->getActionName()
+                : ($this->actionName ?? '');
+
+            $view = new \sfPHPView(
+                $context,
+                $moduleName,
+                $actionName,
+                ''
+            );
+            $view->configure();
+        } catch (\Exception $e) {
+            // configure() may fail if view.yml doesn't exist for this module
+        }
     }
 
     // ─── Template Variables ─────────────────────────────────────────
