@@ -6,13 +6,16 @@ use AtomFramework\Bridges\PropelBridge;
 use AtomFramework\Http\Compatibility\EscaperShim;
 use AtomFramework\Http\Compatibility\SfConfigShim;
 use AtomFramework\Http\Compatibility\SfContextAdapter;
+use AtomFramework\Http\Controllers;
 use AtomFramework\Http\Controllers\ActionBridge;
+use AtomFramework\Http\Middleware\AuthMiddleware;
 use AtomFramework\Http\Middleware\CspMiddleware;
 use AtomFramework\Http\Middleware\ForceHttpsMiddleware;
 use AtomFramework\Http\Middleware\IpWhitelistMiddleware;
 use AtomFramework\Http\Middleware\LimitResultsMiddleware;
 use AtomFramework\Http\Middleware\LoadSettingsMiddleware;
 use AtomFramework\Http\Middleware\MetaMiddleware;
+use AtomFramework\Http\Middleware\SessionMiddleware;
 use AtomFramework\Http\Middleware\TransactionMiddleware;
 use AtomFramework\Services\ConfigService;
 use Illuminate\Container\Container;
@@ -50,10 +53,12 @@ class Kernel
 
     /** @var string[] Middleware stack in execution order */
     private array $middleware = [
-        LoadSettingsMiddleware::class,
-        CspMiddleware::class,
-        MetaMiddleware::class,
-        LimitResultsMiddleware::class,
+        SessionMiddleware::class,      // 1. Start PHP session (shared with Symfony)
+        AuthMiddleware::class,         // 2. Validate auth, handle timeout
+        LoadSettingsMiddleware::class,  // 3. Load app settings
+        CspMiddleware::class,          // 4. CSP nonce
+        MetaMiddleware::class,         // 5. Meta info
+        LimitResultsMiddleware::class, // 6. Result limits
     ];
 
     public function __construct(?string $rootDir = null)
@@ -148,11 +153,6 @@ class Kernel
     {
         if (!$this->booted) {
             $this->boot();
-        }
-
-        // Create sfContext adapter for standalone mode
-        if (!class_exists('\sfContext', false)) {
-            SfContextAdapter::create($request);
         }
 
         // Run through middleware pipeline, then dispatch via router
@@ -303,6 +303,11 @@ class Kernel
                 'routes' => count($this->router->getRoutes()),
             ]);
         })->name('api.info');
+
+        // Auth endpoints (standalone login/logout)
+        $this->router->post('/auth/login', [Controllers\AuthController::class, 'login'])->name('auth.login');
+        $this->router->match(['GET', 'POST'], '/auth/logout', [Controllers\AuthController::class, 'logout'])->name('auth.logout');
+        $this->router->get('/auth/me', [Controllers\AuthController::class, 'me'])->name('auth.me');
     }
 
     /**

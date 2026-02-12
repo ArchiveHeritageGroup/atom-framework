@@ -116,6 +116,8 @@ class UserService
                 'u.username',
                 'u.email',
                 'u.active',
+                'u.salt',
+                'u.password_hash',
                 'ai.authorized_form_of_name as name',
                 's.slug'
             )
@@ -178,17 +180,21 @@ class UserService
     /**
      * Authenticate user.
      */
-    public static function authenticate(string $username, string $password): ?object
+    public static function authenticate(string $emailOrUsername, string $password): ?object
     {
-        $user = self::getByUsername($username);
+        // Try email first, then username (matching QubitUser::checkCredentials)
+        $user = self::getByEmail($emailOrUsername);
+        if (!$user) {
+            $user = self::getByUsername($emailOrUsername);
+        }
 
         if (!$user || !$user->active) {
             return null;
         }
 
-        // Verify password
+        // Dual-layer verification: SHA1(salt + password) -> password_verify against Argon2i
         $hash = sha1($user->salt . $password);
-        if ($hash !== $user->password_hash) {
+        if (!password_verify($hash, $user->password_hash)) {
             return null;
         }
 
@@ -201,7 +207,8 @@ class UserService
     public static function updatePassword(int $userId, string $newPassword): bool
     {
         $salt = bin2hex(random_bytes(16));
-        $hash = sha1($salt . $newPassword);
+        $sha1Hash = sha1($salt . $newPassword);
+        $hash = password_hash($sha1Hash, PASSWORD_DEFAULT);
 
         return DB::table('user')
             ->where('id', $userId)

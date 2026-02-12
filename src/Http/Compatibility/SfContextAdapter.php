@@ -26,7 +26,7 @@ class SfContextAdapter
     public function __construct(Request $illuminateRequest)
     {
         $this->request = new SfWebRequestAdapter($illuminateRequest);
-        $this->user = new SfUserAdapter($illuminateRequest);
+        $this->user = new SfUserAdapter();
         $this->response = new Response();
     }
 
