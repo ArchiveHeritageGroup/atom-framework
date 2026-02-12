@@ -11,6 +11,8 @@ namespace AtomFramework\Http\Controllers;
  *
  * @see apps/qubit/modules/actor/actions/editAction.class.php
  */
+use AtomExtensions\Services\AclService;
+
 class AhgActorEditController extends AhgEditController
 {
     public function execute($request)
@@ -53,8 +55,8 @@ class AhgActorEditController extends AhgEditController
             }
 
             // Check user authorization
-            if (!\QubitAcl::check($this->resource, 'update') && !\QubitAcl::check($this->resource, 'translate')) {
-                \QubitAcl::forwardUnauthorized();
+            if (!AclService::check($this->resource, 'update') && !AclService::check($this->resource, 'translate')) {
+                AclService::forwardUnauthorized();
             }
 
             // Add optimistic lock
@@ -63,8 +65,8 @@ class AhgActorEditController extends AhgEditController
             $this->form->setWidget('serialNumber', new \sfWidgetFormInputHidden());
         } else {
             // Check user authorization against Actor ROOT
-            if (!\QubitAcl::check(\QubitActor::getById(\QubitActor::ROOT_ID), 'create')) {
-                \QubitAcl::forwardUnauthorized();
+            if (!AclService::check(\QubitActor::getById(\QubitActor::ROOT_ID), 'create')) {
+                AclService::forwardUnauthorized();
             }
         }
 
