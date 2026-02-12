@@ -14,6 +14,21 @@ class AclService
     public const DENY = AclConstants::DENY;
     public const INHERIT = AclConstants::INHERIT;
 
+    public static array $ACTIONS = [
+        'read' => 'Read',
+        'create' => 'Create',
+        'update' => 'Update',
+        'delete' => 'Delete',
+        'translate' => 'Translate',
+        'publish' => 'Publish',
+        'viewDraft' => 'View Draft',
+        'readMaster' => 'Read Master',
+        'readReference' => 'Read Reference',
+        'readThumbnail' => 'Read Thumbnail',
+        'createTerm' => 'Create Term',
+        'list' => 'List',
+    ];
+
     private static ?object $user = null;
     private static ?array $userGroups = null;
 
@@ -151,6 +166,16 @@ class AclService
         return self::hasGroup(AclConstants::EDITOR_ID, $user);
     }
 
+    public static function isContributor(?object $user = null): bool
+    {
+        return self::hasGroup(AclConstants::CONTRIBUTOR_ID, $user);
+    }
+
+    public static function isTranslator(?object $user = null): bool
+    {
+        return self::hasGroup(AclConstants::TRANSLATOR_ID, $user);
+    }
+
     public static function getRepositoryAccess(string $action): array
     {
         $user = self::$user;
@@ -187,7 +212,8 @@ class AclService
         if ($return) {
             return false;
         }
-        if (class_exists('sfContext')) {
+
+        if (class_exists('sfContext') && \sfContext::hasInstance()) {
             \sfContext::getInstance()->getController()->forward('admin', 'secure');
             throw new \sfStopException();
         }
@@ -196,6 +222,93 @@ class AclService
     public static function forwardToSecureAction(): void
     {
         self::forwardUnauthorized();
+    }
+
+    public static function forwardToLoginAction(): void
+    {
+        if (class_exists('sfContext') && \sfContext::hasInstance()) {
+            \sfContext::getInstance()->getController()->forward('user', 'login');
+            throw new \sfStopException();
+        }
+    }
+
+    /**
+     * Filter a Laravel Query Builder query to only return published records
+     * OR records the current user can view as drafts.
+     *
+     * Status type_id 158 = publicationStatusId
+     * Status status_id 160 = PUBLICATION_STATUS_PUBLISHED_ID
+     *
+     * @param mixed $query Laravel Query Builder instance or Propel Criteria
+     *
+     * @return mixed
+     */
+    public static function addFilterDraftsCriteria($query): mixed
+    {
+        $user = self::$user;
+
+        // Auto-load user from sfContext if not set
+        if (!$user && class_exists('sfContext') && \sfContext::hasInstance()) {
+            $sfUser = \sfContext::getInstance()->getUser();
+            if ($sfUser && $sfUser->isAuthenticated() && isset($sfUser->user)) {
+                $user = $sfUser->user;
+                self::$user = $user;
+            }
+        }
+
+        // If no user or not authenticated, only show published
+        if (!$user) {
+            // For Propel Criteria objects, return as-is (let base AtoM handle it)
+            if (is_object($query) && !($query instanceof \Illuminate\Database\Query\Builder)) {
+                return $query;
+            }
+
+            // For Laravel QB
+            $query->whereExists(function ($sub) {
+                $sub->select(DB::raw(1))
+                    ->from('status')
+                    ->whereColumn('status.object_id', 'i.id')
+                    ->where('status.type_id', 158)
+                    ->where('status.status_id', 160);
+            });
+
+            return $query;
+        }
+
+        $groups = self::getUserGroups($user->id ?? null);
+
+        // Administrators and editors can see all drafts
+        if (in_array(AclConstants::ADMINISTRATOR_ID, $groups) || in_array(AclConstants::EDITOR_ID, $groups)) {
+            return $query;
+        }
+
+        // For Propel Criteria objects, return as-is
+        if (is_object($query) && !($query instanceof \Illuminate\Database\Query\Builder)) {
+            return $query;
+        }
+
+        // Contributors can see their own drafts + all published
+        $query->where(function ($q) use ($user) {
+            // Published records
+            $q->whereExists(function ($sub) {
+                $sub->select(DB::raw(1))
+                    ->from('status')
+                    ->whereColumn('status.object_id', 'i.id')
+                    ->where('status.type_id', 158)
+                    ->where('status.status_id', 160);
+            });
+            // OR records created by this user
+            if ($user->id ?? null) {
+                $q->orWhereExists(function ($sub) use ($user) {
+                    $sub->select(DB::raw(1))
+                        ->from('object')
+                        ->whereColumn('object.id', 'i.id')
+                        ->where('object.created_by', $user->id);
+                });
+            }
+        });
+
+        return $query;
     }
 
     private static function getActionId(string $action): ?int

@@ -7,11 +7,15 @@ namespace AtomExtensions\Constants;
  */
 final class AclConstants
 {
-    // Access levels
-    public const GRANT = 1;
+    // Access levels (must match QubitAcl / acl_permission.grant_deny values)
+    public const GRANT = 2;
     public const DENY = 0;
-    public const INHERIT = -1;
-    
+    public const INHERIT = 1;
+
+    // Special object IDs
+    public const ROOT_ID = 1;
+    public const ANONYMOUS_ID = 98;
+
     // Group IDs
     public const AUTHENTICATED_ID = 99;
     public const ADMINISTRATOR_ID = 100;

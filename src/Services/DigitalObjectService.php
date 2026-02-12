@@ -883,4 +883,468 @@ class DigitalObjectService
                     if (isset($iptc['2#120'][0])) {
                         $metadata['description'] = $iptc['2#120'][0];
                     }
-                    if (isset($ip
+                    if (isset($iptc['2#080'][0])) {
+                        $metadata['creator'] = $iptc['2#080'][0];
+                    }
+                    if (isset($iptc['2#025'])) {
+                        $metadata['keywords'] = $iptc['2#025'];
+                    }
+                    if (isset($iptc['2#116'][0])) {
+                        $metadata['copyright'] = $iptc['2#116'][0];
+                    }
+                }
+            }
+
+            if ($size) {
+                $metadata['width'] = $metadata['width'] ?? $size[0];
+                $metadata['height'] = $metadata['height'] ?? $size[1];
+            }
+        }
+
+        if ($mimeType === 'application/pdf') {
+            $metadata['format'] = 'PDF';
+        }
+
+        return $metadata;
+    }
+
+    /**
+     * Convert GPS EXIF data to decimal degrees
+     */
+    protected function gpsToDecimal(array $coordinate, string $ref): ?float
+    {
+        if (count($coordinate) < 3) {
+            return null;
+        }
+
+        $degrees = $this->exifRationalToFloat($coordinate[0]);
+        $minutes = $this->exifRationalToFloat($coordinate[1]);
+        $seconds = $this->exifRationalToFloat($coordinate[2]);
+
+        $decimal = $degrees + ($minutes / 60) + ($seconds / 3600);
+
+        if ($ref === 'S' || $ref === 'W') {
+            $decimal *= -1;
+        }
+
+        return round($decimal, 6);
+    }
+
+    /**
+     * Convert EXIF rational number to float
+     */
+    protected function exifRationalToFloat($value): float
+    {
+        if (is_string($value) && strpos($value, '/') !== false) {
+            $parts = explode('/', $value);
+            if (count($parts) === 2 && (float) $parts[1] !== 0.0) {
+                return (float) $parts[0] / (float) $parts[1];
+            }
+        }
+        return (float) $value;
+    }
+
+    /**
+     * Format technical metadata as readable string
+     */
+    protected function formatTechnicalMetadata(array $metadata): string
+    {
+        $lines = [];
+
+        if (isset($metadata['camera_make']) || isset($metadata['camera_model'])) {
+            $camera = trim(($metadata['camera_make'] ?? '') . ' ' . ($metadata['camera_model'] ?? ''));
+            $lines[] = "Camera: {$camera}";
+        }
+
+        if (isset($metadata['width']) && isset($metadata['height'])) {
+            $lines[] = "Dimensions: {$metadata['width']} x {$metadata['height']} px";
+        }
+
+        if (isset($metadata['iso'])) {
+            $lines[] = "ISO: {$metadata['iso']}";
+        }
+
+        if (isset($metadata['exposure'])) {
+            $lines[] = "Exposure: {$metadata['exposure']}";
+        }
+
+        if (isset($metadata['fnumber'])) {
+            $fn = $this->exifRationalToFloat($metadata['fnumber']);
+            $lines[] = "F-Number: f/{$fn}";
+        }
+
+        if (isset($metadata['software'])) {
+            $lines[] = "Software: {$metadata['software']}";
+        }
+
+        return implode("\n", $lines);
+    }
+
+    /**
+     * Add creator event for information object
+     */
+    protected function addCreatorEvent(int $objectId, string $creatorName): void
+    {
+        try {
+            // Check if actor already exists
+            $actor = DB::table('actor_i18n')
+                ->where('authorized_form_of_name', $creatorName)
+                ->where('culture', CultureHelper::getCulture())
+                ->first();
+
+            if (!$actor) {
+                // Create actor
+                $actorObjId = DB::table('object')->insertGetId([
+                    'class_name' => 'QubitActor',
+                    'created_at' => date('Y-m-d H:i:s'),
+                    'updated_at' => date('Y-m-d H:i:s'),
+                ]);
+
+                DB::table('actor')->insert([
+                    'id' => $actorObjId,
+                    'parent_id' => \QubitActor::ROOT_ID,
+                ]);
+
+                DB::table('actor_i18n')->insert([
+                    'id' => $actorObjId,
+                    'culture' => CultureHelper::getCulture(),
+                    'authorized_form_of_name' => $creatorName,
+                ]);
+
+                $actorId = $actorObjId;
+            } else {
+                $actorId = $actor->id;
+            }
+
+            // Check if creation event already exists
+            $existingEvent = DB::table('event')
+                ->where('object_id', $objectId)
+                ->where('actor_id', $actorId)
+                ->where('type_id', \QubitTerm::CREATION_ID)
+                ->first();
+
+            if (!$existingEvent) {
+                $eventObjId = DB::table('object')->insertGetId([
+                    'class_name' => 'QubitEvent',
+                    'created_at' => date('Y-m-d H:i:s'),
+                    'updated_at' => date('Y-m-d H:i:s'),
+                ]);
+
+                DB::table('event')->insert([
+                    'id' => $eventObjId,
+                    'object_id' => $objectId,
+                    'actor_id' => $actorId,
+                    'type_id' => \QubitTerm::CREATION_ID,
+                ]);
+            }
+        } catch (\Exception $e) {
+            Log::warning('Failed to add creator event: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Add date event for information object
+     */
+    protected function addDateEvent(int $objectId, string $dateString): void
+    {
+        try {
+            // Parse EXIF date format (YYYY:MM:DD HH:MM:SS)
+            $date = str_replace(':', '-', substr($dateString, 0, 10));
+
+            // Check if a creation event already exists with a date
+            $existingEvent = DB::table('event')
+                ->where('object_id', $objectId)
+                ->where('type_id', \QubitTerm::CREATION_ID)
+                ->whereNotNull('start_date')
+                ->first();
+
+            if ($existingEvent) {
+                return;
+            }
+
+            // Find existing creation event without date
+            $event = DB::table('event')
+                ->where('object_id', $objectId)
+                ->where('type_id', \QubitTerm::CREATION_ID)
+                ->first();
+
+            if ($event) {
+                DB::table('event')
+                    ->where('id', $event->id)
+                    ->update([
+                        'start_date' => $date,
+                        'end_date' => $date,
+                    ]);
+
+                DB::table('event_i18n')
+                    ->updateOrInsert(
+                        ['id' => $event->id, 'culture' => CultureHelper::getCulture()],
+                        ['date' => $date]
+                    );
+            } else {
+                $eventObjId = DB::table('object')->insertGetId([
+                    'class_name' => 'QubitEvent',
+                    'created_at' => date('Y-m-d H:i:s'),
+                    'updated_at' => date('Y-m-d H:i:s'),
+                ]);
+
+                DB::table('event')->insert([
+                    'id' => $eventObjId,
+                    'object_id' => $objectId,
+                    'type_id' => \QubitTerm::CREATION_ID,
+                    'start_date' => $date,
+                    'end_date' => $date,
+                ]);
+
+                DB::table('event_i18n')->insert([
+                    'id' => $eventObjId,
+                    'culture' => CultureHelper::getCulture(),
+                    'date' => $date,
+                ]);
+            }
+        } catch (\Exception $e) {
+            Log::warning('Failed to add date event: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Get human-readable upload error message
+     */
+    protected function getUploadErrorMessage(int $errorCode): string
+    {
+        $messages = [
+            UPLOAD_ERR_INI_SIZE => 'The uploaded file exceeds the server limit',
+            UPLOAD_ERR_FORM_SIZE => 'The uploaded file exceeds the form limit',
+            UPLOAD_ERR_PARTIAL => 'The uploaded file was only partially uploaded',
+            UPLOAD_ERR_NO_FILE => 'No file was uploaded',
+            UPLOAD_ERR_NO_TMP_DIR => 'Missing temporary folder',
+            UPLOAD_ERR_CANT_WRITE => 'Failed to write file to disk',
+            UPLOAD_ERR_EXTENSION => 'A PHP extension stopped the file upload',
+        ];
+
+        return $messages[$errorCode] ?? 'Unknown upload error';
+    }
+
+    /**
+     * Return a success response array.
+     */
+    protected function success(string $message, array $data = []): array
+    {
+        return [
+            'success' => true,
+            'message' => $message,
+            'data' => $data,
+        ];
+    }
+
+    /**
+     * Return an error response array.
+     */
+    protected function error(string $message, array $data = []): array
+    {
+        return [
+            'success' => false,
+            'message' => $message,
+            'data' => $data,
+        ];
+    }
+
+    /**
+     * Update Elasticsearch index for an information object.
+     */
+    protected function updateSearchIndex(int $objectId): void
+    {
+        try {
+            if (class_exists('QubitSearch') && method_exists('QubitSearch', 'getInstance')) {
+                $instance = \QubitSearch::getInstance();
+                if ($instance && method_exists($instance, 'update')) {
+                    $io = \QubitInformationObject::getById($objectId);
+                    if ($io) {
+                        $instance->update($io);
+                    }
+                }
+            }
+        } catch (\Exception $e) {
+            // Search index update is non-critical
+        }
+    }
+
+    // =========================================================================
+    // WRITE OPERATIONS
+    // =========================================================================
+
+    /**
+     * Delete a digital object and all its derivatives.
+     */
+    public function deleteDigitalObject(int $id): bool
+    {
+        try {
+            $do = $this->getDigitalObjectById($id);
+            if (!$do) {
+                return false;
+            }
+
+            // Delete children (derivatives) first
+            $children = DB::table('digital_object')
+                ->where('parent_id', $id)
+                ->pluck('id');
+
+            foreach ($children as $childId) {
+                $this->deleteDigitalObjectRecord($childId);
+            }
+
+            // Get the parent information object ID before deletion
+            $objectId = $do->object_id ?? null;
+
+            // Delete main digital object
+            $this->deleteDigitalObjectRecord($id);
+
+            // Update search index for parent
+            if ($objectId) {
+                $this->updateSearchIndex($objectId);
+            }
+
+            return true;
+        } catch (\Exception $e) {
+            Log::error('DigitalObjectService::deleteDigitalObject failed: ' . $e->getMessage());
+            return false;
+        }
+    }
+
+    /**
+     * Delete a single digital object record and its files.
+     */
+    protected function deleteDigitalObjectRecord(int $id): void
+    {
+        $do = DB::table('digital_object')->where('id', $id)->first();
+
+        // Delete physical file
+        if ($do && $do->path) {
+            $path = $do->path;
+            if (strpos($path, '/uploads/') === 0) {
+                $path = substr($path, 9);
+            }
+            $fullPath = $this->uploadDir . '/' . ltrim($path, '/');
+            if (file_exists($fullPath)) {
+                @unlink($fullPath);
+            }
+            // Try to remove empty parent directories
+            $dir = dirname($fullPath);
+            for ($i = 0; $i < 3; $i++) {
+                if (is_dir($dir) && count(scandir($dir)) === 2) {
+                    @rmdir($dir);
+                    $dir = dirname($dir);
+                } else {
+                    break;
+                }
+            }
+        }
+
+        // Delete slug
+        DB::table('slug')->where('object_id', $id)->delete();
+
+        // Delete properties
+        $propIds = DB::table('property')->where('object_id', $id)->pluck('id');
+        if ($propIds->isNotEmpty()) {
+            DB::table('property_i18n')->whereIn('id', $propIds)->delete();
+            DB::table('property')->whereIn('id', $propIds)->delete();
+            DB::table('object')->whereIn('id', $propIds)->delete();
+        }
+
+        // Delete digital object record
+        DB::table('digital_object')->where('id', $id)->delete();
+
+        // Delete base object record
+        DB::table('object')->where('id', $id)->delete();
+    }
+
+    /**
+     * Update digital object metadata.
+     */
+    public function updateDigitalObject(int $id, array $data): array
+    {
+        try {
+            $do = $this->getDigitalObjectById($id);
+            if (!$do) {
+                return $this->error('Digital object not found');
+            }
+
+            $updateData = [];
+            $allowedFields = ['mime_type', 'media_type_id', 'usage_id', 'name'];
+            foreach ($allowedFields as $field) {
+                if (isset($data[$field])) {
+                    $updateData[$field] = $data[$field];
+                }
+            }
+
+            if (!empty($updateData)) {
+                DB::table('digital_object')
+                    ->where('id', $id)
+                    ->update($updateData);
+
+                DB::table('object')
+                    ->where('id', $id)
+                    ->update(['updated_at' => date('Y-m-d H:i:s')]);
+            }
+
+            if ($do->object_id) {
+                $this->updateSearchIndex($do->object_id);
+            }
+
+            return $this->success('Digital object updated', ['id' => $id]);
+        } catch (\Exception $e) {
+            Log::error('DigitalObjectService::updateDigitalObject failed: ' . $e->getMessage());
+            return $this->error('Update failed: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Replace an existing digital object with a new file.
+     */
+    public function replaceDigitalObject(int $objectId, $file, array $options = []): array
+    {
+        $options['replace'] = true;
+        return $this->uploadFromFile($objectId, $file, $options);
+    }
+
+    /**
+     * Regenerate derivatives for an existing digital object.
+     */
+    public function regenerateDerivatives(int $digitalObjectId): array
+    {
+        try {
+            $do = $this->getDigitalObjectById($digitalObjectId);
+            if (!$do) {
+                return $this->error('Digital object not found');
+            }
+
+            if (!$do->path) {
+                return $this->error('Digital object has no file path');
+            }
+
+            $fullPath = $this->uploadDir . '/' . ltrim($do->path, '/');
+            if (!file_exists($fullPath)) {
+                return $this->error('Source file not found: ' . $do->path);
+            }
+
+            // Delete existing derivatives
+            $existingDerivatives = DB::table('digital_object')
+                ->where('parent_id', $digitalObjectId)
+                ->pluck('id');
+
+            foreach ($existingDerivatives as $derivId) {
+                $this->deleteDigitalObjectRecord($derivId);
+            }
+
+            // Create new derivatives
+            $this->createDerivatives($digitalObjectId, $fullPath, $do->mime_type);
+
+            return $this->success('Derivatives regenerated', [
+                'digital_object_id' => $digitalObjectId,
+            ]);
+        } catch (\Exception $e) {
+            Log::error('DigitalObjectService::regenerateDerivatives failed: ' . $e->getMessage());
+            return $this->error('Regeneration failed: ' . $e->getMessage());
+        }
+    }
+}
