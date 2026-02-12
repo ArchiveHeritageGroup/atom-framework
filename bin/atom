@@ -5,6 +5,7 @@
  */
 define('ATOM_ROOT', dirname(__DIR__, 2));
 define('FRAMEWORK_ROOT', dirname(__DIR__));
+define('ATOM_CLI_MODE', true);
 
 // Bootstrap the framework
 $bootstrap = FRAMEWORK_ROOT . '/bootstrap.php';
@@ -101,15 +102,34 @@ switch ($module) {
     case 'help':
     case '--help':
     case '-h':
-        showHelp();
+    case 'list':
+        require_once FRAMEWORK_ROOT . '/src/Console/BaseCommand.php';
+        require_once FRAMEWORK_ROOT . '/src/Console/CommandRegistry.php';
+        $registry = new \AtomFramework\Console\CommandRegistry(ATOM_ROOT);
+        $registry->discover();
+        showHelp($registry);
         exit(0);
 
     case 'update':
         exit(runFullUpdate($remaining));
 
     default:
-        echo "\033[31mUnknown command: {$module}\033[0m\n";
-        showHelp();
+        // Try auto-discovered commands via CommandRegistry
+        $fullCommand = $module . ':' . $command;
+        require_once FRAMEWORK_ROOT . '/src/Console/BaseCommand.php';
+        require_once FRAMEWORK_ROOT . '/src/Console/CommandRegistry.php';
+        $registry = new \AtomFramework\Console\CommandRegistry(ATOM_ROOT);
+        $registry->discover();
+
+        if ($registry->has($fullCommand)) {
+            $cmd = $registry->get($fullCommand, $remaining);
+            if ($cmd) {
+                exit($cmd->run());
+            }
+        }
+
+        echo "\033[31mUnknown command: {$module}" . ($command !== 'help' ? ":{$command}" : '') . "\033[0m\n";
+        showHelp($registry);
         exit(1);
 }
 
@@ -296,11 +316,11 @@ function showFrameworkVersion(): void
     }
 }
 
-function showHelp(): void
+function showHelp(?\AtomFramework\Console\CommandRegistry $registry = null): void
 {
     echo <<<HELP
 
-\033[1mAtoM Extension Manager\033[0m
+\033[1mAtoM Heratio CLI\033[0m
 
 \033[33mUsage:\033[0m
   php bin/atom <command> [options]
@@ -329,19 +349,23 @@ function showHelp(): void
   migrate:down                Rollback last migration
   migrate:status              Show migration status
 
-\033[33mThesaurus Commands:\033[0m
-  thesaurus:stats             Show thesaurus statistics
-  thesaurus:sync-wordnet      Sync from WordNet (Datamuse API)
-  thesaurus:sync-wikidata     Sync from Wikidata SPARQL
-  thesaurus:import-local      Import local JSON synonym files
-  thesaurus:export-es         Export to Elasticsearch format
-  thesaurus:search <term>     Search the thesaurus
-  thesaurus:expand <query>    Test query expansion
-
 \033[33mOther Commands:\033[0m
   update                      Full update (framework + plugins + migrations)
+  list                        List all available commands
   help                        Show this help message
 
-
 HELP;
+
+    // Show auto-discovered commands
+    if ($registry !== null && $registry->count() > 0) {
+        $grouped = $registry->all();
+        foreach ($grouped as $ns => $commands) {
+            $label = ucfirst($ns);
+            echo "\033[33m{$label} Commands:\033[0m\n";
+            foreach ($commands as $name => $description) {
+                printf("  %-30s %s\n", $name, $description);
+            }
+            echo "\n";
+        }
+    }
 }

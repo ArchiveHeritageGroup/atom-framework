@@ -75,23 +75,28 @@ if (null !== $dbConnection) {
     $capsule->bootEloquent();
 }
 
-// Register global class aliases for non-namespaced plugin action files
-if (!class_exists('AhgActions', false)) {
-    class_alias(\AtomFramework\Actions\AhgActions::class, 'AhgActions');
-}
-if (!class_exists('AhgComponents', false)) {
-    class_alias(\AtomFramework\Actions\AhgComponents::class, 'AhgComponents');
-}
-if (!class_exists('AhgTask', false)) {
-    class_alias(\AtomFramework\Actions\AhgTask::class, 'AhgTask');
-}
-if (!class_exists('BladeRenderer', false)) {
-    class_alias(\AtomFramework\Views\BladeRenderer::class, 'BladeRenderer');
-}
+// Detect standalone CLI mode (bin/atom sets ATOM_CLI_MODE).
+// In CLI mode: skip Symfony-dependent aliases, load standalone helpers.
+// In web mode: register aliases (Symfony classes available), skip helpers (Symfony provides them).
+$isCliMode = defined('ATOM_CLI_MODE');
 
-// Load standalone template helpers only when Symfony is NOT loaded.
-// Symfony's own helper files (AssetHelper, UrlHelper, etc.) do NOT use function_exists()
-// guards, so loading our shims first would cause "Cannot redeclare" fatal errors.
-if (!class_exists('sfActions', false)) {
+if (!$isCliMode) {
+    // Web context — Symfony is (or will be) loaded. Register class aliases.
+    if (!class_exists('AhgActions', false)) {
+        class_alias(\AtomFramework\Actions\AhgActions::class, 'AhgActions');
+    }
+    if (!class_exists('AhgComponents', false)) {
+        class_alias(\AtomFramework\Actions\AhgComponents::class, 'AhgComponents');
+    }
+    if (!class_exists('AhgTask', false)) {
+        class_alias(\AtomFramework\Actions\AhgTask::class, 'AhgTask');
+    }
+    if (!class_exists('BladeRenderer', false)) {
+        class_alias(\AtomFramework\Views\BladeRenderer::class, 'BladeRenderer');
+    }
+} else {
+    // CLI context — load standalone template helpers since Symfony won't provide them.
+    // Symfony's AssetHelper.php etc. do NOT use function_exists() guards,
+    // so we must ONLY load these when Symfony is NOT present.
     require_once __DIR__ . '/src/Helpers/TemplateHelpers.php';
 }

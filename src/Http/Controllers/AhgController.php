@@ -34,6 +34,11 @@ if (!class_exists(__NAMESPACE__ . '\\AhgControllerBase', false)) {
              */
             public function preExecute()
             {
+                // Ensure I18N helper (__()) is available before action code runs
+                if (!function_exists('__') && class_exists('sfApplicationConfiguration', false)) {
+                    \sfApplicationConfiguration::getActive()->loadHelpers(['I18N']);
+                }
+
                 // Load framework bootstrap
                 static $frameworkBooted = false;
                 if (!$frameworkBooted) {
