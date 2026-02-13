@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+# =============================================================================
+# AtoM Heratio — Propel Coupling Baseline
+# Saves current Propel coupling counts as JSON baseline.
+# =============================================================================
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+FRAMEWORK_DIR="$(dirname "$SCRIPT_DIR")"
+BASELINE_FILE="$FRAMEWORK_DIR/.propel-baseline.json"
+AUDIT_SCRIPT="$SCRIPT_DIR/audit-propel"
+
+if [ ! -x "$AUDIT_SCRIPT" ]; then
+    echo "ERROR: audit-propel script not found or not executable at $AUDIT_SCRIPT"
+    exit 1
+fi
+
+# Run the audit in JSON mode and capture output
+JSON=$("$AUDIT_SCRIPT" --json 2>/dev/null | grep -A 100 '^{' | head -n 100)
+
+if [ -z "$JSON" ]; then
+    echo "ERROR: Failed to get audit data. Run bin/audit-propel first to check for errors."
+    exit 1
+fi
+
+# Write baseline file
+echo "$JSON" > "$BASELINE_FILE"
+
+echo "Baseline saved to: $BASELINE_FILE"
+echo ""
+cat "$BASELINE_FILE"
+echo ""

@@ -35,15 +35,29 @@ class BladeRenderer
         // Load helper functions
         require_once __DIR__ . '/blade_helpers.php';
 
+        // Load standalone shims ONLY in Heratio standalone mode.
+        // Symfony's helpers (EscapingHelper.php etc.) lack function_exists()
+        // guards, so loading blade_shims.php first causes redeclaration errors.
+        if (defined('HERATIO_STANDALONE') || defined('ATOM_CLI_MODE')) {
+            require_once __DIR__ . '/blade_shims.php';
+        }
+
         // Setup cache path
-        $cachePath = \sfConfig::get('sf_root_dir') . '/cache/blade';
+        $rootDir = class_exists('\sfConfig', false)
+            ? \sfConfig::get('sf_root_dir', '')
+            : (defined('ATOM_ROOT_PATH') ? ATOM_ROOT_PATH : dirname(__DIR__, 3));
+        if (empty($rootDir)) {
+            $rootDir = dirname(__DIR__, 3);
+        }
+
+        $cachePath = $rootDir . '/cache/blade';
         if (!is_dir($cachePath)) {
             mkdir($cachePath, 0775, true);
         }
 
         // Default view paths
         $viewPaths = [
-            \sfConfig::get('sf_root_dir') . '/atom-framework/views',
+            $rootDir . '/atom-framework/views',
         ];
 
         // Wire up Illuminate components
@@ -165,7 +179,7 @@ class BladeRenderer
 
         // @config('key', 'default') — sfConfig access
         $this->compiler->directive('config', function ($expression) {
-            return "<?php echo \\sfConfig::get({$expression}); ?>";
+            return "<?php echo \\AtomFramework\\Services\\ConfigService::get({$expression}); ?>";
         });
 
         // @slot_('name') / @endslot_ — bridge to Symfony slot system
@@ -176,19 +190,27 @@ class BladeRenderer
             return '<?php end_slot(); ?>';
         });
 
-        // @authenticated / @endauthenticated
+        // @authenticated / @endauthenticated — standalone-safe
         $this->compiler->directive('authenticated', function () {
-            return '<?php if (\\sfContext::getInstance()->getUser()->isAuthenticated()): ?>';
+            return '<?php if (isset($sf_user) && $sf_user->isAuthenticated()): ?>';
         });
         $this->compiler->directive('endauthenticated', function () {
             return '<?php endif; ?>';
         });
 
-        // @admin / @endadmin
+        // @admin / @endadmin — standalone-safe
         $this->compiler->directive('admin', function () {
-            return '<?php if (\\sfContext::getInstance()->getUser()->isAdministrator()): ?>';
+            return '<?php if (isset($sf_user) && $sf_user->isAdministrator()): ?>';
         });
         $this->compiler->directive('endadmin', function () {
+            return '<?php endif; ?>';
+        });
+
+        // @pluginEnabled('ahgPluginName') / @endpluginEnabled
+        $this->compiler->directive('pluginEnabled', function ($expression) {
+            return "<?php if (\\AtomFramework\\Services\\MenuService::isPluginEnabled({$expression})): ?>";
+        });
+        $this->compiler->directive('endpluginEnabled', function () {
             return '<?php endif; ?>';
         });
     }
@@ -196,10 +218,20 @@ class BladeRenderer
     /**
      * Share common variables with all Blade views.
      */
-    private function shareGlobals(): void
-    {
-        $this->factory->share('csp_nonce', csp_nonce_attr());
-    }
+	private function shareGlobals(): void
+	{
+		$this->factory->share('csp_nonce', csp_nonce_attr());
+		$this->factory->share('siteTitle', \AtomFramework\Services\ConfigService::get('siteTitle', 'AtoM'));
+
+		// Provide sf_context to PHP partials included from Blade layouts (layout_start/layout_end)
+		if (class_exists(\AtomFramework\Http\Compatibility\SfContextAdapter::class, false)
+			&& \AtomFramework\Http\Compatibility\SfContextAdapter::hasInstance()
+		) {
+			$this->factory->share('sf_context', \AtomFramework\Http\Compatibility\SfContextAdapter::getInstance());
+			$this->factory->share('sf_user', \AtomFramework\Http\Compatibility\SfContextAdapter::getInstance()->getUser());
+			$this->factory->share('sf_request', \AtomFramework\Http\Compatibility\SfContextAdapter::getInstance()->getRequest());
+		}
+	}
 
     /**
      * Reset the singleton (for testing purposes).

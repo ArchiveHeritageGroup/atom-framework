@@ -81,6 +81,15 @@ class ComponentRenderer
      */
     public static function renderPartial(string $module, string $partial, array $vars = []): string
     {
+        // In standalone mode, intercept theme layout partials and render
+        // via Heratio's Blade partials instead of Symfony's PHP partials.
+        if (!class_exists('sfActions', false)) {
+            $standaloneResult = self::renderStandalonePartial($partial, $vars);
+            if (null !== $standaloneResult) {
+                return $standaloneResult;
+            }
+        }
+
         $rootDir = self::getRootDir();
         $pluginsDir = $rootDir . '/plugins';
 
@@ -105,6 +114,62 @@ class ComponentRenderer
         }
 
         return '';
+    }
+
+    /**
+     * Render known layout partials using Heratio's Blade partials in standalone mode.
+     *
+     * Returns null if the partial is not a known layout partial (caller should
+     * proceed with normal module-based lookup).
+     */
+    private static function renderStandalonePartial(string $partial, array $vars): ?string
+    {
+        // Normalize: remove leading underscore
+        $name = ltrim($partial, '_');
+
+        $renderer = BladeRenderer::getInstance();
+
+        // Map Symfony layout partials to Heratio Blade partials
+        switch ($name) {
+            case 'layout_start':
+                $culture = \AtomExtensions\Helpers\CultureHelper::getCulture();
+                $siteTitle = ConfigService::get('siteTitle', 'AtoM');
+                $rootDir = ConfigService::rootDir();
+                $sfUser = null;
+                if (\AtomFramework\Http\Compatibility\SfContextAdapter::hasInstance()) {
+                    $sfUser = \AtomFramework\Http\Compatibility\SfContextAdapter::getInstance()->getUser();
+                }
+                $data = array_merge($vars, [
+                    'culture' => $culture,
+                    'siteTitle' => $siteTitle,
+                    'rootDir' => $rootDir,
+                    'sf_user' => $sfUser,
+                ]);
+
+                return '<!DOCTYPE html>'
+                    . '<html lang="' . htmlspecialchars($culture) . '">'
+                    . '<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">'
+                    . '<title>' . htmlspecialchars($siteTitle) . '</title>'
+                    . '<link rel="shortcut icon" href="/favicon.ico">'
+                    . $renderer->render('partials.head-assets', $data) . '</head>'
+                    . '<body class="d-flex flex-column min-vh-100">'
+                    . $renderer->render('partials.header', $data);
+
+            case 'layout_end':
+                return $renderer->render('partials.footer', $vars)
+                    . '</body></html>';
+
+            case 'alerts':
+                $sfUser = $vars['sf_user'] ?? null;
+                if (!$sfUser && \AtomFramework\Http\Compatibility\SfContextAdapter::hasInstance()) {
+                    $vars['sf_user'] = \AtomFramework\Http\Compatibility\SfContextAdapter::getInstance()->getUser();
+                }
+
+                return $renderer->render('partials.alerts', $vars);
+
+            default:
+                return null;
+        }
     }
 
     /**

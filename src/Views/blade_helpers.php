@@ -10,10 +10,12 @@
 // Ensure common Symfony helpers (including I18N for __()) are loaded for Blade templates.
 // I18N MUST be loaded before any fallback declaration to avoid redeclare conflicts.
 if (!function_exists('url_for') || !function_exists('__')) {
-    try {
-        sfApplicationConfiguration::getActive()->loadHelpers(['I18N', 'Url', 'Tag', 'Asset', 'Partial', 'Escaping', 'Qubit']);
-    } catch (\Exception $e) {
-        // Helpers may already be loaded or unavailable
+    if (class_exists('sfApplicationConfiguration', false)) {
+        try {
+            sfApplicationConfiguration::getActive()->loadHelpers(['I18N', 'Url', 'Tag', 'Asset', 'Partial', 'Escaping', 'Qubit']);
+        } catch (\Throwable $e) {
+            // Helpers may already be loaded or unavailable
+        }
     }
 }
 

@@ -235,6 +235,41 @@ class SfUserAdapter
         return $id ? (int) $id : null;
     }
 
+    // Note: getUserId() (camelCase) resolves to getUserID() automatically
+    // because PHP method names are case-insensitive. No alias needed.
+
+    /**
+     * Get the username or email of the current user.
+     * Used by AuditTrail, 3DModel, Search plugins.
+     */
+    public function getUsername(): ?string
+    {
+        if ($this->user) {
+            return $this->user->email ?? $this->user->username ?? null;
+        }
+
+        return $this->getAttribute('user_name');
+    }
+
+    /**
+     * Get the full user object.
+     * Used by LandingPage plugin.
+     */
+    public function getUserObject(): ?object
+    {
+        return $this->user;
+    }
+
+    /**
+     * Check if the current user is a super user.
+     * In AtoM, super user maps to administrator.
+     * Used by Reports plugin.
+     */
+    public function isSuperUser(): bool
+    {
+        return $this->isAdministrator();
+    }
+
     /**
      * Get the user's myUser/guard instance (for compatibility with AtoM code).
      * Returns self since this adapter already provides the user API.
@@ -333,6 +368,45 @@ class SfUserAdapter
         }
 
         return AclService::hasGroup($groupId);
+    }
+
+    /**
+     * Check if the user has access to a module/action.
+     *
+     * In Symfony, this checks security.yml credential requirements.
+     * In standalone mode, administrators have access to everything;
+     * authenticated users have access unless the module requires
+     * a specific credential.
+     *
+     * Used by ahgThemeB5Plugin (arStorageService ACL check).
+     */
+    public function checkModuleActionAccess(string $module, string $action): bool
+    {
+        // Unauthenticated users have no module access
+        if (!$this->isAuthenticated()) {
+            return false;
+        }
+
+        // Administrators have full access
+        if ($this->isAdministrator()) {
+            return true;
+        }
+
+        // Module-specific credential requirements
+        // Matches security.yml patterns from AtoM plugins
+        $moduleCredentials = [
+            'arStorageService' => 'editor',
+            'user' => 'administrator',
+            'aclGroup' => 'administrator',
+            'settings' => 'administrator',
+        ];
+
+        if (isset($moduleCredentials[$module])) {
+            return $this->hasCredential($moduleCredentials[$module]);
+        }
+
+        // Default: authenticated users can access
+        return true;
     }
 
     // ─── Internal ────────────────────────────────────────────────────

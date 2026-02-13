@@ -1,0 +1,108 @@
+#!/usr/bin/env bash
+# =============================================================================
+# AtoM Heratio — Propel Coupling CI Check
+# Compares current counts against baseline. Exits 1 if coupling increased.
+# =============================================================================
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+FRAMEWORK_DIR="$(dirname "$SCRIPT_DIR")"
+BASELINE_FILE="$FRAMEWORK_DIR/.propel-baseline.json"
+AUDIT_SCRIPT="$SCRIPT_DIR/audit-propel"
+
+# Colors (disable if not a terminal)
+if [ -t 1 ]; then
+    BOLD="\033[1m"
+    RED="\033[0;31m"
+    GREEN="\033[0;32m"
+    YELLOW="\033[0;33m"
+    RESET="\033[0m"
+else
+    BOLD="" RED="" GREEN="" YELLOW="" RESET=""
+fi
+
+# Check baseline exists
+if [ ! -f "$BASELINE_FILE" ]; then
+    echo -e "${YELLOW}WARNING: No baseline found at $BASELINE_FILE${RESET}"
+    echo "Run bin/audit-propel-baseline first to create a baseline."
+    exit 0
+fi
+
+# Read baseline values
+read_json_value() {
+    local key="$1"
+    local file="$2"
+    grep "\"$key\"" "$file" | grep -o '[0-9]*' | head -1
+}
+
+BASE_SAVE=$(read_json_value "save_count" "$BASELINE_FILE")
+BASE_NEW_QUBIT=$(read_json_value "new_qubit_count" "$BASELINE_FILE")
+BASE_DELETE=$(read_json_value "delete_count" "$BASELINE_FILE")
+BASE_SET_VALUE=$(read_json_value "set_value_count" "$BASELINE_FILE")
+BASE_QUERY=$(read_json_value "query_count" "$BASELINE_FILE")
+BASE_TOTAL=$(read_json_value "total" "$BASELINE_FILE")
+
+# Get current counts
+if [ ! -x "$AUDIT_SCRIPT" ]; then
+    echo "ERROR: audit-propel script not found or not executable at $AUDIT_SCRIPT"
+    exit 1
+fi
+
+CURRENT_JSON=$("$AUDIT_SCRIPT" --json 2>/dev/null | grep -A 100 '^{' | head -n 100)
+
+if [ -z "$CURRENT_JSON" ]; then
+    echo "ERROR: Failed to get current audit data."
+    exit 1
+fi
+
+# Parse current values from JSON string
+CUR_SAVE=$(echo "$CURRENT_JSON" | grep '"save_count"' | grep -o '[0-9]*' | head -1)
+CUR_NEW_QUBIT=$(echo "$CURRENT_JSON" | grep '"new_qubit_count"' | grep -o '[0-9]*' | head -1)
+CUR_DELETE=$(echo "$CURRENT_JSON" | grep '"delete_count"' | grep -o '[0-9]*' | head -1)
+CUR_SET_VALUE=$(echo "$CURRENT_JSON" | grep '"set_value_count"' | grep -o '[0-9]*' | head -1)
+CUR_QUERY=$(echo "$CURRENT_JSON" | grep '"query_count"' | grep -o '[0-9]*' | head -1)
+CUR_TOTAL=$(echo "$CURRENT_JSON" | grep '"total"' | grep -o '[0-9]*' | head -1)
+
+# Compare function: prints comparison line and returns 1 if regression
+REGRESSION=0
+
+compare_metric() {
+    local name="$1"
+    local baseline="$2"
+    local current="$3"
+    local delta=$((current - baseline))
+
+    if [ "$delta" -gt 0 ]; then
+        printf "  %-18s: %d -> %d " "$name" "$baseline" "$current"
+        echo -e "${RED}(+${delta}) <- REGRESSION${RESET}"
+        REGRESSION=1
+    elif [ "$delta" -lt 0 ]; then
+        printf "  %-18s: %d -> %d " "$name" "$baseline" "$current"
+        echo -e "${GREEN}(${delta})${RESET}"
+    else
+        printf "  %-18s: %d -> %d (unchanged)\n" "$name" "$baseline" "$current"
+    fi
+}
+
+echo ""
+
+compare_metric "->save()"    "$BASE_SAVE"      "$CUR_SAVE"
+compare_metric "new Qubit*"  "$BASE_NEW_QUBIT"  "$CUR_NEW_QUBIT"
+compare_metric "->delete()"  "$BASE_DELETE"     "$CUR_DELETE"
+compare_metric "->setValue(" "$BASE_SET_VALUE"  "$CUR_SET_VALUE"
+compare_metric "QubitQuery"  "$BASE_QUERY"      "$CUR_QUERY"
+echo "  ────────────────────"
+compare_metric "Total"       "$BASE_TOTAL"      "$CUR_TOTAL"
+echo ""
+
+if [ "$REGRESSION" -eq 1 ]; then
+    echo -e "${RED}${BOLD}FAIL: Propel coupling increased!${RESET}"
+    echo ""
+    echo "Fix: Remove new ->save() calls and use WriteServiceFactory instead."
+    echo "Run bin/audit-propel to see which files changed."
+    exit 1
+else
+    echo -e "${GREEN}${BOLD}OK: Propel coupling stable or decreased.${RESET}"
+    exit 0
+fi

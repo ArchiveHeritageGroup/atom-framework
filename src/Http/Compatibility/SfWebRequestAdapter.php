@@ -46,9 +46,46 @@ class SfWebRequestAdapter
         return $this;
     }
 
+    /**
+     * sfParameterHolder::get() alias for getParameter().
+     */
+    public function get(string $name, $default = null)
+    {
+        return $this->parameters[$name] ?? $default;
+    }
+
+    /**
+     * sfParameterHolder::set() alias for setParameter().
+     */
+    public function set(string $name, $value): void
+    {
+        $this->parameters[$name] = $value;
+    }
+
+    /**
+     * sfParameterHolder::has() alias for hasParameter().
+     */
+    public function has(string $name): bool
+    {
+        return array_key_exists($name, $this->parameters);
+    }
+
+    /**
+     * sfParameterHolder::remove().
+     */
+    public function remove(string $name): void
+    {
+        unset($this->parameters[$name]);
+    }
+
     public function getAll(): array
     {
         return $this->parameters;
+    }
+
+    public function getNames(): array
+    {
+        return array_keys($this->parameters);
     }
 
     public function isMethod(string $method): bool
@@ -136,6 +173,69 @@ class SfWebRequestAdapter
     public function __isset(string $name): bool
     {
         return $this->hasParameter($name);
+    }
+
+    /**
+     * Get query (GET) parameters.
+     */
+    public function getGetParameters(): array
+    {
+        return $this->request->query->all();
+    }
+
+    /**
+     * Get POST parameters.
+     */
+    public function getPostParameter(string $name, $default = null)
+    {
+        return $this->request->request->get($name, $default);
+    }
+
+    /**
+     * Get a specific query parameter.
+     */
+    public function getGetParameter(string $name, $default = null)
+    {
+        return $this->request->query->get($name, $default);
+    }
+
+    /** @var array<string, mixed> Request attributes (sf_route, etc.) */
+    private array $attributes = [];
+
+    /**
+     * Get a request attribute (used by sfAction::getRoute, etc.).
+     */
+    public function getAttribute(string $name, $default = null)
+    {
+        return $this->attributes[$name] ?? $default;
+    }
+
+    /**
+     * Set a request attribute.
+     */
+    public function setAttribute(string $name, $value): void
+    {
+        $this->attributes[$name] = $value;
+    }
+
+    /**
+     * Get uploaded files.
+     */
+    public function getFiles(?string $key = null): array
+    {
+        if (null !== $key) {
+            return $this->request->file($key) ? [$this->request->file($key)] : [];
+        }
+
+        return $this->request->allFiles();
+    }
+
+    /**
+     * Check if the request is an XMLHttpRequest (AJAX).
+     */
+    public function isXmlHttpRequest(): bool
+    {
+        return $this->request->ajax();
     }
 
     /**

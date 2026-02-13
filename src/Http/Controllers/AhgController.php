@@ -10,6 +10,7 @@ use AtomFramework\Http\Compatibility\SfResponseAdapter;
 use AtomFramework\Http\Compatibility\SfUserAdapter;
 use AtomFramework\Http\Compatibility\SfWebRequestAdapter;
 use AtomFramework\Services\ConfigService;
+use AtomFramework\Services\MenuService;
 use AtomFramework\Views\BladeRenderer;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -25,7 +26,7 @@ use Illuminate\Http\Response;
  * property-assignment magic and adapter-based helpers.
  */
 if (!class_exists(__NAMESPACE__ . '\\AhgControllerBase', false)) {
-    if (class_exists('sfActions', false)) {
+    if (class_exists('sfActions')) {
         // Symfony mode: inherit all sfActions methods (isSecure, initialize, etc.)
         class AhgControllerBase extends \sfActions
         {
@@ -34,9 +35,18 @@ if (!class_exists(__NAMESPACE__ . '\\AhgControllerBase', false)) {
              */
             public function preExecute()
             {
-                // Ensure I18N helper (__()) is available before action code runs
-                if (!function_exists('__') && class_exists('sfApplicationConfiguration', false)) {
-                    \sfApplicationConfiguration::getActive()->loadHelpers(['I18N']);
+                // Ensure essential helpers are available before action code runs
+                if (class_exists('sfApplicationConfiguration', false)) {
+                    $helpers = [];
+                    if (!function_exists('__')) {
+                        $helpers[] = 'I18N';
+                    }
+                    if (!function_exists('render_field')) {
+                        $helpers[] = 'Qubit';
+                    }
+                    if (!empty($helpers)) {
+                        \sfApplicationConfiguration::getActive()->loadHelpers($helpers);
+                    }
                 }
 
                 // Load framework bootstrap
@@ -259,6 +269,10 @@ class AhgController extends AhgControllerBase
             if (SfContextAdapter::hasInstance()) {
                 $this->sfContext = SfContextAdapter::getInstance();
                 $this->sfUser = $this->sfContext->getUser();
+
+                // Set module/action on context for templates that use $sf_context
+                $this->sfContext->setModuleName($module);
+                $this->sfContext->setActionName($action);
             }
         }
 
@@ -436,7 +450,7 @@ class AhgController extends AhgControllerBase
 
         try {
             $context = \sfContext::getInstance();
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             return;
         }
 
@@ -444,24 +458,39 @@ class AhgController extends AhgControllerBase
             return;
         }
 
-        try {
-            $moduleName = class_exists('sfActions', false)
-                ? $this->getModuleName()
-                : ($this->moduleName ?? '');
-            $actionName = class_exists('sfActions', false)
-                ? $this->getActionName()
-                : ($this->actionName ?? '');
+        // Set a lightweight stub that satisfies PartialHelper requirements.
+        // get_component_slot() and has_component_slot() need these methods.
+        // Avoids sfPHPView constructor which can fail for modules without
+        // a view.yml or with missing config cache entries.
+        $context->set('view_instance', new class () {
+            public function hasComponentSlot($name)
+            {
+                return true;
+            }
 
-            $view = new \sfPHPView(
-                $context,
-                $moduleName,
-                $actionName,
-                ''
-            );
-            $view->configure();
-        } catch (\Exception $e) {
-            // configure() may fail if view.yml doesn't exist for this module
-        }
+            public function getComponentSlot($name)
+            {
+                return null;
+            }
+
+            public function setDecorator($bool)
+            {
+            }
+
+            public function setDecoratorTemplate($tpl)
+            {
+            }
+
+            public function getDecoratorTemplate()
+            {
+                return 'layout';
+            }
+
+            public function getDecoratorDirectory()
+            {
+                return '';
+            }
+        });
     }
 
     // ─── Template Variables ─────────────────────────────────────────
@@ -514,6 +543,9 @@ class AhgController extends AhgControllerBase
     /**
      * Auto-detect and render the Blade template for the current action.
      * Only used in standalone mode dispatch.
+     *
+     * In standalone mode, if the Blade template does not @extends a layout,
+     * the rendered content is wrapped in the heratio master layout.
      */
     private function autoRender(): \Symfony\Component\HttpFoundation\Response
     {
@@ -523,6 +555,7 @@ class AhgController extends AhgControllerBase
 
         $templateName = $this->templateOverride ?? ($actionName . 'Success');
         $bladeFile = $templateName . '.blade.php';
+        $isStandalone = !class_exists('sfActions', false);
 
         $dirs = $this->getTemplateDirs();
 
@@ -538,6 +571,11 @@ class AhgController extends AhgControllerBase
 
                 $html = $renderer->render($templateName, $data);
 
+                // In standalone mode, wrap fragments in the master layout
+                if ($isStandalone && !$this->bladeExtendsLayout($dir . '/' . $bladeFile)) {
+                    $html = $this->wrapInLayout($html);
+                }
+
                 return new Response($html, 200, ['Content-Type' => 'text/html']);
             }
         }
@@ -548,6 +586,11 @@ class AhgController extends AhgControllerBase
             if (file_exists($dir . '/' . $phpFile)) {
                 $html = $this->renderPhpTemplate($dir . '/' . $phpFile);
 
+                // Wrap legacy PHP templates in layout when standalone
+                if ($isStandalone) {
+                    $html = $this->wrapInLayout($html);
+                }
+
                 return new Response($html, 200, ['Content-Type' => 'text/html']);
             }
         }
@@ -556,18 +599,115 @@ class AhgController extends AhgControllerBase
     }
 
     /**
+     * Check if a Blade template @extends a layout (avoids double-wrapping).
+     */
+    private function bladeExtendsLayout(string $filePath): bool
+    {
+        $content = file_get_contents($filePath);
+        if (false === $content) {
+            return false;
+        }
+
+        // Match @extends('...') at the start of the file (with optional whitespace)
+        return (bool) preg_match('/^\s*@extends\s*\(/', $content);
+    }
+
+    /**
+     * Wrap rendered HTML content in the heratio master layout.
+     *
+     * Used in standalone mode when a template is a fragment (no @extends).
+     * Injects the content as $sf_content into layouts.heratio.
+     */
+    private function wrapInLayout(string $content): string
+    {
+        $renderer = BladeRenderer::getInstance();
+
+        $culture = CultureHelper::getCulture();
+
+        $layoutData = [
+            'sf_user' => $this->getUser(),
+            'sf_request' => $this->getRequest(),
+            'sf_content' => $content,
+            'siteTitle' => ConfigService::get('siteTitle', 'AtoM'),
+            'siteDescription' => ConfigService::get('siteDescription', ''),
+            'culture' => $culture,
+            'rootDir' => ConfigService::rootDir(),
+        ];
+
+        return $renderer->render('layouts.heratio', $layoutData);
+    }
+
+    /**
      * Render a PHP template with template variables extracted into scope.
      */
     private function renderPhpTemplate(string $templatePath): string
     {
-        extract($this->getTemplateVars());
+        // Load Symfony template helper shims (slot, url_for, link_to, etc.)
+        require_once dirname(__DIR__, 2) . '/Views/blade_shims.php';
+
+        $templateVars = $this->getTemplateVars();
+        extract($templateVars);
         $sf_user = $this->getUser();
         $sf_request = $this->getRequest();
+        $sf_context = class_exists('sfContext', false) && \sfContext::hasInstance()
+            ? \sfContext::getInstance()
+            : null;
+
+        // Provide $sf_data (escaped variable access, passthrough in standalone)
+        $sf_data = new class($templateVars) {
+            private array $vars;
+
+            public function __construct(array $vars)
+            {
+                $this->vars = $vars;
+            }
+
+            public function __get(string $name)
+            {
+                return $this->vars[$name] ?? null;
+            }
+
+            public function __isset(string $name): bool
+            {
+                return isset($this->vars[$name]);
+            }
+
+            public function getRaw(string $name)
+            {
+                return $this->vars[$name] ?? null;
+            }
+        };
+
+        // Reset decorator layout before rendering
+        $GLOBALS['_sf_decorator_layout'] = null;
 
         ob_start();
         require $templatePath;
+        $sf_content = ob_get_clean();
 
-        return ob_get_clean();
+        // If template called decorate_with(), render the decorator layout
+        // which uses include_slot() to place captured slot content.
+        $decoratorLayout = $GLOBALS['_sf_decorator_layout'] ?? null;
+        if ($decoratorLayout) {
+            $rootDir = ConfigService::get('sf_root_dir', \sfConfig::get('sf_root_dir', ''));
+            $layoutFile = $rootDir . '/plugins/ahgThemeB5Plugin/templates/' . $decoratorLayout . '.php';
+            if (file_exists($layoutFile)) {
+                ob_start();
+
+                try {
+                    require $layoutFile;
+                } catch (\Throwable $e) {
+                    ob_end_clean();
+                    error_log('[heratio] Decorator layout error: ' . $e->getMessage());
+
+                    return $sf_content;
+                }
+
+                return ob_get_clean();
+            }
+        }
+
+        return $sf_content;
     }
 
     /**
