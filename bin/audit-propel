@@ -1,0 +1,249 @@
+#!/usr/bin/env bash
+# =============================================================================
+# AtoM Heratio — Propel Coupling Audit
+# Scans plugin action files for Propel coupling patterns and reports counts.
+# =============================================================================
+
+set -euo pipefail
+
+PLUGINS_PATH="/usr/share/nginx/archive/atom-ahg-plugins"
+
+# Colors (disable if not a terminal)
+if [ -t 1 ]; then
+    BOLD="\033[1m"
+    RED="\033[0;31m"
+    GREEN="\033[0;32m"
+    YELLOW="\033[0;33m"
+    CYAN="\033[0;36m"
+    RESET="\033[0m"
+else
+    BOLD="" RED="" GREEN="" YELLOW="" CYAN="" RESET=""
+fi
+
+# Build list of action files to scan
+# Include: */modules/*/actions/*.class.php and */modules/*/actions/handlers/*.class.php
+# Only ahg* plugin directories
+ACTION_FILES=()
+while IFS= read -r -d '' file; do
+    ACTION_FILES+=("$file")
+done < <(find "$PLUGINS_PATH"/ahg*/modules/*/actions -maxdepth 2 -name "*.class.php" -print0 2>/dev/null)
+
+if [ ${#ACTION_FILES[@]} -eq 0 ]; then
+    echo "No action files found in $PLUGINS_PATH"
+    exit 1
+fi
+
+# Count function: grep for pattern, excluding comments and WriteServiceFactory lines
+# Usage: count_pattern <pattern> <files...>
+count_pattern() {
+    local pattern="$1"
+    shift
+    local count=0
+    for file in "$@"; do
+        local matches
+        matches=$(grep -n -e "$pattern" "$file" 2>/dev/null \
+            | grep -v -e '^\s*//' \
+            | grep -v -e '^\s*\*' \
+            | grep -v -e '^\s*#' \
+            | grep -v -e 'WriteServiceFactory' \
+            || true)
+        if [ -n "$matches" ]; then
+            local c
+            c=$(echo "$matches" | wc -l)
+            count=$((count + c))
+        fi
+    done
+    echo "$count"
+}
+
+# Count per-file function: returns count for a single file
+count_pattern_file() {
+    local pattern="$1"
+    local file="$2"
+    local matches
+    matches=$(grep -n -e "$pattern" "$file" 2>/dev/null \
+        | grep -v -e '^\s*//' \
+        | grep -v -e '^\s*\*' \
+        | grep -v -e '^\s*#' \
+        | grep -v -e 'WriteServiceFactory' \
+        || true)
+    if [ -n "$matches" ]; then
+        echo "$matches" | wc -l
+    else
+        echo "0"
+    fi
+}
+
+# Special count for "new Qubit*" — exclude QubitAsset
+count_new_qubit_file() {
+    local file="$1"
+    local matches
+    matches=$(grep -n -e 'new Qubit\w' "$file" 2>/dev/null \
+        | grep -v -e '^\s*//' \
+        | grep -v -e '^\s*\*' \
+        | grep -v -e '^\s*#' \
+        | grep -v -e 'WriteServiceFactory' \
+        | grep -v -e 'new QubitAsset' \
+        || true)
+    if [ -n "$matches" ]; then
+        echo "$matches" | wc -l
+    else
+        echo "0"
+    fi
+}
+
+# --- Global counts ---
+SAVE_TOTAL=0
+NEW_QUBIT_TOTAL=0
+DELETE_TOTAL=0
+SET_VALUE_TOTAL=0
+QUERY_TOTAL=0
+
+# --- Per-file details ---
+declare -A FILE_SAVE
+declare -A FILE_NEW_QUBIT
+declare -A FILE_DELETE
+declare -A FILE_SET_VALUE
+declare -A FILE_QUERY
+
+for file in "${ACTION_FILES[@]}"; do
+    s=$(count_pattern_file '->save()' "$file")
+    n=$(count_new_qubit_file "$file")
+    d=$(count_pattern_file '->delete()' "$file")
+    v=$(count_pattern_file '->setValue(' "$file")
+    q=$(count_pattern_file 'QubitQuery' "$file")
+
+    SAVE_TOTAL=$((SAVE_TOTAL + s))
+    NEW_QUBIT_TOTAL=$((NEW_QUBIT_TOTAL + n))
+    DELETE_TOTAL=$((DELETE_TOTAL + d))
+    SET_VALUE_TOTAL=$((SET_VALUE_TOTAL + v))
+    QUERY_TOTAL=$((QUERY_TOTAL + q))
+
+    total_file=$((s + n + d + v + q))
+    if [ "$total_file" -gt 0 ]; then
+        # Store relative path from plugins dir
+        rel="${file#$PLUGINS_PATH/}"
+        FILE_SAVE["$rel"]=$s
+        FILE_NEW_QUBIT["$rel"]=$n
+        FILE_DELETE["$rel"]=$d
+        FILE_SET_VALUE["$rel"]=$v
+        FILE_QUERY["$rel"]=$q
+    fi
+done
+
+TOTAL=$((SAVE_TOTAL + NEW_QUBIT_TOTAL + DELETE_TOTAL + SET_VALUE_TOTAL + QUERY_TOTAL))
+
+# --- Route Classification ---
+NATIVE_PLUGINS=()
+BRIDGED_PLUGINS=()
+NO_ROUTE_PLUGINS=()
+
+for plugindir in "$PLUGINS_PATH"/ahg*Plugin; do
+    [ -d "$plugindir" ] || continue
+    pluginname=$(basename "$plugindir")
+    has_native=0
+    has_bridged=0
+
+    if [ -f "$plugindir/config/routes.php" ]; then
+        has_native=1
+    fi
+    if [ -f "$plugindir/config/routing.yml" ]; then
+        has_bridged=1
+    fi
+
+    if [ "$has_native" -eq 1 ]; then
+        NATIVE_PLUGINS+=("$pluginname")
+    elif [ "$has_bridged" -eq 1 ]; then
+        BRIDGED_PLUGINS+=("$pluginname")
+    else
+        NO_ROUTE_PLUGINS+=("$pluginname")
+    fi
+done
+
+# === Output ===
+
+echo ""
+echo -e "${BOLD}=== AtoM Heratio — Propel Coupling Audit ===${RESET}"
+echo "Date: $(date +%Y-%m-%d)"
+echo "Scan path: atom-ahg-plugins/*/modules/*/actions/"
+echo ""
+
+echo -e "${BOLD}--- Counts by Pattern ---${RESET}"
+printf "%-18s: %d\n" "->save()"        "$SAVE_TOTAL"
+printf "%-18s: %d\n" "new Qubit*"      "$NEW_QUBIT_TOTAL"
+printf "%-18s: %d\n" "->delete()"      "$DELETE_TOTAL"
+printf "%-18s: %d\n" "->setValue("     "$SET_VALUE_TOTAL"
+printf "%-18s: %d\n" "QubitQuery"      "$QUERY_TOTAL"
+echo "                    --"
+printf "%-18s: %d\n" "Total coupling"  "$TOTAL"
+echo ""
+
+echo -e "${BOLD}--- Files with coupling ---${RESET}"
+
+# Sort files and print details
+SORTED_FILES=($(echo "${!FILE_SAVE[@]}" | tr ' ' '\n' | sort))
+
+current_plugin=""
+for rel in "${SORTED_FILES[@]}"; do
+    s=${FILE_SAVE[$rel]:-0}
+    n=${FILE_NEW_QUBIT[$rel]:-0}
+    d=${FILE_DELETE[$rel]:-0}
+    v=${FILE_SET_VALUE[$rel]:-0}
+    q=${FILE_QUERY[$rel]:-0}
+
+    file_total=$((s + n + d + v + q))
+    [ "$file_total" -eq 0 ] && continue
+
+    # Extract plugin name for grouping
+    plugin=$(echo "$rel" | cut -d'/' -f1)
+    if [ "$plugin" != "$current_plugin" ]; then
+        [ -n "$current_plugin" ] && echo ""
+        echo -e "${CYAN}${plugin}:${RESET}"
+        current_plugin="$plugin"
+    fi
+
+    # Build detail string
+    details=""
+    [ "$s" -gt 0 ] && details="${details}->save(): ${s}, "
+    [ "$n" -gt 0 ] && details="${details}new Qubit*: ${n}, "
+    [ "$d" -gt 0 ] && details="${details}->delete(): ${d}, "
+    [ "$v" -gt 0 ] && details="${details}->setValue(: ${v}, "
+    [ "$q" -gt 0 ] && details="${details}QubitQuery: ${q}, "
+    details="${details%, }"
+
+    # Show file path relative to plugin
+    filepath="${rel#$plugin/}"
+    echo "  ${filepath}"
+    echo "    ${details}"
+done
+
+echo ""
+echo -e "${BOLD}--- Route Classification ---${RESET}"
+printf "%-22s: %d plugins" "Native (routes.php)"  "${#NATIVE_PLUGINS[@]}"
+if [ ${#NATIVE_PLUGINS[@]} -gt 0 ]; then
+    echo -n " ("
+    echo -n "${NATIVE_PLUGINS[*]}" | sed 's/ /, /g'
+    echo ")"
+else
+    echo ""
+fi
+
+printf "%-22s: %d plugins\n" "Bridged (routing.yml)" "${#BRIDGED_PLUGINS[@]}"
+printf "%-22s: %d plugins\n" "No routes"             "${#NO_ROUTE_PLUGINS[@]}"
+echo ""
+
+# Output machine-readable counts on a single line for other scripts to parse
+# This is used by audit-propel-baseline and audit-propel-check
+if [ "${1:-}" = "--json" ]; then
+    echo "{"
+    echo "  \"date\": \"$(date +%Y-%m-%d)\","
+    echo "  \"save_count\": $SAVE_TOTAL,"
+    echo "  \"new_qubit_count\": $NEW_QUBIT_TOTAL,"
+    echo "  \"delete_count\": $DELETE_TOTAL,"
+    echo "  \"set_value_count\": $SET_VALUE_TOTAL,"
+    echo "  \"query_count\": $QUERY_TOTAL,"
+    echo "  \"total\": $TOTAL,"
+    echo "  \"native_route_plugins\": ${#NATIVE_PLUGINS[@]},"
+    echo "  \"bridged_route_plugins\": ${#BRIDGED_PLUGINS[@]}"
+    echo "}"
+fi
