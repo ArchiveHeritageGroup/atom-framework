@@ -60,6 +60,7 @@ class WriteServiceFactory
     private static ?FeedbackWriteServiceInterface $feedbackInstance = null;
     private static ?RequestToPublishWriteServiceInterface $rtpInstance = null;
     private static ?JobWriteServiceInterface $jobInstance = null;
+    private static ?InformationObjectWriteServiceInterface $ioInstance = null;
 
     /**
      * Get the Settings write service.
@@ -205,6 +206,18 @@ class WriteServiceFactory
         return self::$jobInstance;
     }
 
+    /**
+     * Get the InformationObject write service.
+     */
+    public static function informationObject(): InformationObjectWriteServiceInterface
+    {
+        if (null === self::$ioInstance) {
+            self::$ioInstance = new PropelInformationObjectWriteService();
+        }
+
+        return self::$ioInstance;
+    }
+
     // ─── Testing / Override ─────────────────────────────────────────
 
     /**
@@ -270,6 +283,11 @@ class WriteServiceFactory
         self::$jobInstance = $service;
     }
 
+    public static function setInformationObject(InformationObjectWriteServiceInterface $service): void
+    {
+        self::$ioInstance = $service;
+    }
+
     /**
      * Reset all cached instances.
      */
@@ -287,5 +305,6 @@ class WriteServiceFactory
         self::$feedbackInstance = null;
         self::$rtpInstance = null;
         self::$jobInstance = null;
+        self::$ioInstance = null;
     }
 }
