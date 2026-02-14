@@ -17,7 +17,7 @@ use AtomFramework\Core\Security\KeyManager;
 class EncryptionKeyCommand extends BaseCommand
 {
     protected string $name = 'encryption:key';
-    protected string $description = 'Generate or validate the AES-256 encryption master key';
+    protected string $description = 'Generate or validate the encryption master key';
 
     protected function configure(): void
     {
@@ -67,12 +67,16 @@ class EncryptionKeyCommand extends BaseCommand
 
         try {
             $key = KeyManager::generateKey();
-            KeyManager::saveKey($key);
+            $keyId = KeyManager::keyExists() ? KeyManager::getKeyId() + 1 : 1;
+            KeyManager::saveKey($key, $keyId);
 
+            $algo = KeyManager::hasSodium() ? 'XChaCha20-Poly1305 (libsodium)' : 'AES-256-GCM (OpenSSL)';
             $this->success("Encryption key generated successfully.");
             $this->info("  Path: {$path}");
-            $this->info("  Algorithm: AES-256-GCM");
+            $this->info("  Key ID: {$keyId}");
+            $this->info("  Algorithm: {$algo}");
             $this->info("  Key length: 256 bits (32 bytes)");
+            $this->info("  Subkeys: HKDF-SHA256 (file, field, hmac)");
             $this->info("  Permissions: 0600 (owner read-only)");
             $this->line('');
             $this->warning('IMPORTANT: Back up this key securely. If lost, all encrypted data is unrecoverable.');
@@ -98,15 +102,20 @@ class EncryptionKeyCommand extends BaseCommand
 
         try {
             $key = KeyManager::loadKey();
+            $keyId = KeyManager::getKeyId();
+            $algo = KeyManager::hasSodium() ? 'XChaCha20-Poly1305 (libsodium)' : 'AES-256-GCM (OpenSSL)';
+
             $this->success("Key is valid.");
             $this->info("  Path: {$path}");
+            $this->info("  Key ID: {$keyId}");
             $this->info("  Length: " . strlen($key) . " bytes (256 bits)");
+            $this->info("  Algorithm: {$algo}");
             $this->info("  Permissions: " . substr(sprintf('%o', fileperms($path)), -4));
 
-            // Test encrypt/decrypt round-trip
+            // Test encrypt/decrypt round-trip using V2 (derived subkey)
             $testData = 'AHG encryption validation test';
-            $encrypted = \AtomFramework\Core\Security\EncryptionService::encrypt($testData, $key);
-            $decrypted = \AtomFramework\Core\Security\EncryptionService::decrypt($encrypted, $key);
+            $encrypted = \AtomFramework\Core\Security\EncryptionService::encrypt($testData);
+            $decrypted = \AtomFramework\Core\Security\EncryptionService::decrypt($encrypted);
 
             if ($decrypted === $testData) {
                 $this->success("  Round-trip test: PASSED");

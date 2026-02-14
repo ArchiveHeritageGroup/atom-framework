@@ -353,7 +353,7 @@ class EncryptableFieldService
                     'category' => $category,
                     'is_encrypted' => 1,
                     'encrypted_at' => date('Y-m-d H:i:s'),
-                    'algorithm' => 'aes-256-gcm',
+                    'algorithm' => KeyManager::hasSodium() ? 'xchacha20-poly1305' : 'aes-256-gcm',
                     'updated_at' => date('Y-m-d H:i:s'),
                 ]
             );

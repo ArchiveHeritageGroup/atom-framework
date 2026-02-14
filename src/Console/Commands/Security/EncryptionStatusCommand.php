@@ -57,12 +57,18 @@ class EncryptionStatusCommand extends BaseCommand
 
         try {
             $key = KeyManager::loadKey();
+            $keyId = KeyManager::getKeyId();
+            $hasSodium = KeyManager::hasSodium();
+            $algo = $hasSodium ? 'XChaCha20-Poly1305 (libsodium)' : 'AES-256-GCM (OpenSSL)';
             $perms = substr(sprintf('%o', fileperms($path)), -4);
             $mtime = filemtime($path);
             $age = round((time() - $mtime) / 86400);
 
             $this->success("  Status: Valid");
-            $this->info("  Algorithm: AES-256-GCM");
+            $this->info("  Key ID: {$keyId}");
+            $this->info("  Algorithm: {$algo}");
+            $this->info("  Sodium: " . ($hasSodium ? 'Available (v' . SODIUM_LIBRARY_VERSION . ')' : 'Not available'));
+            $this->info("  Subkeys: HKDF-SHA256 (file, field, hmac)");
             $this->info("  Permissions: {$perms}" . ($perms !== '0600' ? ' (WARNING: should be 0600)' : ''));
             $this->info("  Created: " . date('Y-m-d H:i:s', $mtime) . " ({$age} days ago)");
         } catch (\Exception $e) {
@@ -124,7 +130,8 @@ class EncryptionStatusCommand extends BaseCommand
                 ->get(['path', 'name']);
 
             $webDir = $this->atomRoot;
-            $encrypted = 0;
+            $v1Count = 0;
+            $v2Count = 0;
             $plaintext = 0;
             $missing = 0;
 
@@ -137,22 +144,33 @@ class EncryptionStatusCommand extends BaseCommand
 
                 if (!file_exists($fullPath)) {
                     $missing++;
-                } elseif (EncryptionService::isEncryptedFile($fullPath)) {
-                    $encrypted++;
                 } else {
-                    $plaintext++;
+                    $version = EncryptionService::detectFileVersion($fullPath);
+                    if ($version === 2) {
+                        $v2Count++;
+                    } elseif ($version === 1) {
+                        $v1Count++;
+                    } else {
+                        $plaintext++;
+                    }
                 }
             }
 
+            $encrypted = $v1Count + $v2Count;
             $this->info("  Total digital objects: {$totalDOs}");
             $this->info("  Sample ({$sampleSize} files):");
-            $this->info("    Encrypted: {$encrypted}");
+            $this->info("    Encrypted V2 (sodium): {$v2Count}");
+            $this->info("    Encrypted V1 (legacy): {$v1Count}");
             $this->info("    Plaintext: {$plaintext}");
             $this->info("    Missing:   {$missing}");
 
             if ($totalDOs > 0 && $sampleSize > 0) {
                 $pct = round(($encrypted / $sampleSize) * 100, 1);
                 $this->info("  Estimated encryption rate: {$pct}%");
+            }
+
+            if ($v1Count > 0) {
+                $this->warning("  Note: {$v1Count} file(s) still use V1 format. Re-encrypt with: php bin/atom encryption:encrypt-files --upgrade-v2");
             }
         } catch (\Exception $e) {
             $this->warning("  Cannot query digital objects: " . $e->getMessage());
