@@ -170,6 +170,10 @@ class Kernel
         // 4. Load app.yml (CSP config, etc.)
         ConfigService::loadFromAppYaml($this->rootDir);
 
+        // 4b. Initialize plugin configurations (populates sf_enabled_modules,
+        //     app_b5_theme, decorator dirs, etc.)
+        $this->initializePluginConfigurations();
+
         // 5. Create container and router
         $this->container = new Container();
         Container::setInstance($this->container);
@@ -340,6 +344,55 @@ class Kernel
             ]);
         })->name('api.info');
 
+        // Shim status endpoint — reports standalone boot chain health
+        $this->router->get('/api/v3/shim-status', function () {
+            $isShimmed = class_exists('sfConfig', false)
+                && is_a('sfConfig', SfConfigShim::class, true);
+
+            $modules = \sfConfig::get('sf_enabled_modules', []);
+            $cspNonce = \sfConfig::get('csp_nonce', '');
+            $b5Theme = \sfConfig::get('app_b5_theme', false);
+            $siteTitle = \sfConfig::get('app_siteTitle', '');
+
+            $contextOk = false;
+            $userOk = false;
+            try {
+                if (SfContextAdapter::hasInstance()) {
+                    $contextOk = true;
+                    $user = SfContextAdapter::getInstance()->getUser();
+                    $userOk = $user instanceof Compatibility\SfUserAdapter;
+                }
+            } catch (\Throwable $e) {
+                // ignore
+            }
+
+            return new \Illuminate\Http\JsonResponse([
+                'standalone' => $isShimmed,
+                'shims' => [
+                    'sfConfig' => $isShimmed ? 'SfConfigShim' : 'real',
+                    'sfContext' => $contextOk ? (is_a('sfContext', SfContextAdapter::class, true) ? 'SfContextAdapter' : 'real') : 'not initialized',
+                    'sfProjectConfiguration' => is_a('sfProjectConfiguration', Compatibility\SfProjectConfigurationShim::class, true) ? 'SfProjectConfigurationShim' : 'real',
+                    'sfOutputEscaper' => class_exists('sfOutputEscaper', false) ? (is_a('sfOutputEscaper', Compatibility\EscaperShim::class, true) ? 'EscaperShim' : 'real') : 'not loaded',
+                    'PropelBridge' => \AtomFramework\Bridges\PropelBridge::isBooted() ? 'booted' : 'not booted',
+                ],
+                'config' => [
+                    'sf_root_dir' => \sfConfig::get('sf_root_dir', '') ? 'set' : 'missing',
+                    'sf_plugins_dir' => \sfConfig::get('sf_plugins_dir', '') ? 'set' : 'missing',
+                    'sf_upload_dir' => \sfConfig::get('sf_upload_dir', '') ? 'set' : 'missing',
+                    'csp_nonce' => $cspNonce ? 'generated' : 'missing',
+                    'app_b5_theme' => $b5Theme ? true : false,
+                    'app_siteTitle' => $siteTitle ?: 'not set',
+                    'sf_enabled_modules' => count($modules),
+                ],
+                'auth' => [
+                    'context_initialized' => $contextOk,
+                    'user_adapter' => $userOk,
+                    'authenticated' => $contextOk ? SfContextAdapter::getInstance()->getUser()->isAuthenticated() : false,
+                ],
+                'routes' => count($this->router->getRoutes()),
+            ]);
+        })->name('api.shim-status');
+
         // Auth endpoints (standalone login/logout)
         $this->router->post('/auth/login', [Controllers\AuthController::class, 'login'])->name('auth.login');
         $this->router->match(['GET', 'POST'], '/auth/logout', [Controllers\AuthController::class, 'logout'])->name('auth.logout');
@@ -487,6 +540,84 @@ class Kernel
         }
 
         return 'dev';
+    }
+
+    /**
+     * Initialize plugin configuration classes in standalone mode.
+     *
+     * In Symfony mode, each plugin's Configuration class (e.g.,
+     * ahgThemeB5PluginConfiguration) runs initialize() during boot.
+     * This populates sf_enabled_modules, sets app_b5_theme, registers
+     * decorator dirs, etc.
+     *
+     * In standalone mode, we replicate this by loading each enabled
+     * plugin's Configuration class. The sfPluginConfiguration constructor
+     * automatically calls setup(), configure(), initializeAutoload(),
+     * and initialize() — so just constructing the class is enough.
+     */
+    private function initializePluginConfigurations(): void
+    {
+        // Only run in standalone mode — if real sfProjectConfiguration
+        // is loaded (not our shim), Symfony already initialized plugins.
+        if (class_exists('sfProjectConfiguration', false)
+            && !is_a('sfProjectConfiguration', Compatibility\SfProjectConfigurationShim::class, true)
+        ) {
+            return;
+        }
+
+        // Ensure sf_enabled_modules starts as an array
+        \sfConfig::set('sf_enabled_modules', \sfConfig::get('sf_enabled_modules', []));
+
+        $pluginsDir = $this->rootDir . '/plugins';
+        if (!is_dir($pluginsDir)) {
+            return;
+        }
+
+        // Get enabled + core plugins from DB
+        try {
+            $enabledPlugins = \Illuminate\Database\Capsule\Manager::table('atom_plugin')
+                ->where(function ($q) {
+                    $q->where('is_enabled', 1)->orWhere('is_core', 1);
+                })
+                ->orderBy('load_order')
+                ->pluck('name')
+                ->toArray();
+        } catch (\Throwable $e) {
+            return;
+        }
+
+        $projectConfig = \sfProjectConfiguration::getActive();
+
+        foreach ($enabledPlugins as $pluginName) {
+            $configFile = $pluginsDir . '/' . $pluginName . '/config/'
+                . $pluginName . 'Configuration.class.php';
+
+            if (!file_exists($configFile)) {
+                continue;
+            }
+
+            $className = $pluginName . 'Configuration';
+
+            // Skip if already loaded
+            if (class_exists($className, false)) {
+                continue;
+            }
+
+            try {
+                require_once $configFile;
+
+                if (!class_exists($className, false)) {
+                    continue;
+                }
+
+                // Constructing the plugin config automatically calls:
+                // setup() → configure() → initializeAutoload() → initialize()
+                new $className($projectConfig, $pluginsDir . '/' . $pluginName);
+            } catch (\Throwable $e) {
+                // Non-fatal — log and continue with remaining plugins
+                error_log('[heratio] Plugin config init failed for ' . $pluginName . ': ' . $e->getMessage());
+            }
+        }
     }
 
     /**

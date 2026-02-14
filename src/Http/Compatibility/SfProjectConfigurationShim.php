@@ -36,7 +36,8 @@ class SfProjectConfigurationShim
     /**
      * Get the list of enabled plugins.
      *
-     * Queries atom_plugin table for enabled plugins.
+     * Queries atom_plugin table for enabled OR core plugins.
+     * Core plugins (is_core=1) are always loaded regardless of is_enabled flag.
      *
      * @return string[] Plugin names
      */
@@ -48,7 +49,9 @@ class SfProjectConfigurationShim
 
         try {
             $this->plugins = DB::table('atom_plugin')
-                ->where('is_enabled', 1)
+                ->where(function ($q) {
+                    $q->where('is_enabled', 1)->orWhere('is_core', 1);
+                })
                 ->pluck('name')
                 ->toArray();
         } catch (\Throwable $e) {
@@ -56,6 +59,19 @@ class SfProjectConfigurationShim
         }
 
         return $this->plugins;
+    }
+
+    /**
+     * Set the plugins list.
+     *
+     * Called by plugin configurations (e.g. theme) to reorder plugins.
+     * In standalone mode, updates the in-memory list.
+     *
+     * @param string[] $plugins Plugin names
+     */
+    public function setPlugins($plugins): void
+    {
+        $this->plugins = is_array($plugins) ? array_values($plugins) : [];
     }
 
     /**
@@ -116,6 +132,30 @@ class SfProjectConfigurationShim
     public function getRootDir(): string
     {
         return \sfConfig::get('sf_root_dir', '');
+    }
+
+    /**
+     * Get the event dispatcher.
+     *
+     * sfPluginConfiguration constructor calls $configuration->getEventDispatcher().
+     * Returns the SfEventDispatcherAdapter for standalone mode.
+     *
+     * No return type hint — must match real sfProjectConfiguration signature,
+     * and SfEventDispatcherAdapter lives in SfContextAdapter.php (multi-class file).
+     */
+    public function getEventDispatcher()
+    {
+        static $dispatcher;
+        if (!$dispatcher) {
+            // SfEventDispatcherAdapter is defined inside SfContextAdapter.php
+            // (multi-class file — PSR-4 autoloading won't find it by class name)
+            if (!class_exists('AtomFramework\\Http\\Compatibility\\SfEventDispatcherAdapter', false)) {
+                require_once __DIR__ . '/SfContextAdapter.php';
+            }
+            $dispatcher = new \AtomFramework\Http\Compatibility\SfEventDispatcherAdapter();
+        }
+
+        return $dispatcher;
     }
 
     /**
