@@ -282,7 +282,7 @@ class HeratioVerifyCommand extends BaseCommand
         }
         $this->check('WriteService: actor create + i18n', $actorCreateOk);
 
-        // 21. WriteService: all 13 factory methods return correct types
+        // 21. WriteService: all 14 factory methods return correct types
         $factoryMethods = [
             'settings' => 'AtomFramework\\Services\\Write\\SettingsWriteServiceInterface',
             'acl' => 'AtomFramework\\Services\\Write\\AclWriteServiceInterface',
@@ -297,6 +297,7 @@ class HeratioVerifyCommand extends BaseCommand
             'requestToPublish' => 'AtomFramework\\Services\\Write\\RequestToPublishWriteServiceInterface',
             'job' => 'AtomFramework\\Services\\Write\\JobWriteServiceInterface',
             'informationObject' => 'AtomFramework\\Services\\Write\\InformationObjectWriteServiceInterface',
+            'rightsHolder' => 'AtomFramework\\Services\\Write\\RightsHolderWriteServiceInterface',
         ];
         $factoryOk = 0;
         foreach ($factoryMethods as $method => $interface) {

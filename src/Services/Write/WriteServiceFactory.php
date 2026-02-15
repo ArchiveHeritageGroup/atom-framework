@@ -61,6 +61,7 @@ class WriteServiceFactory
     private static ?RequestToPublishWriteServiceInterface $rtpInstance = null;
     private static ?JobWriteServiceInterface $jobInstance = null;
     private static ?InformationObjectWriteServiceInterface $ioInstance = null;
+    private static ?RightsHolderWriteServiceInterface $rightsHolderInstance = null;
 
     /**
      * Detect whether we are in standalone (Heratio) mode.
@@ -257,6 +258,20 @@ class WriteServiceFactory
         return self::$ioInstance;
     }
 
+    /**
+     * Get the RightsHolder write service.
+     */
+    public static function rightsHolder(): RightsHolderWriteServiceInterface
+    {
+        if (null === self::$rightsHolderInstance) {
+            self::$rightsHolderInstance = self::isStandalone()
+                ? new StandaloneRightsHolderWriteService()
+                : new PropelRightsHolderWriteService();
+        }
+
+        return self::$rightsHolderInstance;
+    }
+
     // ─── Testing / Override ─────────────────────────────────────────
 
     /**
@@ -327,6 +342,11 @@ class WriteServiceFactory
         self::$ioInstance = $service;
     }
 
+    public static function setRightsHolder(RightsHolderWriteServiceInterface $service): void
+    {
+        self::$rightsHolderInstance = $service;
+    }
+
     /**
      * Reset all cached instances.
      */
@@ -345,5 +365,6 @@ class WriteServiceFactory
         self::$rtpInstance = null;
         self::$jobInstance = null;
         self::$ioInstance = null;
+        self::$rightsHolderInstance = null;
     }
 }
