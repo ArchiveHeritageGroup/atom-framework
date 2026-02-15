@@ -89,7 +89,13 @@ class HeratioVerifyCommand extends BaseCommand
         \sfConfig::set('csp_nonce', 'nonce=' . $nonce);
         $this->check('CSP nonce generation', !empty(\sfConfig::get('csp_nonce')));
 
-        // 9. Qubit model stubs — all 18 classes autoloadable
+        // 9. Qubit model stubs — load via compatibility autoloader, then verify
+        $compatAutoload = $rootDir . '/atom-framework/src/Compatibility/autoload.php';
+        if (file_exists($compatAutoload)) {
+            require_once $compatAutoload;
+        }
+        $this->check('Compatibility autoload.php loaded', file_exists($compatAutoload));
+
         $stubClasses = [
             'QubitTerm', 'QubitTaxonomy', 'QubitInformationObject', 'QubitActor',
             'QubitRepository', 'QubitDigitalObject', 'QubitObject', 'QubitRelation',
@@ -99,11 +105,11 @@ class HeratioVerifyCommand extends BaseCommand
         ];
         $stubsLoaded = 0;
         foreach ($stubClasses as $stubClass) {
-            if (class_exists($stubClass, true)) {
+            if (class_exists($stubClass, false)) {
                 $stubsLoaded++;
             }
         }
-        $this->check('Qubit model stubs autoloadable', $stubsLoaded === count($stubClasses), "{$stubsLoaded}/" . count($stubClasses));
+        $this->check('Qubit model stubs available', $stubsLoaded === count($stubClasses), "{$stubsLoaded}/" . count($stubClasses));
 
         // 9b. Spot-check critical constants
         $this->check('QubitTerm::MASTER_ID = 140', defined('QubitTerm::MASTER_ID') && \QubitTerm::MASTER_ID === 140);
