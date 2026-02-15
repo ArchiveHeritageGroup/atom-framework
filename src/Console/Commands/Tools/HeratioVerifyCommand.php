@@ -8,6 +8,7 @@ use AtomFramework\Http\Compatibility\SfConfigShim;
 use AtomFramework\Http\Compatibility\SfContextAdapter;
 use AtomFramework\Http\Compatibility\SfProjectConfigurationShim;
 use AtomFramework\Services\ConfigService;
+use AtomFramework\Services\Write\WriteServiceFactory;
 use Illuminate\Database\Capsule\Manager as DB;
 
 /**
@@ -200,6 +201,119 @@ class HeratioVerifyCommand extends BaseCommand
 
         // 16. blade_shims.php loaded
         $this->check('blade_shims.php exists', file_exists($shimsFile));
+
+        // 17. WriteService factory mode detection
+        WriteServiceFactory::reset();
+        $isStandalone = !class_exists('QubitObject', false) || !method_exists('QubitObject', 'save');
+        $settingsService = WriteServiceFactory::settings();
+        $expectedClass = $isStandalone
+            ? 'AtomFramework\\Services\\Write\\StandaloneSettingsWriteService'
+            : 'AtomFramework\\Services\\Write\\PropelSettingsWriteService';
+        $this->check(
+            'WriteServiceFactory mode detection',
+            $settingsService instanceof $expectedClass,
+            $isStandalone ? 'standalone' : 'propel'
+        );
+
+        // 18. WriteService: settings save + read roundtrip
+        $settingsRoundtrip = false;
+        $testSettingName = '_heratio_verify_test_' . time();
+        try {
+            $settingsService->save($testSettingName, 'verify_ok', 'heratio_test');
+            $row = DB::table('setting')
+                ->where('name', $testSettingName)
+                ->where('scope', 'heratio_test')
+                ->first();
+            if ($row) {
+                $i18n = DB::table('setting_i18n')
+                    ->where('id', $row->id)
+                    ->where('culture', 'en')
+                    ->first();
+                $settingsRoundtrip = $i18n && 'verify_ok' === $i18n->value;
+                // Clean up
+                $settingsService->delete($testSettingName, 'heratio_test');
+            }
+        } catch (\Throwable $e) {
+            // fail
+        }
+        $this->check('WriteService: settings roundtrip', $settingsRoundtrip);
+
+        // 19. WriteService: term create + slug verification
+        $termCreateOk = false;
+        try {
+            $termService = WriteServiceFactory::term();
+            // Use a test taxonomy (subject = 35)
+            $term = $termService->createTerm(35, '_heratio_verify_term_' . time(), 'en');
+            if ($term && $term->id > 0) {
+                // Verify slug exists
+                $slug = DB::table('slug')->where('object_id', $term->id)->first();
+                $termCreateOk = null !== $slug;
+                // Clean up
+                $termService->deleteTerm($term->id);
+            }
+        } catch (\Throwable $e) {
+            // fail
+        }
+        $this->check('WriteService: term create + slug', $termCreateOk);
+
+        // 20. WriteService: actor create + i18n verification
+        $actorCreateOk = false;
+        try {
+            $actorService = WriteServiceFactory::actor();
+            $actorName = '_heratio_verify_actor_' . time();
+            $actorId = $actorService->createActor([
+                'authorized_form_of_name' => $actorName,
+                'entity_type_id' => 132,
+            ], 'en');
+            if ($actorId > 0) {
+                $i18n = DB::table('actor_i18n')
+                    ->where('id', $actorId)
+                    ->where('culture', 'en')
+                    ->first();
+                $actorCreateOk = $i18n && $i18n->authorized_form_of_name === $actorName;
+                // Clean up
+                DB::table('slug')->where('object_id', $actorId)->delete();
+                DB::table('actor_i18n')->where('id', $actorId)->delete();
+                DB::table('actor')->where('id', $actorId)->delete();
+                DB::table('object')->where('id', $actorId)->delete();
+            }
+        } catch (\Throwable $e) {
+            // fail
+        }
+        $this->check('WriteService: actor create + i18n', $actorCreateOk);
+
+        // 21. WriteService: all 13 factory methods return correct types
+        $factoryMethods = [
+            'settings' => 'AtomFramework\\Services\\Write\\SettingsWriteServiceInterface',
+            'acl' => 'AtomFramework\\Services\\Write\\AclWriteServiceInterface',
+            'digitalObject' => 'AtomFramework\\Services\\Write\\DigitalObjectWriteServiceInterface',
+            'term' => 'AtomFramework\\Services\\Write\\TermWriteServiceInterface',
+            'accession' => 'AtomFramework\\Services\\Write\\AccessionWriteServiceInterface',
+            'import' => 'AtomFramework\\Services\\Write\\ImportWriteServiceInterface',
+            'physicalObject' => 'AtomFramework\\Services\\Write\\PhysicalObjectWriteServiceInterface',
+            'user' => 'AtomFramework\\Services\\Write\\UserWriteServiceInterface',
+            'actor' => 'AtomFramework\\Services\\Write\\ActorWriteServiceInterface',
+            'feedback' => 'AtomFramework\\Services\\Write\\FeedbackWriteServiceInterface',
+            'requestToPublish' => 'AtomFramework\\Services\\Write\\RequestToPublishWriteServiceInterface',
+            'job' => 'AtomFramework\\Services\\Write\\JobWriteServiceInterface',
+            'informationObject' => 'AtomFramework\\Services\\Write\\InformationObjectWriteServiceInterface',
+        ];
+        $factoryOk = 0;
+        foreach ($factoryMethods as $method => $interface) {
+            try {
+                $instance = WriteServiceFactory::$method();
+                if ($instance instanceof $interface) {
+                    $factoryOk++;
+                }
+            } catch (\Throwable $e) {
+                // fail
+            }
+        }
+        $this->check(
+            'WriteService: factory interfaces',
+            $factoryOk === count($factoryMethods),
+            "{$factoryOk}/" . count($factoryMethods)
+        );
 
         // Summary
         $this->newline();
