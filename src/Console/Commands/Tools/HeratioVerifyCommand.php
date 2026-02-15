@@ -89,11 +89,29 @@ class HeratioVerifyCommand extends BaseCommand
         \sfConfig::set('csp_nonce', 'nonce=' . $nonce);
         $this->check('CSP nonce generation', !empty(\sfConfig::get('csp_nonce')));
 
-        // 9. Qubit model classes accessible
-        $qubitOk = class_exists('QubitInformationObject', true);
-        $this->check('QubitInformationObject autoloadable', $qubitOk);
-        $this->check('QubitTerm autoloadable', class_exists('QubitTerm', true));
-        $this->check('QubitActor autoloadable', class_exists('QubitActor', true));
+        // 9. Qubit model stubs — all 18 classes autoloadable
+        $stubClasses = [
+            'QubitTerm', 'QubitTaxonomy', 'QubitInformationObject', 'QubitActor',
+            'QubitRepository', 'QubitDigitalObject', 'QubitObject', 'QubitRelation',
+            'QubitPhysicalObject', 'QubitObjectTermRelation', 'QubitAccession',
+            'QubitEvent', 'QubitOtherName', 'QubitMenu', 'QubitDonor',
+            'QubitContactInformation', 'QubitStaticPage', 'QubitRightsHolder',
+        ];
+        $stubsLoaded = 0;
+        foreach ($stubClasses as $stubClass) {
+            if (class_exists($stubClass, true)) {
+                $stubsLoaded++;
+            }
+        }
+        $this->check('Qubit model stubs autoloadable', $stubsLoaded === count($stubClasses), "{$stubsLoaded}/" . count($stubClasses));
+
+        // 9b. Spot-check critical constants
+        $this->check('QubitTerm::MASTER_ID = 140', defined('QubitTerm::MASTER_ID') && \QubitTerm::MASTER_ID === 140);
+        $this->check('QubitTerm::ROOT_ID = 110', defined('QubitTerm::ROOT_ID') && \QubitTerm::ROOT_ID === 110);
+        $this->check('QubitTaxonomy::ROOT_ID = 30', defined('QubitTaxonomy::ROOT_ID') && \QubitTaxonomy::ROOT_ID === 30);
+        $this->check('QubitInformationObject::ROOT_ID = 1', defined('QubitInformationObject::ROOT_ID') && \QubitInformationObject::ROOT_ID === 1);
+        $this->check('QubitActor::ROOT_ID = 3', defined('QubitActor::ROOT_ID') && \QubitActor::ROOT_ID === 3);
+        $this->check('QubitRepository::ROOT_ID = 6', defined('QubitRepository::ROOT_ID') && \QubitRepository::ROOT_ID === 6);
 
         // 10. sfPluginConfiguration available
         $sfPluginConfigOk = class_exists('sfPluginConfiguration', true);

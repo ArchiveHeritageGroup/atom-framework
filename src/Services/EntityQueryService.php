@@ -109,6 +109,41 @@ class EntityQueryService
             'i18n' => null,
             'i18n_fields' => [],
         ],
+        'QubitEvent' => [
+            'table' => 'event',
+            'i18n' => 'event_i18n',
+            'i18n_fields' => ['name', 'description', 'date'],
+        ],
+        'QubitOtherName' => [
+            'table' => 'other_name',
+            'i18n' => 'other_name_i18n',
+            'i18n_fields' => ['name'],
+        ],
+        'QubitMenu' => [
+            'table' => 'menu',
+            'i18n' => 'menu_i18n',
+            'i18n_fields' => ['label', 'description'],
+        ],
+        'QubitContactInformation' => [
+            'table' => 'contact_information',
+            'i18n' => 'contact_information_i18n',
+            'i18n_fields' => ['contact_person', 'street_address', 'city', 'region', 'note'],
+        ],
+        'QubitRelation' => [
+            'table' => 'relation',
+            'i18n' => null,
+            'i18n_fields' => [],
+        ],
+        'QubitObject' => [
+            'table' => 'object',
+            'i18n' => null,
+            'i18n_fields' => [],
+        ],
+        'QubitObjectTermRelation' => [
+            'table' => 'object_term_relation',
+            'i18n' => null,
+            'i18n_fields' => [],
+        ],
     ];
 
     // ----------------------------------------------------------------

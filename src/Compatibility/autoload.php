@@ -15,11 +15,15 @@
 
 $compatDir = __DIR__;
 
-// Load all compatibility classes
+// Load the trait first — stubs depend on it
+require_once $compatDir . '/QubitModelTrait.php';
+
+// Load all compatibility classes (order matters — dependencies first)
 $files = [
     'Qubit.php',
     'QubitSetting.php',
     'QubitCache.php',
+    'QubitObject.php',
     'QubitTerm.php',
     'QubitTaxonomy.php',
     'QubitAcl.php',
@@ -29,6 +33,21 @@ $files = [
     'QubitHtmlPurifier.php',
     'QubitOai.php',
     'QubitApiExceptions.php',
+    'QubitInformationObject.php',
+    'QubitActor.php',
+    'QubitRepository.php',
+    'QubitDigitalObject.php',
+    'QubitRelation.php',
+    'QubitPhysicalObject.php',
+    'QubitObjectTermRelation.php',
+    'QubitAccession.php',
+    'QubitEvent.php',
+    'QubitOtherName.php',
+    'QubitMenu.php',
+    'QubitDonor.php',
+    'QubitContactInformation.php',
+    'QubitStaticPage.php',
+    'QubitRightsHolder.php',
 ];
 
 foreach ($files as $file) {
