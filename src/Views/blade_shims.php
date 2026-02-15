@@ -317,6 +317,29 @@ if (!function_exists('get_partial')) {
         foreach ($searchDirs as $dir) {
             $file = $dir . '/' . $partialFile;
             if (file_exists($file)) {
+                // Auto-inject standard Symfony template variables (matches ActionBridge behavior)
+                $adapterClass = \AtomFramework\Http\Compatibility\SfContextAdapter::class;
+                if (class_exists($adapterClass, false) && $adapterClass::hasInstance()) {
+                    $ctx = $adapterClass::getInstance();
+                    if (!isset($vars['sf_user'])) {
+                        $vars['sf_user'] = $ctx->getUser();
+                    }
+                    if (!isset($vars['sf_request'])) {
+                        $vars['sf_request'] = $ctx->getRequest();
+                    }
+                    if (!isset($vars['sf_context'])) {
+                        $vars['sf_context'] = $ctx;
+                    }
+                }
+                if (!isset($vars['sf_data'])) {
+                    $vars['sf_data'] = new class($vars) {
+                        private array $v;
+                        public function __construct(array $v) { $this->v = $v; }
+                        public function __get(string $n) { return $this->v[$n] ?? null; }
+                        public function __isset(string $n): bool { return isset($this->v[$n]); }
+                        public function getRaw(string $n) { return $this->v[$n] ?? null; }
+                    };
+                }
                 extract($vars, EXTR_SKIP);
                 ob_start();
                 try {

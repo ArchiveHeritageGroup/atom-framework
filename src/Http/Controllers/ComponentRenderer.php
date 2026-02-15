@@ -273,6 +273,29 @@ class ComponentRenderer
      */
     private static function renderPhpFile(string $file, array $vars): string
     {
+        // Auto-inject standard Symfony template variables for standalone mode
+        if (SfContextAdapter::hasInstance()) {
+            $ctx = SfContextAdapter::getInstance();
+            if (!isset($vars['sf_user'])) {
+                $vars['sf_user'] = $ctx->getUser();
+            }
+            if (!isset($vars['sf_request'])) {
+                $vars['sf_request'] = $ctx->getRequest();
+            }
+            if (!isset($vars['sf_context'])) {
+                $vars['sf_context'] = $ctx;
+            }
+        }
+        if (!isset($vars['sf_data'])) {
+            $vars['sf_data'] = new class($vars) {
+                private array $v;
+                public function __construct(array $v) { $this->v = $v; }
+                public function __get(string $n) { return $this->v[$n] ?? null; }
+                public function __isset(string $n): bool { return isset($this->v[$n]); }
+                public function getRaw(string $n) { return $this->v[$n] ?? null; }
+            };
+        }
+
         extract($vars);
 
         ob_start();
