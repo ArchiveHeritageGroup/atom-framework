@@ -6,8 +6,8 @@ namespace AtomFramework\Services\Write;
  * Factory for resolving WriteService interfaces to implementations.
  *
  * In Symfony mode (Propel available), returns PropelAdapter instances.
- * In standalone Heratio mode, the same PropelAdapters fall back to
- * Laravel Query Builder internally.
+ * In standalone Heratio mode, returns Standalone* implementations that
+ * use only Laravel Query Builder — no Propel references.
  *
  * Usage:
  *   $settings = WriteServiceFactory::settings();
@@ -63,12 +63,27 @@ class WriteServiceFactory
     private static ?InformationObjectWriteServiceInterface $ioInstance = null;
 
     /**
+     * Detect whether we are in standalone (Heratio) mode.
+     *
+     * When Propel/Symfony is loaded, QubitObject is autoloaded.
+     * In standalone mode, only the compatibility stubs exist.
+     * We check for the real Propel base class method.
+     */
+    private static function isStandalone(): bool
+    {
+        return !class_exists('QubitObject', false)
+            || !method_exists('QubitObject', 'save');
+    }
+
+    /**
      * Get the Settings write service.
      */
     public static function settings(): SettingsWriteServiceInterface
     {
         if (null === self::$settingsInstance) {
-            self::$settingsInstance = new PropelSettingsWriteService();
+            self::$settingsInstance = self::isStandalone()
+                ? new StandaloneSettingsWriteService()
+                : new PropelSettingsWriteService();
         }
 
         return self::$settingsInstance;
@@ -80,7 +95,9 @@ class WriteServiceFactory
     public static function acl(): AclWriteServiceInterface
     {
         if (null === self::$aclInstance) {
-            self::$aclInstance = new PropelAclWriteService(self::settings());
+            self::$aclInstance = self::isStandalone()
+                ? new StandaloneAclWriteService(self::settings())
+                : new PropelAclWriteService(self::settings());
         }
 
         return self::$aclInstance;
@@ -92,7 +109,9 @@ class WriteServiceFactory
     public static function digitalObject(): DigitalObjectWriteServiceInterface
     {
         if (null === self::$doInstance) {
-            self::$doInstance = new PropelDigitalObjectWriteService();
+            self::$doInstance = self::isStandalone()
+                ? new StandaloneDigitalObjectWriteService()
+                : new PropelDigitalObjectWriteService();
         }
 
         return self::$doInstance;
@@ -104,7 +123,9 @@ class WriteServiceFactory
     public static function term(): TermWriteServiceInterface
     {
         if (null === self::$termInstance) {
-            self::$termInstance = new PropelTermWriteService();
+            self::$termInstance = self::isStandalone()
+                ? new StandaloneTermWriteService()
+                : new PropelTermWriteService();
         }
 
         return self::$termInstance;
@@ -116,7 +137,9 @@ class WriteServiceFactory
     public static function accession(): AccessionWriteServiceInterface
     {
         if (null === self::$accessionInstance) {
-            self::$accessionInstance = new PropelAccessionWriteService();
+            self::$accessionInstance = self::isStandalone()
+                ? new StandaloneAccessionWriteService()
+                : new PropelAccessionWriteService();
         }
 
         return self::$accessionInstance;
@@ -128,7 +151,9 @@ class WriteServiceFactory
     public static function import(): ImportWriteServiceInterface
     {
         if (null === self::$importInstance) {
-            self::$importInstance = new PropelImportWriteService();
+            self::$importInstance = self::isStandalone()
+                ? new StandaloneImportWriteService()
+                : new PropelImportWriteService();
         }
 
         return self::$importInstance;
@@ -140,7 +165,9 @@ class WriteServiceFactory
     public static function physicalObject(): PhysicalObjectWriteServiceInterface
     {
         if (null === self::$physicalObjectInstance) {
-            self::$physicalObjectInstance = new PropelPhysicalObjectWriteService();
+            self::$physicalObjectInstance = self::isStandalone()
+                ? new StandalonePhysicalObjectWriteService()
+                : new PropelPhysicalObjectWriteService();
         }
 
         return self::$physicalObjectInstance;
@@ -152,7 +179,9 @@ class WriteServiceFactory
     public static function user(): UserWriteServiceInterface
     {
         if (null === self::$userInstance) {
-            self::$userInstance = new PropelUserWriteService();
+            self::$userInstance = self::isStandalone()
+                ? new StandaloneUserWriteService()
+                : new PropelUserWriteService();
         }
 
         return self::$userInstance;
@@ -164,7 +193,9 @@ class WriteServiceFactory
     public static function actor(): ActorWriteServiceInterface
     {
         if (null === self::$actorInstance) {
-            self::$actorInstance = new PropelActorWriteService();
+            self::$actorInstance = self::isStandalone()
+                ? new StandaloneActorWriteService()
+                : new PropelActorWriteService();
         }
 
         return self::$actorInstance;
@@ -176,7 +207,9 @@ class WriteServiceFactory
     public static function feedback(): FeedbackWriteServiceInterface
     {
         if (null === self::$feedbackInstance) {
-            self::$feedbackInstance = new PropelFeedbackWriteService();
+            self::$feedbackInstance = self::isStandalone()
+                ? new StandaloneFeedbackWriteService()
+                : new PropelFeedbackWriteService();
         }
 
         return self::$feedbackInstance;
@@ -188,7 +221,9 @@ class WriteServiceFactory
     public static function requestToPublish(): RequestToPublishWriteServiceInterface
     {
         if (null === self::$rtpInstance) {
-            self::$rtpInstance = new PropelRequestToPublishWriteService();
+            self::$rtpInstance = self::isStandalone()
+                ? new StandaloneRequestToPublishWriteService()
+                : new PropelRequestToPublishWriteService();
         }
 
         return self::$rtpInstance;
@@ -200,7 +235,9 @@ class WriteServiceFactory
     public static function job(): JobWriteServiceInterface
     {
         if (null === self::$jobInstance) {
-            self::$jobInstance = new PropelJobWriteService();
+            self::$jobInstance = self::isStandalone()
+                ? new StandaloneJobWriteService()
+                : new PropelJobWriteService();
         }
 
         return self::$jobInstance;
@@ -212,7 +249,9 @@ class WriteServiceFactory
     public static function informationObject(): InformationObjectWriteServiceInterface
     {
         if (null === self::$ioInstance) {
-            self::$ioInstance = new PropelInformationObjectWriteService();
+            self::$ioInstance = self::isStandalone()
+                ? new StandaloneInformationObjectWriteService()
+                : new PropelInformationObjectWriteService();
         }
 
         return self::$ioInstance;
