@@ -51,7 +51,11 @@ class Kernel
     private string $rootDir;
     private bool $booted = false;
     private bool $enabled = true;
+    private bool $standaloneMode = false;
     private ?array $bootError = null;
+
+    /** @var ServiceProvider[] Loaded plugin service providers */
+    private array $serviceProviders = [];
 
     /** @var string[] Middleware stack in execution order */
     private array $middleware = [
@@ -158,8 +162,19 @@ class Kernel
         // 2. Boot database
         $this->bootDatabase();
 
-        // 2b. Boot Propel bridge — enables Qubit* model classes in standalone mode
-        PropelBridge::boot($this->rootDir);
+        // 2b. Boot Propel bridge — enables Qubit* model classes in standalone mode.
+        //     If Symfony files are absent, PropelBridge will fail — catch and
+        //     switch to standalone mode with compatibility stubs instead.
+        try {
+            PropelBridge::boot($this->rootDir);
+        } catch (\Throwable $e) {
+            $this->standaloneMode = true;
+            error_log('[heratio] PropelBridge unavailable, standalone mode: ' . $e->getMessage());
+        }
+
+        if ($this->standaloneMode) {
+            $this->bootStandaloneCompatibility();
+        }
 
         // 2c. Register PSR-4 autoloaders for AHG plugin namespaces
         $this->registerPluginAutoloaders();
@@ -205,6 +220,9 @@ class Kernel
 
         // 7. Collect routes from enabled plugins
         $this->collectPluginRoutes();
+
+        // 7b. Load ServiceProvider-based plugins (new-style providers)
+        $this->loadPluginServiceProviders($this->rootDir . '/plugins');
 
         // 8. Register catch-all routes for base AtoM modules.
         //    These MUST be registered LAST so plugin routes take priority.
@@ -281,6 +299,14 @@ class Kernel
     public function getRootDir(): string
     {
         return $this->rootDir;
+    }
+
+    /**
+     * Check whether the kernel booted in standalone mode (no Symfony/Propel).
+     */
+    public function isStandaloneMode(): bool
+    {
+        return $this->standaloneMode;
     }
 
     /**
@@ -368,6 +394,7 @@ class Kernel
 
             return new \Illuminate\Http\JsonResponse([
                 'standalone' => $isShimmed,
+                'standalone_mode' => $this->standaloneMode,
                 'shims' => [
                     'sfConfig' => $isShimmed ? 'SfConfigShim' : 'real',
                     'sfContext' => $contextOk ? (is_a('sfContext', SfContextAdapter::class, true) ? 'SfContextAdapter' : 'real') : 'not initialized',
@@ -422,6 +449,124 @@ class Kernel
         } catch (\Exception $e) {
             // Plugin route collection failed — not fatal for health check
             error_log('[heratio] Route collection failed: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Boot standalone compatibility stubs.
+     *
+     * Called when PropelBridge fails (Symfony files absent). Loads minimal
+     * stubs so that plugin Configuration classes can be instantiated:
+     *   - sfEvent: method signature type hints in plugin configs
+     *   - sfSimpleAutoload: called by sfPluginConfiguration::initializeAutoload()
+     *   - sfPluginConfiguration: base class for ALL plugin Configuration classes
+     *   - sfException: aliased to \Exception
+     *   - Qubit model stubs: via src/Compatibility/autoload.php (WP-S2)
+     */
+    private function bootStandaloneCompatibility(): void
+    {
+        $compatDir = dirname(__DIR__) . '/Compatibility';
+
+        // Load sfEvent stub (type hint in 73+ plugin Configuration methods)
+        if (!class_exists('sfEvent', false)) {
+            require_once $compatDir . '/sfEvent.php';
+        }
+
+        // Load sfSimpleAutoload stub (used by sfPluginConfiguration::initializeAutoload)
+        if (!class_exists('sfSimpleAutoload', false)) {
+            require_once $compatDir . '/sfSimpleAutoload.php';
+        }
+
+        // Load sfPluginConfiguration stub (base class for ALL plugin configs)
+        if (!class_exists('sfPluginConfiguration', false)) {
+            require_once $compatDir . '/sfPluginConfiguration.php';
+        }
+
+        // Alias sfException to \Exception (Qubit models catch it)
+        if (!class_exists('sfException', false)) {
+            class_alias(\Exception::class, 'sfException');
+        }
+
+        // Load Qubit model stubs (WP-S2 compatibility layer)
+        $autoloadFile = $compatDir . '/autoload.php';
+        if (file_exists($autoloadFile)) {
+            require_once $autoloadFile;
+        }
+    }
+
+    /**
+     * Load ServiceProvider-based plugins (new-style providers).
+     *
+     * Discovers plugins that have a `config/provider.php` file returning
+     * a ServiceProvider FQCN. Calls register() on all providers first,
+     * then boot() and routes() on each — ensuring cross-provider
+     * dependencies are satisfied before boot.
+     *
+     * Existing sfPluginConfiguration-based plugins are unaffected.
+     */
+    private function loadPluginServiceProviders(string $pluginsDir): void
+    {
+        if (!is_dir($pluginsDir)) {
+            return;
+        }
+
+        // Get enabled + core plugins from DB
+        try {
+            $enabledPlugins = \Illuminate\Database\Capsule\Manager::table('atom_plugin')
+                ->where(function ($q) {
+                    $q->where('is_enabled', 1)->orWhere('is_core', 1);
+                })
+                ->orderBy('load_order')
+                ->pluck('name')
+                ->toArray();
+        } catch (\Throwable $e) {
+            return;
+        }
+
+        // Phase 1: Discover and register all providers
+        foreach ($enabledPlugins as $pluginName) {
+            $providerFile = $pluginsDir . '/' . $pluginName . '/config/provider.php';
+            if (!file_exists($providerFile)) {
+                continue;
+            }
+
+            try {
+                $fqcn = require $providerFile;
+                if (!is_string($fqcn) || !class_exists($fqcn)) {
+                    continue;
+                }
+
+                $provider = new $fqcn(
+                    $pluginsDir . '/' . $pluginName,
+                    $pluginName
+                );
+
+                if (!$provider instanceof ServiceProvider) {
+                    continue;
+                }
+
+                $provider->register($this->container);
+                $this->serviceProviders[] = $provider;
+            } catch (\Throwable $e) {
+                error_log('[heratio] ServiceProvider load failed for ' . $pluginName . ': ' . $e->getMessage());
+            }
+        }
+
+        // Phase 2: Boot and register routes for all providers
+        foreach ($this->serviceProviders as $provider) {
+            try {
+                $provider->boot($this->container);
+                $provider->routes($this->router);
+
+                // Merge modules into sf_enabled_modules
+                $providerModules = $provider->modules();
+                if (!empty($providerModules)) {
+                    $current = \sfConfig::get('sf_enabled_modules', []);
+                    \sfConfig::set('sf_enabled_modules', array_unique(array_merge($current, $providerModules)));
+                }
+            } catch (\Throwable $e) {
+                error_log('[heratio] ServiceProvider boot failed for ' . $provider->getName() . ': ' . $e->getMessage());
+            }
         }
     }
 

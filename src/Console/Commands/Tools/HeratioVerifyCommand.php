@@ -315,6 +315,77 @@ class HeratioVerifyCommand extends BaseCommand
             "{$factoryOk}/" . count($factoryMethods)
         );
 
+        // 22. Standalone compatibility stubs present
+        $compatDir = $rootDir . '/atom-framework/src/Compatibility';
+        $stubFiles = [
+            'sfEvent.php',
+            'sfSimpleAutoload.php',
+            'sfPluginConfiguration.php',
+        ];
+        $stubsPresent = 0;
+        foreach ($stubFiles as $stubFile) {
+            if (file_exists($compatDir . '/' . $stubFile)) {
+                $stubsPresent++;
+            }
+        }
+        $this->check(
+            'Standalone compatibility stubs present',
+            $stubsPresent === count($stubFiles),
+            "{$stubsPresent}/" . count($stubFiles)
+        );
+
+        // 23. sfEvent stub API compatible
+        $sfEventOk = false;
+        try {
+            // Load the stub if the real class isn't loaded
+            if (!class_exists('sfEvent', false)) {
+                require_once $compatDir . '/sfEvent.php';
+            }
+            $testEvent = new \sfEvent($this, 'test.event', ['key' => 'value']);
+            $sfEventOk = $testEvent->getSubject() === $this
+                && 'test.event' === $testEvent->getName()
+                && $testEvent instanceof \ArrayAccess
+                && isset($testEvent['key'])
+                && 'value' === $testEvent['key'];
+        } catch (\Throwable $e) {
+            // fail
+        }
+        $this->check('sfEvent stub API compatible', $sfEventOk);
+
+        // 24. sfPluginConfiguration stub API compatible
+        $sfPluginConfigStubOk = false;
+        try {
+            if (!class_exists('sfPluginConfiguration', false)) {
+                require_once $compatDir . '/sfPluginConfiguration.php';
+            }
+            $ref = new \ReflectionClass('sfPluginConfiguration');
+            $sfPluginConfigStubOk = $ref->isAbstract()
+                && $ref->hasMethod('initialize')
+                && $ref->hasMethod('setup')
+                && $ref->hasMethod('configure')
+                && $ref->hasMethod('getRootDir')
+                && $ref->hasMethod('getName')
+                && $ref->hasMethod('initializeAutoload');
+        } catch (\Throwable $e) {
+            // fail
+        }
+        $this->check('sfPluginConfiguration stub API compatible', $sfPluginConfigStubOk);
+
+        // 25. ServiceProvider base class available
+        $serviceProviderOk = class_exists(\AtomFramework\Http\ServiceProvider::class);
+        $this->check('ServiceProvider base class available', $serviceProviderOk);
+
+        // 26. Kernel has standalone mode detection
+        $kernelStandaloneOk = false;
+        try {
+            $ref = new \ReflectionClass(\AtomFramework\Http\Kernel::class);
+            $kernelStandaloneOk = $ref->hasMethod('isStandaloneMode')
+                && $ref->getMethod('isStandaloneMode')->isPublic();
+        } catch (\Throwable $e) {
+            // fail
+        }
+        $this->check('Kernel has standalone mode detection', $kernelStandaloneOk);
+
         // Summary
         $this->newline();
         $total = $this->passed + $this->failed + $this->warnings;
