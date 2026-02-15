@@ -221,6 +221,22 @@ class AhgMetadataRoute extends QubitMetadataRoute
 
     public function matchesParameters($params, $context = [])
     {
+        // Guard: GLAM routes (museum, dam, gallery, library) should only match
+        // when the caller explicitly requests the GLAM module. Without this,
+        // url_for([$term, 'module' => 'term']) would match /museum/:slug after
+        // parseParameters strips the module, generating wrong URLs.
+        // Check for slug (explicit) or object at [0] (slug not yet extracted).
+        if (is_array($params) && (isset($params['slug']) || (isset($params[0]) && is_object($params[0])))) {
+            $routeDefaults = $this->getDefaults();
+            $routeModule = $routeDefaults['module'] ?? null;
+
+            if ($routeModule !== null && self::isGlamCode($routeModule)) {
+                if (!isset($params['module']) || $params['module'] !== $routeModule) {
+                    return false;
+                }
+            }
+        }
+
         $params = $this->parseParameters($params);
 
         // Must have slug
@@ -259,6 +275,10 @@ class AhgMetadataRoute extends QubitMetadataRoute
                 if ($key !== null) {
                     $params['template'] = $key;
                 }
+
+                // Always unset module when slug is present (same as base AtoM).
+                // The matchesParameters guard prevents GLAM routes from stealing
+                // non-GLAM URLs; the catch-all /:slug handles the rest.
                 unset($params['module']);
             }
         }

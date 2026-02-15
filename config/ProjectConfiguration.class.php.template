@@ -24,6 +24,10 @@ if (file_exists(__DIR__.'/../atom-framework/src/Routing/AhgMetadataRoute.class.p
 } elseif (file_exists(__DIR__.'/../lib/routing/AhgMetadataRoute.class.php')) {
     require_once __DIR__.'/../lib/routing/AhgMetadataRoute.class.php';
 }
+// Load AddActionRoute for strict "add" routes (rejects when slug present)
+if (file_exists(__DIR__.'/../atom-framework/src/Routing/AddActionRoute.class.php')) {
+    require_once __DIR__.'/../atom-framework/src/Routing/AddActionRoute.class.php';
+}
 
 class ProjectConfiguration extends sfProjectConfiguration
 {
