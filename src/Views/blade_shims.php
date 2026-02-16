@@ -436,12 +436,8 @@ if (!function_exists('render_field')) {
      */
     function render_field($field, $resource = null, array $options = [])
     {
-        // If Symfony's full render_field is loaded, use it
-        if (function_exists('\render_field')) {
-            return \render_field($field, $resource, $options);
-        }
-
-        // Minimal standalone rendering
+        // Minimal standalone rendering (Symfony's render_field was not loaded,
+        // otherwise function_exists guard above would have skipped this definition)
         if (is_object($field) && method_exists($field, 'render')) {
             $label = method_exists($field, 'renderLabel') ? $field->renderLabel() : '';
             $input = $field->render($options);
@@ -480,5 +476,44 @@ if (!function_exists('render_value')) {
     function render_value($value)
     {
         return (string) ($value ?? '');
+    }
+}
+
+if (!function_exists('render_title')) {
+    /**
+     * Minimal standalone shim for render_title().
+     *
+     * In full Symfony mode, this renders entity title with escaping/truncation.
+     * In standalone Heratio mode, we call __toString() with HTML escaping.
+     */
+    function render_title($resource, $showUntitled = true)
+    {
+        if (null === $resource) {
+            return $showUntitled ? '<em>Untitled</em>' : '';
+        }
+
+        if (is_string($resource)) {
+            return htmlspecialchars($resource);
+        }
+
+        // Try common title properties
+        $title = '';
+        if (method_exists($resource, '__toString')) {
+            $title = (string) $resource;
+        } elseif (isset($resource->title)) {
+            $title = (string) $resource->title;
+        } elseif (isset($resource->authorized_form_of_name)) {
+            $title = (string) $resource->authorized_form_of_name;
+        } elseif (isset($resource->name)) {
+            $title = (string) $resource->name;
+        } elseif (isset($resource->slug)) {
+            $title = (string) $resource->slug;
+        }
+
+        if ('' === $title || null === $title) {
+            return $showUntitled ? '<em>Untitled</em>' : '';
+        }
+
+        return htmlspecialchars($title);
     }
 }

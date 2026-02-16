@@ -723,12 +723,18 @@ class AhgController extends AhgControllerBase
         require_once dirname(__DIR__, 2) . '/Views/blade_shims.php';
 
         $templateVars = $this->getTemplateVars();
-        extract($templateVars);
         $sf_user = $this->getUser();
         $sf_request = $this->getRequest();
         $sf_context = class_exists('sfContext', false) && \sfContext::hasInstance()
             ? \sfContext::getInstance()
             : null;
+
+        // Add standard Symfony variables to templateVars so $sf_data->getRaw() works
+        $templateVars['sf_user'] = $sf_user;
+        $templateVars['sf_request'] = $sf_request;
+        $templateVars['sf_context'] = $sf_context;
+
+        extract($templateVars);
 
         // Provide $sf_data (escaped variable access, passthrough in standalone)
         $sf_data = new class($templateVars) {

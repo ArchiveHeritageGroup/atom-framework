@@ -4,20 +4,54 @@ namespace AtomFramework\Http\Compatibility;
 
 use Illuminate\Http\Request;
 
+/*
+ * Dual-stack conditional inheritance for sfWebRequest compatibility.
+ *
+ * When Symfony is loaded (dual-stack), SfWebRequestAdapter extends sfWebRequest
+ * so that type-hinted methods (e.g., buildHiddenFields(sfWebRequest $request))
+ * accept our adapter via instanceof checks.
+ *
+ * When standalone (no Symfony), SfWebRequestAdapter is self-contained.
+ */
+if (!class_exists(__NAMESPACE__ . '\\SfWebRequestAdapterBase', false)) {
+    if (class_exists('sfWebRequest')) {
+        class SfWebRequestAdapterBase extends \sfWebRequest
+        {
+            /**
+             * Override constructor — skip sfWebRequest initialization.
+             * sfWebRequest requires sfEventDispatcher which we don't have in Heratio mode.
+             */
+            public function __construct(Request $request)
+            {
+                // Intentionally skip parent::__construct()
+            }
+        }
+    } else {
+        class SfWebRequestAdapterBase
+        {
+            public function __construct(Request $request)
+            {
+                // Standalone — no parent to call
+            }
+        }
+    }
+}
+
 /**
  * Wraps Illuminate\Http\Request with the sfWebRequest API.
  *
  * Provides backward compatibility for plugin action classes that call
  * sfWebRequest methods like getParameter(), isMethod(), etc.
- * Only used in standalone mode (heratio.php).
+ * In dual-stack mode, extends sfWebRequest for type-hint compatibility.
  */
-class SfWebRequestAdapter
+class SfWebRequestAdapter extends SfWebRequestAdapterBase
 {
     private Request $request;
     private array $parameters = [];
 
     public function __construct(Request $request)
     {
+        parent::__construct($request);
         $this->request = $request;
         $this->parameters = array_merge(
             $request->query->all(),

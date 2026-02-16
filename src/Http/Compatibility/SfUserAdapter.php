@@ -124,9 +124,31 @@ class SfUserAdapter
         return $this->sessionGet(self::CREDENTIAL_NS, []);
     }
 
-    public function hasCredential(string $credential): bool
+    public function hasCredential($credential, bool $useAnd = true): bool
     {
-        return in_array($credential, $this->getCredentials());
+        $userCredentials = $this->getCredentials();
+
+        if (is_array($credential)) {
+            if ($useAnd) {
+                foreach ($credential as $c) {
+                    if (!in_array($c, $userCredentials)) {
+                        return false;
+                    }
+                }
+
+                return true;
+            }
+
+            foreach ($credential as $c) {
+                if (in_array($c, $userCredentials)) {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        return in_array($credential, $userCredentials);
     }
 
     public function addCredential(string $credential): void

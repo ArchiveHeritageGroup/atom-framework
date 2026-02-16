@@ -763,6 +763,26 @@ class ActionBridge
                 }
             }
 
+            // Search application lib directories (form formatters, helpers, etc.)
+            // These are NOT in sfCoreAutoload's class map in standalone dispatch.
+            $libDirs = [
+                $rootDir . '/lib/form',
+                $rootDir . '/lib',
+            ];
+            foreach ($libDirs as $libDir) {
+                if (!is_dir($libDir)) {
+                    continue;
+                }
+                foreach (glob($libDir . '/*.class.php') as $candidate) {
+                    $basename = basename($candidate, '.class.php');
+                    if (strcasecmp($basename, $class) === 0) {
+                        require_once $candidate;
+
+                        return;
+                    }
+                }
+            }
+
             // Search all plugin and base module action directories
             $searchDirs = array_merge(
                 glob($rootDir . '/plugins/*/modules/*/actions') ?: [],
