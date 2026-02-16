@@ -366,11 +366,14 @@ class SfRoutingAdapter
             // Fall through to static mappings
         }
 
-        // Common route name mappings
+        // Common route name mappings (fallback when not in Laravel router)
         $routes = [
             'homepage' => '/',
-            'login' => '/user/login',
+            'login' => '/index.php/user/login',
             'logout' => '/auth/logout',
+            'security_clearances' => '/security/clearances',
+            'security_clearance_view' => '/security/view',
+            'security_clearance_user' => '/security/user',
         ];
 
         if (isset($routes[$routeName])) {
@@ -506,6 +509,16 @@ class SfControllerAdapter
             $url = $routing->generate($routeName, $url);
         }
 
+        // Handle @routeName patterns (may arrive unresolved)
+        if (is_string($url) && str_starts_with($url, '@')) {
+            $url = $this->genUrl($url);
+        }
+
+        // Intercept bare user/login — in standalone mode, login is Symfony
+        if (is_string($url) && 'user/login' === $url) {
+            $url = '/index.php/user/login';
+        }
+
         $this->redirectUrl = (string) $url;
         $this->redirectStatusCode = (int) $statusCode;
     }
@@ -570,14 +583,43 @@ class SfControllerAdapter
 
     /**
      * Generate a URL for an internal route (sfController compat).
+     *
+     * Handles:
+     *   - @routeName or @routeName?key=val → named route resolution
+     *   - Array with module/action → /module/action?params
+     *   - Plain string → returned as-is
      */
     public function genUrl($params, $absolute = false): string
     {
         if (is_string($params)) {
+            // Handle @routeName patterns (sfActions::redirect passes these)
+            if (str_starts_with($params, '@')) {
+                $route = substr($params, 1);
+                $parts = explode('?', $route, 2);
+                $routeName = $parts[0];
+                $queryString = $parts[1] ?? '';
+                $routeParams = [];
+                if ($queryString) {
+                    parse_str($queryString, $routeParams);
+                }
+                $routing = SfContextAdapter::getInstance()->getRouting();
+
+                return $routing->generate($routeName, $routeParams);
+            }
+
             return $params;
         }
 
         if (is_array($params)) {
+            // Handle sf_route array syntax
+            if (isset($params['sf_route'])) {
+                $routeName = $params['sf_route'];
+                unset($params['sf_route'], $params['sf_subject']);
+                $routing = SfContextAdapter::getInstance()->getRouting();
+
+                return $routing->generate($routeName, $params);
+            }
+
             $module = $params['module'] ?? '';
             $action = $params['action'] ?? 'index';
             unset($params['module'], $params['action']);

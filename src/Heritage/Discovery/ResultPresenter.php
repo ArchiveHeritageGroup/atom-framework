@@ -101,6 +101,14 @@ class ResultPresenter
      */
     private function getThumbnailUrl(object $row): ?string
     {
+        // First check for explicit thumbnail child (3D objects, regenerated derivatives)
+        $thumbChildPath = $row->thumb_child_path ?? null;
+        $thumbChildName = $row->thumb_child_name ?? null;
+
+        if ($thumbChildPath && $thumbChildName) {
+            return rtrim($thumbChildPath, '/') . '/' . $thumbChildName;
+        }
+
         $path = $row->thumbnail_path ?? null;
         $name = $row->thumbnail_name ?? null;
 
@@ -164,6 +172,9 @@ class ResultPresenter
         }
         if (str_starts_with($mimeType, 'audio/')) {
             return 'audio';
+        }
+        if (str_starts_with($mimeType, 'model/') || $mimeType === 'application/x-tgif') {
+            return 'model';
         }
         if (str_contains($mimeType, 'pdf')) {
             return 'document';

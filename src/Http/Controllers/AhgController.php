@@ -162,9 +162,14 @@ if (!class_exists(__NAMESPACE__ . '\\AhgControllerBase', false)) {
 
             public function redirect($url): void
             {
-                $this->redirectUrl = is_string($url) && str_starts_with($url, '@')
-                    ? $this->resolveNamedRoute($url)
-                    : $url;
+                if (is_string($url) && str_starts_with($url, '@')) {
+                    $this->redirectUrl = $this->resolveNamedRoute($url);
+                } elseif (is_string($url) && 'user/login' === $url) {
+                    // In Heratio standalone mode, login is handled by Symfony
+                    $this->redirectUrl = '/index.php/user/login';
+                } else {
+                    $this->redirectUrl = $url;
+                }
             }
 
             public function forward(string $module, string $action): void
@@ -203,18 +208,29 @@ if (!class_exists(__NAMESPACE__ . '\\AhgControllerBase', false)) {
                 $parts = explode('?', $route, 2);
                 $routeName = $parts[0];
                 $queryString = $parts[1] ?? '';
+
+                $params = [];
+                if ($queryString) {
+                    parse_str($queryString, $params);
+                }
+
+                // Use SfRoutingAdapter which checks Laravel router first,
+                // then falls back to common route name mappings
+                if (SfContextAdapter::hasInstance()) {
+                    return SfContextAdapter::getInstance()->getRouting()->generate($routeName, $params);
+                }
+
+                // Direct Laravel route() helper fallback
                 try {
-                    $params = [];
-                    if ($queryString) {
-                        parse_str($queryString, $params);
-                    }
                     return route($routeName, $params);
                 } catch (\Exception $e) {
                 }
+
                 $url = '/' . str_replace('_', '/', $routeName);
                 if ($queryString) {
                     $url .= '?' . $queryString;
                 }
+
                 return $url;
             }
         }
@@ -248,6 +264,18 @@ class AhgController extends AhgControllerBase
     public function boot(): void
     {
         // Override in subclass if needed
+    }
+
+    /**
+     * Get the default action for this controller.
+     *
+     * Override in subclasses to specify the entry point action
+     * when the requested action method doesn't exist.
+     * E.g., heritage module returns 'landing' so /heritage → executeLanding().
+     */
+    protected function getDefaultAction(): ?string
+    {
+        return null;
     }
 
     // ─── Dispatch (Standalone Entry Point) ──────────────────────────
@@ -289,7 +317,25 @@ class AhgController extends AhgControllerBase
         // Find and call execute{Action}()
         $method = 'execute' . ucfirst($action);
         if (!method_exists($this, $method)) {
-            return new Response("Action method {$method} not found", 404);
+            // Try default action for this module (e.g., heritage → executeLanding)
+            $defaultAction = $this->getDefaultAction();
+            if ($defaultAction) {
+                $defaultMethod = 'execute' . ucfirst($defaultAction);
+                if (method_exists($this, $defaultMethod)) {
+                    $method = $defaultMethod;
+                    $action = $defaultAction;
+                    $this->actionName = $action;
+                } else {
+                    return new Response("Action method {$method} not found", 404);
+                }
+            } elseif ($action !== 'index' && method_exists($this, 'executeIndex')) {
+                // Generic fallback: try executeIndex()
+                $method = 'executeIndex';
+                $action = 'index';
+                $this->actionName = $action;
+            } else {
+                return new Response("Action method {$method} not found", 404);
+            }
         }
 
         $result = $this->$method($request);
@@ -302,6 +348,37 @@ class AhgController extends AhgControllerBase
         // If renderText/renderJson set an explicit response (standalone mode)
         if (!class_exists('sfActions', false) && null !== $this->explicitResponse) {
             return $this->explicitResponse;
+        }
+
+        // If sfActions is loaded (PropelBridge), renderText() delegates to
+        // sfActions::renderText() which sets content on the sfResponse adapter
+        // and returns sfView::NONE. Extract the response content in that case.
+        if (class_exists('sfActions', false)) {
+            $sfNone = defined('sfView::NONE') ? \sfView::NONE : 'None';
+            if ($result === $sfNone || $result === 'None') {
+                $sfResponse = $this->getResponse();
+                if ($sfResponse instanceof SfResponseAdapter) {
+                    return $sfResponse->toIlluminateResponse();
+                }
+                // Real sfWebResponse fallback
+                $content = '';
+                $contentType = 'text/html';
+                $statusCode = 200;
+                if (method_exists($sfResponse, 'getContent')) {
+                    $content = $sfResponse->getContent();
+                }
+                if (method_exists($sfResponse, 'getContentType')) {
+                    $ct = $sfResponse->getContentType();
+                    if ($ct) {
+                        $contentType = $ct;
+                    }
+                }
+                if (method_exists($sfResponse, 'getStatusCode')) {
+                    $statusCode = $sfResponse->getStatusCode();
+                }
+
+                return new Response($content, $statusCode, ['Content-Type' => $contentType]);
+            }
         }
 
         // Check for redirect/forward (standalone mode)
@@ -349,7 +426,7 @@ class AhgController extends AhgControllerBase
     protected function requireAuth(): void
     {
         if (!$this->getUser()->isAuthenticated()) {
-            $this->redirect('user/login');
+            $this->redirect('/index.php/user/login');
         }
     }
 

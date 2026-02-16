@@ -123,6 +123,14 @@ class SearchOrchestrator
             $suggestions = $this->getSuggestions($rawQuery, $parsedQuery, $institutionId);
         }
 
+        // Analyze which search terms actually matched results
+        $termMatches = $this->analyzeTermMatches(
+            $parsedQuery['keywords'] ?? [],
+            $uniqueResults,
+            $parsedQuery['entities'] ?? [],
+            $total
+        );
+
         return [
             'total' => $total,
             'page' => $page,
@@ -137,6 +145,7 @@ class SearchOrchestrator
                 'entities' => $parsedQuery['entities'],
                 'time_references' => $parsedQuery['time_references'],
             ],
+            'term_matches' => $termMatches,
             'filters_applied' => $userFilters,
             'duration_ms' => $durationMs,
             'search_id' => $searchLogId,
@@ -445,7 +454,14 @@ class SearchOrchestrator
                 $join->on('io.id', '=', 'ioi.id')
                     ->where('ioi.culture', '=', $culture);
             })
-            ->leftJoin('digital_object as do', 'io.id', '=', 'do.object_id')
+            ->leftJoin('digital_object as do', function ($join) {
+                $join->on('io.id', '=', 'do.object_id')
+                    ->where('do.usage_id', '=', 140);
+            })
+            ->leftJoin('digital_object as do_thumb', function ($join) {
+                $join->on('do_thumb.parent_id', '=', 'do.id')
+                    ->where('do_thumb.usage_id', '=', 142);
+            })
             ->leftJoin('actor_i18n as repo_ai', function ($join) use ($culture) {
                 $join->on('io.repository_id', '=', 'repo_ai.id')
                     ->where('repo_ai.culture', '=', $culture);
@@ -465,6 +481,8 @@ class SearchOrchestrator
                 'do.path as thumbnail_path',
                 'do.name as thumbnail_name',
                 'do.mime_type',
+                'do_thumb.path as thumb_child_path',
+                'do_thumb.name as thumb_child_name',
                 'repo_ai.authorized_form_of_name as repository_name',
                 'o.created_at',
                 'o.updated_at'
@@ -665,5 +683,85 @@ class SearchOrchestrator
     public function logClick(int $searchId, int $itemId, int $position, ?int $timeToClick = null): int
     {
         return $this->learningService->logClick($searchId, $itemId, $position, $timeToClick);
+    }
+
+    /**
+     * Analyze which search terms actually matched results.
+     *
+     * Checks each keyword against the result set and detected entities
+     * to determine which terms found matches and which did not.
+     * Entity-matched terms (e.g., "photos" → format:Photograph) are
+     * considered matched even if the literal string doesn't appear.
+     */
+    private function analyzeTermMatches(array $keywords, Collection $results, array $entities = [], int $totalResults = 0): array
+    {
+        if (empty($keywords)) {
+            return [];
+        }
+
+        // Build set of terms that matched via entity detection
+        $entityMatchedTerms = [];
+        foreach ($entities as $entity) {
+            // matched_term is set by format/subject/place detection
+            if (!empty($entity['matched_term'])) {
+                $entityMatchedTerms[] = strtolower($entity['matched_term']);
+            }
+            $original = strtolower($entity['original'] ?? $entity['value'] ?? '');
+            if ($original) {
+                $entityMatchedTerms[] = $original;
+            }
+        }
+        $entityMatchedTerms = array_unique($entityMatchedTerms);
+
+        $matches = [];
+        foreach ($keywords as $kw) {
+            $kwLower = strtolower($kw);
+
+            // Check if this keyword matched via entity detection
+            $entityMatched = false;
+            foreach ($entityMatchedTerms as $eTerm) {
+                if (str_contains($eTerm, $kwLower) || str_contains($kwLower, $eTerm)) {
+                    $entityMatched = true;
+
+                    break;
+                }
+            }
+
+            if ($entityMatched && $totalResults > 0) {
+                $matches[] = [
+                    'term' => $kw,
+                    'count' => $totalResults,
+                    'matched' => true,
+                ];
+
+                continue;
+            }
+
+            // Check literal string presence in results
+            $count = $results->filter(function ($item) use ($kwLower) {
+                $fields = [
+                    $item->title ?? '',
+                    $item->scope_and_content ?? '',
+                    $item->identifier ?? '',
+                    $item->alternate_title ?? '',
+                ];
+
+                foreach ($fields as $field) {
+                    if (str_contains(strtolower($field), $kwLower)) {
+                        return true;
+                    }
+                }
+
+                return false;
+            })->count();
+
+            $matches[] = [
+                'term' => $kw,
+                'count' => $count,
+                'matched' => $count > 0,
+            ];
+        }
+
+        return $matches;
     }
 }

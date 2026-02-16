@@ -30,18 +30,29 @@ EOF;
     protected function configure(): void
     {
         $this->addOption('id', null, 'Process a specific digital object ID');
-        $this->addOption('force', 'f', 'Re-render even if multi-angle views exist', false);
-        $this->addOption('describe', 'd', 'Output LLM description after rendering', false);
-        $this->addOption('dry-run', null, 'List 3D objects without processing', false);
+        $this->addOption('slug', null, 'Process by information object slug');
+        $this->addOption('force', 'f', 'Re-render even if multi-angle views exist');
+        $this->addOption('describe', 'd', 'Output LLM description after rendering');
+        $this->addOption('dry-run', null, 'List 3D objects without processing');
     }
 
     protected function handle(): int
     {
         $service = new ThreeDThumbnailService();
         $id = $this->option('id');
-        $force = $this->option('force');
-        $dryRun = $this->option('dry-run');
-        $describe = $this->option('describe');
+        $slug = $this->option('slug');
+        $force = $this->hasOption('force');
+        $dryRun = $this->hasOption('dry-run');
+        $describe = $this->hasOption('describe');
+
+        // Resolve slug to digital object ID
+        if ($slug && !$id) {
+            $id = $this->resolveSlug($slug);
+            if (!$id) {
+                $this->error("No 3D digital object found for slug: {$slug}");
+                return 1;
+            }
+        }
 
         if ($id) {
             return $this->processSingle($service, (int) $id, $force, $dryRun, $describe);
@@ -199,6 +210,30 @@ EOF;
         $this->info("Done: {$success} succeeded, {$failed} failed out of {$processed} processed.");
 
         return $failed > 0 ? 1 : 0;
+    }
+
+    /**
+     * Resolve a slug to a 3D digital object ID.
+     */
+    private function resolveSlug(string $slug): ?int
+    {
+        $slugRow = DB::table('slug')->where('slug', $slug)->first();
+        if (!$slugRow) {
+            return null;
+        }
+
+        $do = DB::table('digital_object')
+            ->where('object_id', $slugRow->object_id)
+            ->whereNull('parent_id')
+            ->orderBy('id', 'desc')
+            ->first();
+
+        if ($do) {
+            $this->info("Resolved slug '{$slug}' → digital object {$do->id} ({$do->name})");
+            return (int) $do->id;
+        }
+
+        return null;
     }
 
     /**

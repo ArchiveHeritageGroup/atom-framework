@@ -25,6 +25,29 @@ use Illuminate\Http\Response;
 class ActionBridge
 {
     /**
+     * Module name aliases: URL segment → actual module directory name.
+     *
+     * When nginx routes /security/ to Heratio, the catch-all parses
+     * _module=security, but the action class lives in modules/securityClearance/.
+     */
+    private const MODULE_ALIASES = [
+        'security' => 'securityClearance',
+    ];
+
+    /**
+     * Default action map: module → default execute method name.
+     *
+     * When a module doesn't have execute{Action}() for the requested action,
+     * try the default action instead. This covers cases like /heritage
+     * defaulting to index but the real entry point is executeLanding().
+     */
+    private const DEFAULT_ACTIONS = [
+        'heritage' => 'landing',
+        'spectrum' => 'index',
+        'reports' => 'index',
+    ];
+
+    /**
      * Dispatch to a plugin action class.
      *
      * Route parameters _module and _action are set by RouteCollector/RouteLoader.
@@ -37,6 +60,11 @@ class ActionBridge
         $action = $request->route()->parameter('_action')
             ?? $request->route()->defaults['_action']
             ?? 'index';
+
+        // Apply module aliases (URL segment → module directory name)
+        if (null !== $module && isset(self::MODULE_ALIASES[$module])) {
+            $module = self::MODULE_ALIASES[$module];
+        }
         $slug = $request->route()->parameter('slug')
             ?? $request->route()->defaults['slug']
             ?? null;
@@ -294,11 +322,11 @@ class ActionBridge
                 }
 
                 // Redirect to login for unauthorized access
-                return new RedirectResponse('/user/login', 302);
+                return new RedirectResponse('/index.php/user/login', 302);
             }
 
             // Default: redirect to login
-            return new RedirectResponse('/user/login', 302);
+            return new RedirectResponse('/index.php/user/login', 302);
         }
     }
 
@@ -313,7 +341,23 @@ class ActionBridge
 
         $method = 'execute' . ucfirst($action);
         if (!method_exists($instance, $method)) {
-            return new Response("Method {$method} not found on {$className}", 404);
+            // Try default action from map
+            $defaultAction = self::DEFAULT_ACTIONS[$module] ?? null;
+            if ($defaultAction) {
+                $fallback = 'execute' . ucfirst($defaultAction);
+                if (method_exists($instance, $fallback)) {
+                    $method = $fallback;
+                    $action = $defaultAction;
+                }
+            }
+            // Generic fallback: try executeIndex
+            if (!method_exists($instance, $method) && $action !== 'index' && method_exists($instance, 'executeIndex')) {
+                $method = 'executeIndex';
+                $action = 'index';
+            }
+            if (!method_exists($instance, $method)) {
+                return new Response("Method {$method} not found on {$className}", 404);
+            }
         }
 
         $result = $instance->$method($sfRequest);

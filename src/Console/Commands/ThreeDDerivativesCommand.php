@@ -28,16 +28,27 @@ EOF;
     protected function configure(): void
     {
         $this->addOption('id', null, 'Process a specific digital object ID');
-        $this->addOption('force', 'f', 'Re-generate derivatives even if they exist', false);
-        $this->addOption('dry-run', null, 'List 3D objects without processing', false);
+        $this->addOption('slug', null, 'Process by information object slug');
+        $this->addOption('force', 'f', 'Re-generate derivatives even if they exist');
+        $this->addOption('dry-run', null, 'List 3D objects without processing');
     }
 
     protected function handle(): int
     {
         $service = new ThreeDThumbnailService();
         $id = $this->option('id');
-        $force = $this->option('force');
-        $dryRun = $this->option('dry-run');
+        $slug = $this->option('slug');
+        $force = $this->hasOption('force');
+        $dryRun = $this->hasOption('dry-run');
+
+        // Resolve slug to digital object ID
+        if ($slug && !$id) {
+            $id = $this->resolveSlug($slug);
+            if (!$id) {
+                $this->error("No 3D digital object found for slug: {$slug}");
+                return 1;
+            }
+        }
 
         if ($id) {
             return $this->processSingle($service, (int) $id, $force, $dryRun);
@@ -74,6 +85,30 @@ EOF;
 
         $this->error("Failed to generate derivatives for {$obj->name}");
         return 1;
+    }
+
+    /**
+     * Resolve a slug to a 3D digital object ID.
+     */
+    private function resolveSlug(string $slug): ?int
+    {
+        $slugRow = DB::table('slug')->where('slug', $slug)->first();
+        if (!$slugRow) {
+            return null;
+        }
+
+        $do = DB::table('digital_object')
+            ->where('object_id', $slugRow->object_id)
+            ->whereNull('parent_id')
+            ->orderBy('id', 'desc')
+            ->first();
+
+        if ($do) {
+            $this->info("Resolved slug '{$slug}' → digital object {$do->id} ({$do->name})");
+            return (int) $do->id;
+        }
+
+        return null;
     }
 
     private function processAll(ThreeDThumbnailService $service, bool $force, bool $dryRun): int

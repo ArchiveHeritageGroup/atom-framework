@@ -424,3 +424,61 @@ if (!function_exists('__')) {
         return $text;
     }
 }
+
+// ── Form rendering shim ─────────────────────────────────────────────
+
+if (!function_exists('render_field')) {
+    /**
+     * Minimal standalone shim for render_field().
+     *
+     * In full Symfony mode, this renders a form field with label/error/help.
+     * In standalone Heratio mode, we output a basic Bootstrap 5 form group.
+     */
+    function render_field($field, $resource = null, array $options = [])
+    {
+        // If Symfony's full render_field is loaded, use it
+        if (function_exists('\render_field')) {
+            return \render_field($field, $resource, $options);
+        }
+
+        // Minimal standalone rendering
+        if (is_object($field) && method_exists($field, 'render')) {
+            $label = method_exists($field, 'renderLabel') ? $field->renderLabel() : '';
+            $input = $field->render($options);
+            $error = method_exists($field, 'renderError') ? $field->renderError() : '';
+            return '<div class="mb-3">' . $label . $error . $input . '</div>';
+        }
+
+        // String fallback
+        return (string) ($field ?? '');
+    }
+}
+
+if (!function_exists('render_show')) {
+    /**
+     * Minimal standalone shim for render_show().
+     */
+    function render_show($label, $value, array $options = [])
+    {
+        if (empty($value) && '' !== $value) {
+            return '';
+        }
+        $label = htmlspecialchars((string) $label);
+        $value = (string) $value;
+        return '<div class="field"><h3>' . $label . '</h3><div>' . $value . '</div></div>';
+    }
+}
+
+if (!function_exists('render_show_repository')) {
+    function render_show_repository($label, $resource)
+    {
+        return '';
+    }
+}
+
+if (!function_exists('render_value')) {
+    function render_value($value)
+    {
+        return (string) ($value ?? '');
+    }
+}

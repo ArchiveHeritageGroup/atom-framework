@@ -160,7 +160,7 @@ class AuthController
             SfContextAdapter::getInstance()->getUser()->setFlash('error', $error ?? 'Login failed.');
         }
 
-        $referer = $request->header('Referer', '/user/login');
+        $referer = $request->header('Referer', '/index.php/user/login');
 
         return new \Illuminate\Http\RedirectResponse($referer);
     }
