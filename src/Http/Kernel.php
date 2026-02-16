@@ -492,6 +492,12 @@ class Kernel
         if (file_exists($autoloadFile)) {
             require_once $autoloadFile;
         }
+
+        // Load form system stubs (Phase 4 — replaces sfForm/sfWidget/sfValidator)
+        $formAutoload = $compatDir . '/Form/form_autoload.php';
+        if (file_exists($formAutoload)) {
+            require_once $formAutoload;
+        }
     }
 
     /**
