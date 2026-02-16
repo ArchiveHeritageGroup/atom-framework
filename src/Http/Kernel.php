@@ -144,27 +144,27 @@ class Kernel
         // Guarded with function_exists() — safe when Symfony is also loaded.
         require_once dirname(__DIR__) . '/Views/blade_shims.php';
 
+        // Phase 5: Web path is always standalone — Propel not booted.
+        // CLI commands that need Propel call PropelBridge::boot() explicitly.
+        $this->standaloneMode = true;
+
         // Register sfProjectConfiguration shim for plugin detection
         if (!class_exists('sfProjectConfiguration', false)) {
             class_alias(Compatibility\SfProjectConfigurationShim::class, 'sfProjectConfiguration');
         }
 
-        // Register ProjectConfiguration shim — AtoM's ProjectConfiguration
-        // extends sfProjectConfiguration. Some Qubit models reference it.
+        // Register ProjectConfiguration — in standalone mode, alias to shim.
+        // The real config/ProjectConfiguration.class.php loads sfCoreAutoload
+        // which pulls in the entire Symfony autoloader chain, breaking standalone.
         if (!class_exists('ProjectConfiguration', false)) {
-            $projectConfigFile = $this->rootDir . '/config/ProjectConfiguration.class.php';
-            if (file_exists($projectConfigFile)) {
-                require_once $projectConfigFile;
-            }
+            class_alias(Compatibility\SfProjectConfigurationShim::class, 'ProjectConfiguration');
         }
+
+        // Boot standalone compatibility stubs (Qubit models, forms, etc.)
+        $this->bootStandaloneCompatibility();
 
         // 2. Boot database
         $this->bootDatabase();
-
-        // Phase 5: Web path is always standalone — Propel not booted.
-        // CLI commands that need Propel call PropelBridge::boot() explicitly.
-        $this->standaloneMode = true;
-        $this->bootStandaloneCompatibility();
 
         // 2c. Register PSR-4 autoloaders for AHG plugin namespaces
         $this->registerPluginAutoloaders();
