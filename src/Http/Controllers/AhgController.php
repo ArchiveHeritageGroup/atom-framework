@@ -107,11 +107,25 @@ if (!class_exists(__NAMESPACE__ . '\\AhgControllerBase', false)) {
 
             public function __get(string $name)
             {
+                if ('response' === $name) {
+                    return $this->sfResponse;
+                }
+                if ('request' === $name) {
+                    return $this->sfRequest;
+                }
+                if ('context' === $name) {
+                    return $this->getContext();
+                }
+
                 return $this->templateVars[$name] ?? null;
             }
 
             public function __isset(string $name): bool
             {
+                if (in_array($name, ['response', 'request', 'context'], true)) {
+                    return true;
+                }
+
                 return array_key_exists($name, $this->templateVars);
             }
 
@@ -160,15 +174,46 @@ if (!class_exists(__NAMESPACE__ . '\\AhgControllerBase', false)) {
                 return $this->actionName;
             }
 
+            /**
+             * Get the matched route object (Symfony compatibility).
+             *
+             * In Symfony mode, sfActions::getRoute() returns the matched
+             * QubitRoute with a ->resource property. In standalone mode,
+             * the ActionBridge stores the route as a request attribute.
+             */
+            public function getRoute()
+            {
+                if ($this->sfRequest) {
+                    $route = $this->sfRequest->getAttribute('sf_route');
+                    if ($route) {
+                        return $route;
+                    }
+                }
+
+                // Return a stub object with null resource
+                return (object) ['resource' => null];
+            }
+
             public function redirect($url): void
             {
+                // Handle array-style redirects: ['module' => 'user', 'action' => 'login']
+                if (is_array($url)) {
+                    $module = $url['module'] ?? '';
+                    $action = $url['action'] ?? 'index';
+                    $slug = $url['slug'] ?? '';
+                    $url = '/index.php/' . $module . '/' . $action;
+                    if ($slug) {
+                        $url .= '/' . $slug;
+                    }
+                }
+
                 if (is_string($url) && str_starts_with($url, '@')) {
                     $this->redirectUrl = $this->resolveNamedRoute($url);
                 } elseif (is_string($url) && 'user/login' === $url) {
                     // In Heratio standalone mode, login is handled by Symfony
                     $this->redirectUrl = '/index.php/user/login';
                 } else {
-                    $this->redirectUrl = $url;
+                    $this->redirectUrl = (string) $url;
                 }
             }
 

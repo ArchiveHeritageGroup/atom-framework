@@ -247,6 +247,17 @@ if (!class_exists('sfForm', false)) {
             return null !== $this->localCSRFSecret;
         }
 
+        public function disableCSRFProtection()
+        {
+            $this->localCSRFSecret = null;
+            if (isset($this->widgetSchema[$this->CSRFFieldName])) {
+                unset($this->widgetSchema[$this->CSRFFieldName]);
+            }
+            if (isset($this->validatorSchema[$this->CSRFFieldName])) {
+                unset($this->validatorSchema[$this->CSRFFieldName]);
+            }
+        }
+
         // ── Rendering ──────────────────────────────────────────────
 
         public function renderHiddenFields($includeCSRF = true)

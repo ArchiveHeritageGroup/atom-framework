@@ -472,9 +472,22 @@ class Kernel
             require_once $compatDir . '/sfPluginConfiguration.php';
         }
 
-        // Alias sfException to \Exception (Qubit models catch it)
+        // Alias Symfony exception classes to \Exception
         if (!class_exists('sfException', false)) {
             class_alias(\Exception::class, 'sfException');
+        }
+        if (!class_exists('sfStopException', false)) {
+            class_alias(\Exception::class, 'sfStopException');
+        }
+        if (!class_exists('sfForwardException', false)) {
+            class_alias(\Exception::class, 'sfForwardException');
+        }
+
+        // Register sfWebRequest shim — plugins type-hint sfWebRequest in method
+        // signatures. SfWebRequestAdapter conditionally extends this shim so that
+        // instanceof/type checks pass in standalone mode.
+        if (!class_exists('sfWebRequest', false)) {
+            require_once $compatDir . '/sfWebRequest.php';
         }
 
         // Load Qubit model stubs (WP-S2 compatibility layer)
