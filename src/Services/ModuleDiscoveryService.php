@@ -62,16 +62,7 @@ class ModuleDiscoveryService
     private static function getEnabledPlugins(): array
     {
         try {
-            // Use Propel connection if available (web context)
-            if (class_exists('Propel') && method_exists('Propel', 'getConnection')) {
-                $conn = \Propel::getConnection();
-                $stmt = $conn->prepare('SELECT name FROM atom_plugin WHERE is_enabled = 1 ORDER BY load_order ASC');
-                $stmt->execute();
-                $plugins = $stmt->fetchAll(\PDO::FETCH_COLUMN);
-                return !empty($plugins) ? $plugins : self::getFallbackPlugins();
-            }
-
-            // Direct PDO for CLI or if Propel not ready
+            // Direct PDO connection (Phase 5: Propel path removed)
             $configPath = \sfConfig::get('sf_root_dir') . '/config/config.php';
             if (!file_exists($configPath)) {
                 return self::getFallbackPlugins();

@@ -2,7 +2,6 @@
 
 namespace AtomFramework\Http;
 
-use AtomFramework\Bridges\PropelBridge;
 use AtomFramework\Http\Compatibility\EscaperShim;
 use AtomFramework\Http\Compatibility\SfConfigShim;
 use AtomFramework\Http\Compatibility\SfContextAdapter;
@@ -162,19 +161,10 @@ class Kernel
         // 2. Boot database
         $this->bootDatabase();
 
-        // 2b. Boot Propel bridge — enables Qubit* model classes in standalone mode.
-        //     If Symfony files are absent, PropelBridge will fail — catch and
-        //     switch to standalone mode with compatibility stubs instead.
-        try {
-            PropelBridge::boot($this->rootDir);
-        } catch (\Throwable $e) {
-            $this->standaloneMode = true;
-            error_log('[heratio] PropelBridge unavailable, standalone mode: ' . $e->getMessage());
-        }
-
-        if ($this->standaloneMode) {
-            $this->bootStandaloneCompatibility();
-        }
+        // Phase 5: Web path is always standalone — Propel not booted.
+        // CLI commands that need Propel call PropelBridge::boot() explicitly.
+        $this->standaloneMode = true;
+        $this->bootStandaloneCompatibility();
 
         // 2c. Register PSR-4 autoloaders for AHG plugin namespaces
         $this->registerPluginAutoloaders();
@@ -400,7 +390,7 @@ class Kernel
                     'sfContext' => $contextOk ? (is_a('sfContext', SfContextAdapter::class, true) ? 'SfContextAdapter' : 'real') : 'not initialized',
                     'sfProjectConfiguration' => is_a('sfProjectConfiguration', Compatibility\SfProjectConfigurationShim::class, true) ? 'SfProjectConfigurationShim' : 'real',
                     'sfOutputEscaper' => class_exists('sfOutputEscaper', false) ? (is_a('sfOutputEscaper', Compatibility\EscaperShim::class, true) ? 'EscaperShim' : 'real') : 'not loaded',
-                    'PropelBridge' => \AtomFramework\Bridges\PropelBridge::isBooted() ? 'booted' : 'not booted',
+                    'PropelBridge' => 'disabled (web)',
                 ],
                 'config' => [
                     'sf_root_dir' => \sfConfig::get('sf_root_dir', '') ? 'set' : 'missing',

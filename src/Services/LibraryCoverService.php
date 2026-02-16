@@ -60,27 +60,9 @@ class LibraryCoverService
                 return false;
             }
 
-            // Use QubitDigitalObject to create proper digital object with derivatives
-            // Try to get from Propel identity map first (for new saves in same request)
-            $informationObject = \QubitInformationObject::getById($informationObjectId);
-            if (!$informationObject && class_exists('Propel') && \Propel::isInit()) {
-                // Force refresh from database
-                \Propel::getConnection()->commit();
-                $informationObject = \QubitInformationObject::getById($informationObjectId);
-            }
-            if (!$informationObject) {
-                error_log("LibraryCoverService: Could not load QubitInformationObject: $informationObjectId");
-                return false;
-            }
-
-            // Create digital object using AtoM's native method
-            $digitalObject = new \QubitDigitalObject();
-            $digitalObject->assets[] = new \QubitAsset($filename, $imageData);
-            $digitalObject->usageId = \QubitTerm::MASTER_ID;
-            
-            // Link to information object
-            $informationObject->digitalObjectsRelatedByobjectId[] = $digitalObject;
-            $informationObject->save();
+            // Phase 5: Use StandaloneDigitalObjectWriteService (Laravel QB, no Propel)
+            $doService = \AtomFramework\Services\Write\WriteServiceFactory::digitalObject();
+            $doService->create($informationObjectId, $filename, $imageData);
 
             error_log("LibraryCoverService: Created digital object for IO $informationObjectId from $coverUrl");
 

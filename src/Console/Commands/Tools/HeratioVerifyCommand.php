@@ -202,17 +202,14 @@ class HeratioVerifyCommand extends BaseCommand
         // 16. blade_shims.php loaded
         $this->check('blade_shims.php exists', file_exists($shimsFile));
 
-        // 17. WriteService factory mode detection
+        // 17. WriteService factory mode detection (Phase 5: always standalone)
         WriteServiceFactory::reset();
-        $isStandalone = !class_exists('QubitObject', false) || !method_exists('QubitObject', 'save');
         $settingsService = WriteServiceFactory::settings();
-        $expectedClass = $isStandalone
-            ? 'AtomFramework\\Services\\Write\\StandaloneSettingsWriteService'
-            : 'AtomFramework\\Services\\Write\\PropelSettingsWriteService';
+        $expectedClass = 'AtomFramework\\Services\\Write\\StandaloneSettingsWriteService';
         $this->check(
             'WriteServiceFactory mode detection',
             $settingsService instanceof $expectedClass,
-            $isStandalone ? 'standalone' : 'propel'
+            'standalone'
         );
 
         // 18. WriteService: settings save + read roundtrip

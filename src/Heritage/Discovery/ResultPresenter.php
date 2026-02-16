@@ -122,11 +122,16 @@ class ResultPresenter
         // AtoM stores thumbnails with _142 suffix (142px thumbnail)
         // Original: filename.jpg -> Thumbnail: filename_142.jpg
         $basename = pathinfo($name, PATHINFO_FILENAME);
-
-        // Build thumbnail filename (always jpg for thumbnails)
         $thumbnailName = $basename . '_142.jpg';
+        $candidate = $path . '/' . $thumbnailName;
 
-        return $path . '/' . $thumbnailName;
+        // Only return the path if the file actually exists on disk
+        $rootDir = \sfConfig::get('sf_root_dir', '/usr/share/nginx/archive');
+        if (file_exists($rootDir . $candidate)) {
+            return $candidate;
+        }
+
+        return null;
     }
 
     /**

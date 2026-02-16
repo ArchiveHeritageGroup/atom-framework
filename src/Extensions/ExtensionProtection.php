@@ -38,21 +38,7 @@ class ExtensionProtection
             return $this->pdo;
         }
 
-        // Try to get connection from Propel if available (web context)
-        if (class_exists('Propel') && method_exists('Propel', 'getConnection')) {
-            try {
-                $conn = \Propel::getConnection();
-                if ($conn instanceof PDO) {
-                    $this->pdo = $conn;
-
-                    return $this->pdo;
-                }
-            } catch (\Exception $e) {
-                // Fall through to direct connection
-            }
-        }
-
-        // Direct PDO connection (CLI context)
+        // Direct PDO connection (Phase 5: Propel path removed)
         $configFile = $this->findConfigFile();
         if (!$configFile || !file_exists($configFile)) {
             throw new \RuntimeException('Config file not found');
