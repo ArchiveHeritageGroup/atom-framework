@@ -15,11 +15,32 @@ class ThreeDThumbnailService
     private string $toolPath;
     private string $logPath;
     private array $supported3DExtensions = ['glb', 'gltf', 'obj', 'stl', 'fbx', 'ply', 'dae'];
+    private array $supported3DMimeTypes = [
+        'model/obj', 'model/gltf-binary', 'model/gltf+json', 'model/stl',
+        'application/x-tgif', 'model/vnd.usdz+zip', 'application/x-ply',
+    ];
 
     public function __construct()
     {
         $this->toolPath = PathResolver::getFrameworkDir() . '/tools/3d-thumbnail';
+
+        // Fall back to plugin path if framework tools dir doesn't have the scripts
+        $pluginPath = PathResolver::getRootDir() . '/plugins/ahg3DModelPlugin/tools/3d-thumbnail';
+        if (!file_exists($this->toolPath . '/generate-thumbnail.sh') && file_exists($pluginPath . '/generate-thumbnail.sh')) {
+            $this->toolPath = $pluginPath;
+        }
+
         $this->logPath = PathResolver::getLogDir() . '/3d-thumbnail.log';
+    }
+
+    public function is3DMimeType(string $mime): bool
+    {
+        return in_array($mime, $this->supported3DMimeTypes);
+    }
+
+    public function getSupportedMimeTypes(): array
+    {
+        return $this->supported3DMimeTypes;
     }
 
     private function log(string $message, string $level = 'INFO'): void
@@ -222,6 +243,98 @@ class ThreeDThumbnailService
             ->first();
 
         return $term ? (int) $term->id : 0;
+    }
+
+    /**
+     * Generate 6 multi-angle renders of a 3D model via Blender.
+     *
+     * @return array<string, string> Map of view name => file path (e.g. ['front' => '/path/front.png', ...])
+     */
+    public function generateMultiAngle(string $inputPath, string $outputDir, int $size = 1024): array
+    {
+        $views = ['front', 'back', 'left', 'right', 'top', 'detail'];
+
+        if (!file_exists($inputPath)) {
+            $this->log("Multi-angle input not found: {$inputPath}", 'ERROR');
+            return [];
+        }
+
+        // Check cache: if all 6 PNGs exist and input is older, return cached
+        $allExist = true;
+        $results = [];
+        foreach ($views as $view) {
+            $png = rtrim($outputDir, '/') . '/' . $view . '.png';
+            if (!file_exists($png)) {
+                $allExist = false;
+                break;
+            }
+            $results[$view] = $png;
+        }
+
+        if ($allExist && filemtime($inputPath) < filemtime($results['front'])) {
+            $this->log("Multi-angle cache hit for: {$inputPath}");
+            return $results;
+        }
+
+        // Create output dir
+        if (!is_dir($outputDir)) {
+            @mkdir($outputDir, 0775, true);
+        }
+
+        $script = $this->toolPath . '/generate-multiangle.sh';
+        if (!file_exists($script)) {
+            $this->log("Multi-angle script not found: {$script}", 'ERROR');
+            return [];
+        }
+
+        $cmd = sprintf(
+            '%s %s %s %d 2>&1',
+            escapeshellcmd($script),
+            escapeshellarg($inputPath),
+            escapeshellarg($outputDir),
+            $size
+        );
+
+        $this->log("Multi-angle: {$cmd}");
+        $output = shell_exec($cmd);
+        $this->log("Multi-angle output: {$output}", 'DEBUG');
+
+        $results = [];
+        foreach ($views as $view) {
+            $png = rtrim($outputDir, '/') . '/' . $view . '.png';
+            if (file_exists($png) && filesize($png) > 500) {
+                $results[$view] = $png;
+                @chown($png, 'www-data');
+                @chgrp($png, 'www-data');
+            }
+        }
+
+        if (count($results) > 0) {
+            $this->log("Multi-angle generated " . count($results) . " views for: {$inputPath}");
+        } else {
+            $this->log("Multi-angle generation failed for: {$inputPath}", 'WARNING');
+        }
+
+        return $results;
+    }
+
+    /**
+     * Get the multi-angle output directory for a digital object.
+     */
+    public function getMultiAngleDir(int $digitalObjectId): string
+    {
+        $digitalObject = DB::table('digital_object')
+            ->where('id', $digitalObjectId)
+            ->first();
+
+        if (!$digitalObject) {
+            return '';
+        }
+
+        $uploadsPath = PathResolver::getRootDir();
+        $masterDir = dirname($uploadsPath . $digitalObject->path . $digitalObject->name);
+
+        return $masterDir . '/multiangle';
     }
 
     public function batchProcessExisting(): array
