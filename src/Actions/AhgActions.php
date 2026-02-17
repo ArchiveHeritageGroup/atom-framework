@@ -108,7 +108,7 @@ class AhgActions extends \sfActions
     protected function requireAuth(): void
     {
         if (!$this->getUser()->isAuthenticated()) {
-            $this->redirect('user/login');
+            $this->redirect(defined('HERATIO_STANDALONE') ? '/auth/login' : 'user/login');
         }
     }
 

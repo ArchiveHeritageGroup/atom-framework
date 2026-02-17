@@ -210,8 +210,7 @@ if (!class_exists(__NAMESPACE__ . '\\AhgControllerBase', false)) {
                 if (is_string($url) && str_starts_with($url, '@')) {
                     $this->redirectUrl = $this->resolveNamedRoute($url);
                 } elseif (is_string($url) && 'user/login' === $url) {
-                    // In Heratio standalone mode, login is handled by Symfony
-                    $this->redirectUrl = '/index.php/user/login';
+                    $this->redirectUrl = defined('HERATIO_STANDALONE') ? '/auth/login' : '/index.php/user/login';
                 } else {
                     $this->redirectUrl = (string) $url;
                 }
@@ -373,6 +372,9 @@ class AhgController extends AhgControllerBase
                 } else {
                     return new Response("Action method {$method} not found", 404);
                 }
+            } elseif (method_exists($this, 'execute') && (new \ReflectionMethod($this, 'execute'))->getDeclaringClass()->getName() !== AhgControllerBase::class) {
+                // Single-action file pattern: browseAction.class.php with execute()
+                $method = 'execute';
             } elseif ($action !== 'index' && method_exists($this, 'executeIndex')) {
                 // Generic fallback: try executeIndex()
                 $method = 'executeIndex';
@@ -471,7 +473,7 @@ class AhgController extends AhgControllerBase
     protected function requireAuth(): void
     {
         if (!$this->getUser()->isAuthenticated()) {
-            $this->redirect('/index.php/user/login');
+            $this->redirect(defined('HERATIO_STANDALONE') ? '/auth/login' : '/index.php/user/login');
         }
     }
 
@@ -742,6 +744,14 @@ class AhgController extends AhgControllerBase
      */
     private function wrapInLayout(string $content): string
     {
+        // Skip wrapping if content already contains a full HTML document.
+        // Templates using @extends('layouts.page') or get_partial('layout_start')
+        // already output <html>/<head>/<body>.
+        $trimmed = ltrim($content);
+        if (str_starts_with($trimmed, '<!DOCTYPE') || str_starts_with($trimmed, '<html')) {
+            return $content;
+        }
+
         $renderer = BladeRenderer::getInstance();
 
         $culture = CultureHelper::getCulture();

@@ -411,7 +411,7 @@ class Kernel
         })->name('api.shim-status');
 
         // Auth endpoints (standalone login/logout)
-        $this->router->post('/auth/login', [Controllers\AuthController::class, 'login'])->name('auth.login');
+        $this->router->match(['GET', 'POST'], '/auth/login', [Controllers\AuthController::class, 'login'])->name('auth.login');
         $this->router->match(['GET', 'POST'], '/auth/logout', [Controllers\AuthController::class, 'logout'])->name('auth.logout');
         $this->router->get('/auth/me', [Controllers\AuthController::class, 'me'])->name('auth.me');
 
@@ -439,6 +439,25 @@ class Kernel
         } catch (\Exception $e) {
             // Plugin route collection failed — not fatal for health check
             error_log('[heratio] Route collection failed: ' . $e->getMessage());
+        }
+
+        // Register base AtoM URL aliases → AHG manage plugin actions.
+        // The menu table stores original AtoM paths (actor/browse, repository/browse, etc.)
+        // which must map to the AHG plugin equivalents in standalone mode.
+        $bridge = Controllers\ActionBridge::class . '@dispatch';
+        $aliases = [
+            ['/actor/browse', 'actorManage', 'browse', 'atom_actor_browse'],
+            ['/repository/browse', 'repositoryManage', 'browse', 'atom_repository_browse'],
+            ['/taxonomy/index', 'termTaxonomy', 'browse', 'atom_taxonomy_index'],
+        ];
+        foreach ($aliases as [$url, $module, $action, $name]) {
+            try {
+                $this->router->match(['GET', 'POST'], $url, $bridge)
+                    ->name($name)
+                    ->setDefaults(['_module' => $module, '_action' => $action]);
+            } catch (\Throwable $e) {
+                // Route may already exist from plugin routing.yml — skip
+            }
         }
     }
 
@@ -488,6 +507,16 @@ class Kernel
         // instanceof/type checks pass in standalone mode.
         if (!class_exists('sfWebRequest', false)) {
             require_once $compatDir . '/sfWebRequest.php';
+        }
+
+        // sfView constants — actions return sfView::SUCCESS, sfView::NONE, etc.
+        if (!class_exists('sfView', false)) {
+            eval('class sfView { const NONE = "None"; const SUCCESS = "Success"; const ERROR = "Error"; const INPUT = "Input"; const HEADER_ONLY = "Header"; }');
+        }
+
+        // sfCultureInfo — used by theme _layout_start.php for dir="ltr/rtl" on <html>
+        if (!class_exists('sfCultureInfo', false)) {
+            eval('class sfCultureInfo { public $direction = "ltr"; private static $instance; public static function getInstance($culture = "en") { if (!self::$instance) { self::$instance = new self(); } return self::$instance; } }');
         }
 
         // Load Qubit model stubs (WP-S2 compatibility layer)

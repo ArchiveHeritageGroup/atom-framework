@@ -369,7 +369,7 @@ class SfRoutingAdapter
         // Common route name mappings (fallback when not in Laravel router)
         $routes = [
             'homepage' => '/',
-            'login' => '/index.php/user/login',
+            'login' => defined('HERATIO_STANDALONE') ? '/auth/login' : '/index.php/user/login',
             'logout' => '/auth/logout',
             'security_clearances' => '/security/clearances',
             'security_clearance_view' => '/security/view',
@@ -514,9 +514,9 @@ class SfControllerAdapter
             $url = $this->genUrl($url);
         }
 
-        // Intercept bare user/login — in standalone mode, login is Symfony
+        // Intercept bare user/login — resolve based on mode
         if (is_string($url) && 'user/login' === $url) {
-            $url = '/index.php/user/login';
+            $url = defined('HERATIO_STANDALONE') ? '/auth/login' : '/index.php/user/login';
         }
 
         $this->redirectUrl = (string) $url;

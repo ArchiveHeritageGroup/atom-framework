@@ -35,6 +35,32 @@ class ActionBridge
     ];
 
     /**
+     * Action-level aliases: base AtoM module/action → AHG manage module/action.
+     *
+     * When the original module's action file is not found (e.g., because
+     * apps/qubit/modules is not available in standalone mode), these aliases
+     * redirect to AHG manage plugin equivalents.
+     *
+     * Format: 'baseModule' => ['baseAction' => ['targetModule', 'targetAction']]
+     */
+    private const ACTION_ALIASES = [
+        'actor'          => ['browse' => ['actorManage', 'browse']],
+        'repository'     => ['browse' => ['repositoryManage', 'browse']],
+        'taxonomy'       => ['index' => ['termTaxonomy', 'index'], 'browse' => ['termTaxonomy', 'index']],
+        'accession'      => ['browse' => ['accessionManage', 'browse']],
+        'donor'          => ['browse' => ['donorManage', 'browse']],
+        'rightsholder'   => ['browse' => ['rightsHolderManage', 'browse']],
+        'physicalobject' => ['browse' => ['storageManage', 'browse']],
+        'function'       => ['browse' => ['functionManage', 'browse']],
+        'user'           => [
+            'list' => ['userManage', 'browse'],
+            'login' => ['_auth', 'login'],
+            'logout' => ['_auth', 'logout'],
+        ],
+        'settings'       => ['global' => ['ahgSettings', 'index'], 'visibleElements' => ['ahgSettings', 'index']],
+    ];
+
+    /**
      * Default action map: module → default execute method name.
      *
      * When a module doesn't have execute{Action}() for the requested action,
@@ -93,6 +119,35 @@ class ActionBridge
 
         // Locate the action class file
         $actionFile = $this->findActionFile($module, $action);
+
+        // Fallback: if action not found, check ACTION_ALIASES to redirect
+        // base AtoM module/action URLs to AHG manage plugin equivalents.
+        // This handles standalone mode where apps/qubit/modules is unavailable.
+        if (null === $actionFile && isset(self::ACTION_ALIASES[$module][$action])) {
+            [$aliasModule, $aliasAction] = self::ACTION_ALIASES[$module][$action];
+
+            // Special marker: _auth delegates directly to AuthController
+            if ('_auth' === $aliasModule) {
+                $authController = new AuthController();
+                $illuminateRequest = $request instanceof Request
+                    ? $request
+                    : Request::capture();
+
+                if ('login' === $aliasAction) {
+                    return $authController->login($illuminateRequest);
+                }
+                if ('logout' === $aliasAction) {
+                    return $authController->logout($illuminateRequest);
+                }
+            }
+
+            $aliasFile = $this->findActionFile($aliasModule, $aliasAction);
+            if (null !== $aliasFile) {
+                $module = $aliasModule;
+                $action = $aliasAction;
+                $actionFile = $aliasFile;
+            }
+        }
 
         // If module not found and this is a slug route, resolve the slug
         // to determine the correct module (mimics QubitMetadataRoute behavior)
@@ -322,11 +377,11 @@ class ActionBridge
                 }
 
                 // Redirect to login for unauthorized access
-                return new RedirectResponse('/index.php/user/login', 302);
+                return new RedirectResponse(self::loginUrl(), 302);
             }
 
             // Default: redirect to login
-            return new RedirectResponse('/index.php/user/login', 302);
+            return new RedirectResponse(self::loginUrl(), 302);
         }
     }
 
@@ -663,6 +718,15 @@ class ActionBridge
      */
     private function wrapInLayout(string $content, array $vars = []): string
     {
+        // Skip wrapping if the content already contains a full HTML document.
+        // This happens when:
+        //  - Blade templates use @extends('layouts.page') which renders full HTML
+        //  - PHP templates call get_partial('layout_start') which outputs <html>/<head>/<body>
+        $trimmed = ltrim($content);
+        if (str_starts_with($trimmed, '<!DOCTYPE') || str_starts_with($trimmed, '<html')) {
+            return $content;
+        }
+
         try {
             $renderer = BladeRenderer::getInstance();
 
@@ -943,6 +1007,14 @@ class ActionBridge
                 return $this->data['content'] ?? '';
             }
         };
+    }
+
+    /**
+     * Get the login URL, standalone-aware.
+     */
+    private static function loginUrl(): string
+    {
+        return defined('HERATIO_STANDALONE') ? '/auth/login' : '/index.php/user/login';
     }
 
     /**

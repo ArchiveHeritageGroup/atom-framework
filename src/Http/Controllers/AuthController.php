@@ -4,6 +4,7 @@ namespace AtomFramework\Http\Controllers;
 
 use AtomFramework\Http\Compatibility\SfContextAdapter;
 use AtomFramework\Services\AuthService;
+use AtomFramework\Views\BladeRenderer;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -22,15 +23,21 @@ use Illuminate\Http\Request;
 class AuthController
 {
     /**
-     * POST /auth/login
+     * GET|POST /auth/login
      *
-     * Authenticate via email/username + password.
+     * GET: Render full-page login form (standalone mode).
+     * POST: Authenticate via email/username + password.
      * On success: signs in via SfUserAdapter, sets atom_authenticated cookie.
      * Accepts JSON body or form-encoded POST data.
      * Returns JSON or redirects based on Accept header / login_route attribute.
      */
     public function login(Request $request): \Symfony\Component\HttpFoundation\Response
     {
+        // GET request — show login page
+        if ($request->isMethod('GET')) {
+            return $this->loginPage($request);
+        }
+
         $email = $request->input('email', $request->input('username', ''));
         $password = $request->input('password', '');
 
@@ -117,6 +124,33 @@ class AuthController
     }
 
     /**
+     * Render the full-page login form (GET /auth/login).
+     */
+    private function loginPage(Request $request): \Symfony\Component\HttpFoundation\Response
+    {
+        $error = null;
+        if (SfContextAdapter::hasInstance()) {
+            $sfUser = SfContextAdapter::getInstance()->getUser();
+            $error = $sfUser->getFlash('error');
+
+            // Already authenticated — redirect to home
+            if ($sfUser->isAuthenticated()) {
+                return new \Illuminate\Http\RedirectResponse('/');
+            }
+        }
+
+        $renderer = BladeRenderer::getInstance();
+        $html = $renderer->render('auth.login', [
+            'error' => $error,
+            'sf_user' => SfContextAdapter::hasInstance()
+                ? SfContextAdapter::getInstance()->getUser() : null,
+            'siteTitle' => \sfConfig::get('app_siteTitle', 'AtoM'),
+        ]);
+
+        return new \Illuminate\Http\Response($html, 200, ['Content-Type' => 'text/html']);
+    }
+
+    /**
      * Build appropriate login response based on request type.
      */
     private function respondToLogin(Request $request, bool $success, ?string $error = null, ?object $user = null): \Symfony\Component\HttpFoundation\Response
@@ -160,8 +194,6 @@ class AuthController
             SfContextAdapter::getInstance()->getUser()->setFlash('error', $error ?? 'Login failed.');
         }
 
-        $referer = $request->header('Referer', '/index.php/user/login');
-
-        return new \Illuminate\Http\RedirectResponse($referer);
+        return new \Illuminate\Http\RedirectResponse('/auth/login');
     }
 }

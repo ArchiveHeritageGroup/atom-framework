@@ -297,6 +297,26 @@ if (!function_exists('public_path')) {
 if (!function_exists('get_partial')) {
     function get_partial($name, $vars = [])
     {
+        // In standalone mode, intercept layout_start/layout_end to use
+        // Heratio Blade partials instead of Symfony theme partials.
+        // The Symfony partials use get_component() calls that fail silently.
+        if (defined('HERATIO_STANDALONE')) {
+            if ('layout_start' === $name) {
+                $renderer = \AtomFramework\Views\BladeRenderer::getInstance();
+                $adapterClass = \AtomFramework\Http\Compatibility\SfContextAdapter::class;
+                $sfUser = (class_exists($adapterClass, false) && $adapterClass::hasInstance())
+                    ? $adapterClass::getInstance()->getUser() : null;
+                return $renderer->render('partials.layout-start', array_merge($vars, [
+                    'sf_user' => $sfUser,
+                    'culture' => $sfUser ? $sfUser->getCulture() : 'en',
+                ]));
+            }
+            if ('layout_end' === $name) {
+                $renderer = \AtomFramework\Views\BladeRenderer::getInstance();
+                return $renderer->render('partials.layout-end', $vars);
+            }
+        }
+
         if (str_contains($name, '/')) {
             [$module, $partial] = explode('/', $name, 2);
         } else {

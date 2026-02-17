@@ -45,7 +45,6 @@ class MenuService
                     'menu.path',
                     'menu.lft',
                     'menu.rgt',
-                    'menu.depth',
                     'menu_i18n.label',
                     'menu_i18n.description',
                 ])
@@ -96,7 +95,7 @@ class MenuService
      */
     public static function getBrowseMenu(string $culture = 'en'): array
     {
-        return self::getChildren('browseMenu', $culture);
+        return self::getChildren('browse', $culture);
     }
 
     /**
@@ -179,7 +178,6 @@ class MenuService
                 'path' => $row->path ?? '',
                 'lft' => (int) $row->lft,
                 'rgt' => (int) $row->rgt,
-                'depth' => (int) ($row->depth ?? 0),
                 'label' => $row->label ?? $row->name ?? '',
                 'description' => $row->description ?? '',
                 'children' => [],

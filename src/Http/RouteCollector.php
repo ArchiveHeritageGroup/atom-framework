@@ -99,7 +99,7 @@ class RouteCollector
 
         // Check if the class has a route registration method
         $routeMethod = null;
-        foreach (['loadRoutes', 'addRoutes', 'configureRouting'] as $method) {
+        foreach (['loadRoutes', 'addRoutes', 'configureRouting', 'routingLoadConfiguration'] as $method) {
             if (method_exists($className, $method)) {
                 $routeMethod = $method;
                 break;
