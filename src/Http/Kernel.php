@@ -415,11 +415,18 @@ class Kernel
         $this->router->match(['GET', 'POST'], '/auth/logout', [Controllers\AuthController::class, 'logout'])->name('auth.logout');
         $this->router->get('/auth/me', [Controllers\AuthController::class, 'me'])->name('auth.me');
 
-        // Homepage — dispatches to the default AtoM homepage action
-        $bridge = ActionBridge::class;
-        $this->router->match(['GET', 'POST'], '/', $bridge . '@dispatch')
-            ->setDefaults(['_module' => 'staticpage', '_action' => 'index', 'slug' => 'home'])
-            ->name('homepage');
+        // Homepage — in standalone mode, render directly via Laravel DB.
+        // In dual-stack mode, dispatch to Symfony's staticpage/index action.
+        if ($this->standaloneMode) {
+            $this->router->match(['GET', 'POST'], '/', function () {
+                return $this->renderStandaloneHomepage();
+            })->name('homepage');
+        } else {
+            $bridge = ActionBridge::class;
+            $this->router->match(['GET', 'POST'], '/', $bridge . '@dispatch')
+                ->setDefaults(['_module' => 'staticpage', '_action' => 'index', 'slug' => 'home'])
+                ->name('homepage');
+        }
     }
 
     /**
@@ -514,9 +521,146 @@ class Kernel
             eval('class sfView { const NONE = "None"; const SUCCESS = "Success"; const ERROR = "Error"; const INPUT = "Input"; const HEADER_ONLY = "Header"; }');
         }
 
+        // sfComponent → sfAction → sfActions chain — required by base AtoM action classes
+        // (staticpage/indexAction, default/browseAction, etc.) and AhgController dual-stack.
+        // These stubs provide the minimal interface that ActionBridge expects.
+        if (!class_exists('sfComponent', false)) {
+            eval('
+            class sfComponent {
+                public $context, $request, $response, $dispatcher, $moduleName, $actionName, $varHolder;
+                public function __construct($context = null, $moduleName = "", $actionName = "") {
+                    $this->context = $context;
+                    $this->moduleName = $moduleName;
+                    $this->actionName = $actionName;
+                    if ($context && method_exists($context, "getRequest")) { $this->request = $context->getRequest(); }
+                    if ($context && method_exists($context, "getResponse")) { $this->response = $context->getResponse(); }
+                    if ($context && method_exists($context, "getEventDispatcher")) { $this->dispatcher = $context->getEventDispatcher(); }
+                    $this->varHolder = new class { private $data = []; public function getAll() { return $this->data; } public function set($k, $v) { $this->data[$k] = $v; } public function get($k, $d = null) { return $this->data[$k] ?? $d; } };
+                    if (method_exists($this, "initialize") && $context) { $this->initialize($context, $moduleName, $actionName); }
+                }
+                public function getContext() { return $this->context; }
+                public function getRequest() { return $this->request; }
+                public function getResponse() { return $this->response; }
+                public function getModuleName() { return $this->moduleName; }
+                public function getActionName() { return $this->actionName; }
+                public function getUser() { return $this->context ? $this->context->getUser() : null; }
+                public function getVarHolder() { return $this->varHolder; }
+                public function __set($n, $v) { $this->varHolder->set($n, $v); }
+                public function __get($n) { return $this->varHolder->get($n); }
+                public function __isset($n) { return $this->varHolder->get($n) !== null; }
+                public function getRoute() { return $this->request ? $this->request->getAttribute("sf_route") : null; }
+            }');
+        }
+
+        if (!class_exists('sfAction', false)) {
+            eval('
+            class sfAction extends sfComponent {
+                public function forward($module, $action) { throw new sfStopException("forward:$module/$action"); }
+                public function redirect($url, $statusCode = 302) {
+                    if ($this->context && method_exists($this->context, "getController")) {
+                        $this->context->getController()->redirect($url, 0, $statusCode);
+                    }
+                    throw new sfStopException("redirect");
+                }
+                public function forward404($message = null) { throw new \Symfony\Component\HttpKernel\Exception\NotFoundHttpException($message ?? "Not found"); }
+                public function forward404If($condition, $message = null) { if ($condition) { $this->forward404($message); } }
+                public function forward404Unless($condition, $message = null) { if (!$condition) { $this->forward404($message); } }
+                public function renderText($text) { if ($this->response) { $this->response->setContent($text); } return sfView::NONE; }
+                public function setTemplate($tpl) {}
+                public function isSecure() { return false; }
+                public function getCredential() { return null; }
+            }');
+        }
+
+        if (!class_exists('sfActions', false)) {
+            eval('
+            class sfActions extends sfAction {
+                public function execute($request) {
+                    $method = "execute" . ucfirst($this->actionName);
+                    if (method_exists($this, $method)) { return $this->$method($request); }
+                    return null;
+                }
+                public function preExecute() {}
+                public function postExecute() {}
+            }');
+        }
+
+        // sfComponents — base class for Symfony component actions (get_component() calls)
+        if (!class_exists('sfComponents', false)) {
+            eval('
+            class sfComponents extends sfComponent {
+                public function execute($request) {
+                    $method = "execute" . ucfirst($this->actionName);
+                    if (method_exists($this, $method)) { return $this->$method($request); }
+                    return null;
+                }
+            }');
+        }
+
+        // sfBaseTask / sfTask — CLI task base classes (referenced by AhgTask and plugins)
+        if (!class_exists('sfTask', false)) {
+            eval('
+            class sfTask {
+                protected $namespace = "";
+                protected $name = "";
+                protected $briefDescription = "";
+                protected $detailedDescription = "";
+                public function __construct($dispatcher = null, $formatter = null) {}
+                public function run($arguments = [], $options = []) {}
+                public function configure() {}
+                public function execute($arguments = [], $options = []) {}
+                public function log($msg) { error_log($msg); }
+                public function logSection($section, $msg) { error_log("[$section] $msg"); }
+            }');
+        }
+        if (!class_exists('sfBaseTask', false)) {
+            eval('class sfBaseTask extends sfTask {}');
+        }
+
+        // sfConfigurationException — used by AhgMetadataRoute
+        if (!class_exists('sfConfigurationException', false)) {
+            class_alias(\RuntimeException::class, 'sfConfigurationException');
+        }
+
         // sfCultureInfo — used by theme _layout_start.php for dir="ltr/rtl" on <html>
+        // and by repositoryManageActions for getLanguages() / getScripts()
         if (!class_exists('sfCultureInfo', false)) {
-            eval('class sfCultureInfo { public $direction = "ltr"; private static $instance; public static function getInstance($culture = "en") { if (!self::$instance) { self::$instance = new self(); } return self::$instance; } }');
+            eval('
+            class sfCultureInfo {
+                public $direction = "ltr";
+                private static $instance;
+                private $culture;
+
+                public function __construct($culture = "en") { $this->culture = $culture; }
+
+                public static function getInstance($culture = "en") {
+                    if (!self::$instance) { self::$instance = new self($culture); }
+                    return self::$instance;
+                }
+
+                public function getLanguages() {
+                    // Return a basic set of common language codes → names
+                    return ["en" => "English", "fr" => "French", "de" => "German", "es" => "Spanish",
+                            "pt" => "Portuguese", "nl" => "Dutch", "af" => "Afrikaans", "it" => "Italian",
+                            "ar" => "Arabic", "zh" => "Chinese", "ja" => "Japanese", "ko" => "Korean",
+                            "ru" => "Russian", "sv" => "Swedish", "da" => "Danish", "no" => "Norwegian",
+                            "fi" => "Finnish", "pl" => "Polish", "cs" => "Czech", "el" => "Greek",
+                            "he" => "Hebrew", "hi" => "Hindi", "hu" => "Hungarian", "ro" => "Romanian",
+                            "sk" => "Slovak", "sl" => "Slovenian", "tr" => "Turkish", "uk" => "Ukrainian",
+                            "vi" => "Vietnamese", "th" => "Thai", "id" => "Indonesian", "ms" => "Malay",
+                            "sw" => "Swahili", "zu" => "Zulu", "xh" => "Xhosa", "st" => "Southern Sotho",
+                            "tn" => "Tswana", "ts" => "Tsonga", "ss" => "Swati", "ve" => "Venda",
+                            "nr" => "South Ndebele", "nso" => "Northern Sotho"];
+                }
+
+                public function getScripts() {
+                    return ["Latn" => "Latin", "Cyrl" => "Cyrillic", "Arab" => "Arabic",
+                            "Hans" => "Simplified Chinese", "Hant" => "Traditional Chinese",
+                            "Grek" => "Greek", "Hebr" => "Hebrew", "Deva" => "Devanagari"];
+                }
+
+                public function getCulture() { return $this->culture; }
+            }');
         }
 
         // Load Qubit model stubs (WP-S2 compatibility layer)
@@ -723,6 +867,61 @@ class Kernel
         }
 
         return 'dev';
+    }
+
+    /**
+     * Render the homepage in standalone mode.
+     *
+     * Fetches the 'home' static page content from the database and renders
+     * it via the heratio Blade layout. Avoids loading the Symfony-dependent
+     * StaticPageIndexAction which requires Propel, QubitPdo, Criteria, etc.
+     */
+    private function renderStandaloneHomepage(): \Symfony\Component\HttpFoundation\Response
+    {
+        $culture = 'en';
+        if (Compatibility\SfContextAdapter::hasInstance()) {
+            $culture = Compatibility\SfContextAdapter::getInstance()->getUser()->getCulture();
+        }
+
+        $content = '';
+        try {
+            // Look up the 'home' static page
+            $row = \Illuminate\Database\Capsule\Manager::table('slug')
+                ->join('static_page_i18n', 'slug.object_id', '=', 'static_page_i18n.id')
+                ->where('slug.slug', 'home')
+                ->where('static_page_i18n.culture', $culture)
+                ->select('static_page_i18n.content', 'static_page_i18n.title')
+                ->first();
+
+            if ($row) {
+                $content = $row->content ?? '';
+            }
+        } catch (\Throwable $e) {
+            error_log('[heratio] Homepage query failed: ' . $e->getMessage());
+        }
+
+        try {
+            $renderer = \AtomFramework\Views\BladeRenderer::getInstance();
+            $html = $renderer->render('layouts.heratio', [
+                'sf_user' => Compatibility\SfContextAdapter::hasInstance()
+                    ? Compatibility\SfContextAdapter::getInstance()->getUser() : null,
+                'sf_content' => $content,
+                'siteTitle' => ConfigService::get('siteTitle', ConfigService::get('app_siteTitle', 'AtoM')),
+                'culture' => $culture,
+            ]);
+
+            return new Response($html, 200, ['Content-Type' => 'text/html']);
+        } catch (\Throwable $e) {
+            error_log('[heratio] Homepage render failed: ' . $e->getMessage());
+
+            return new Response(
+                '<!DOCTYPE html><html><head><meta charset="utf-8"><title>Home</title>'
+                . '<link rel="stylesheet" href="/dist/css/app.css"></head><body>'
+                . $content . '</body></html>',
+                200,
+                ['Content-Type' => 'text/html']
+            );
+        }
     }
 
     /**

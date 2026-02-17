@@ -200,6 +200,21 @@ if (!class_exists(__NAMESPACE__ . '\\AhgControllerBase', false)) {
                 if (is_array($url)) {
                     $module = $url['module'] ?? '';
                     $action = $url['action'] ?? 'index';
+
+                    // Standalone-aware login/logout redirect
+                    if ('user' === $module && defined('HERATIO_STANDALONE')) {
+                        if ('login' === $action) {
+                            $this->redirectUrl = '/auth/login';
+
+                            return;
+                        }
+                        if ('logout' === $action) {
+                            $this->redirectUrl = '/auth/logout';
+
+                            return;
+                        }
+                    }
+
                     $slug = $url['slug'] ?? '';
                     $url = '/index.php/' . $module . '/' . $action;
                     if ($slug) {

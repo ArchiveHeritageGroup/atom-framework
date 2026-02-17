@@ -344,6 +344,30 @@ class RouteCollector
         if (!class_exists('QubitResourceRoute', false)) {
             eval('class QubitResourceRoute extends QubitRoute {}');
         }
+
+        // sfRequestRoute — used by arRestApiPlugin
+        if (!class_exists('sfRequestRoute', false)) {
+            eval('class sfRequestRoute extends sfRoute {}');
+        }
+
+        // QubitMetadataRoute — base metadata routing class (parent for AhgMetadataRoute)
+        if (!class_exists('QubitMetadataRoute', false)) {
+            eval('class QubitMetadataRoute extends sfRoute {
+                public static $DEFAULT_MODULES = [];
+                public static $METADATA_PLUGINS = [];
+                protected function getDefaultTemplate($type) { return "isad"; }
+            }');
+        }
+
+        // AhgMetadataRoute — GLAM-aware metadata route (used by ahgMuseumPlugin, etc.)
+        if (!class_exists('AhgMetadataRoute', false)) {
+            eval('class AhgMetadataRoute extends QubitMetadataRoute {}');
+        }
+
+        // AddActionRoute — route guard for /add paths (used by ahgAccessionManagePlugin, etc.)
+        if (!class_exists('AddActionRoute', false)) {
+            eval('class AddActionRoute extends sfRoute {}');
+        }
     }
 
     /**
@@ -407,6 +431,15 @@ class RouteCollector
             }
 
             public function connect(string $name, $route): void
+            {
+                $this->prependRoute($name, $route);
+            }
+
+            /**
+             * insertRouteBefore() — used by arRestApiPlugin to add API routes.
+             * In standalone mode, we just register the route normally.
+             */
+            public function insertRouteBefore(string $pivot, string $name, $route): void
             {
                 $this->prependRoute($name, $route);
             }

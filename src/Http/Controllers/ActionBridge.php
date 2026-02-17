@@ -117,16 +117,13 @@ class ActionBridge
             }
         }
 
-        // Locate the action class file
-        $actionFile = $this->findActionFile($module, $action);
-
-        // Fallback: if action not found, check ACTION_ALIASES to redirect
-        // base AtoM module/action URLs to AHG manage plugin equivalents.
-        // This handles standalone mode where apps/qubit/modules is unavailable.
-        if (null === $actionFile && isset(self::ACTION_ALIASES[$module][$action])) {
+        // In standalone mode, ALL aliases must intercept BEFORE findActionFile
+        // because the base AtoM action files still exist on disk but depend on
+        // Symfony/Propel/Elasticsearch classes that aren't loaded in standalone mode.
+        if (defined('HERATIO_STANDALONE') && isset(self::ACTION_ALIASES[$module][$action])) {
             [$aliasModule, $aliasAction] = self::ACTION_ALIASES[$module][$action];
 
-            // Special marker: _auth delegates directly to AuthController
+            // Special _auth marker — delegate to AuthController
             if ('_auth' === $aliasModule) {
                 $authController = new AuthController();
                 $illuminateRequest = $request instanceof Request
@@ -140,6 +137,25 @@ class ActionBridge
                     return $authController->logout($illuminateRequest);
                 }
             }
+
+            // Regular alias — find the AHG manage plugin action file
+            $aliasFile = $this->findActionFile($aliasModule, $aliasAction);
+            if (null !== $aliasFile) {
+                $module = $aliasModule;
+                $action = $aliasAction;
+
+                return $this->executeAction($aliasFile, $module, $action, $request);
+            }
+        }
+
+        // Locate the action class file
+        $actionFile = $this->findActionFile($module, $action);
+
+        // Fallback: if action not found, check ACTION_ALIASES to redirect
+        // base AtoM module/action URLs to AHG manage plugin equivalents.
+        // This handles standalone mode where apps/qubit/modules is unavailable.
+        if (null === $actionFile && isset(self::ACTION_ALIASES[$module][$action])) {
+            [$aliasModule, $aliasAction] = self::ACTION_ALIASES[$module][$action];
 
             $aliasFile = $this->findActionFile($aliasModule, $aliasAction);
             if (null !== $aliasFile) {

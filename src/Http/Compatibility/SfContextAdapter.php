@@ -501,12 +501,30 @@ class SfControllerAdapter
      */
     public function redirect($url, $delay = 0, $statusCode = 302): void
     {
-        // If $url is an array (named route), convert to string
+        // If $url is an array (named route or module/action), convert to string
         if (is_array($url)) {
-            $routeName = $url['sf_route'] ?? '';
-            unset($url['sf_route'], $url['sf_subject']);
-            $routing = SfContextAdapter::getInstance()->getRouting();
-            $url = $routing->generate($routeName, $url);
+            // Detect module/action style: ['module' => 'user', 'action' => 'login']
+            $module = $url['module'] ?? null;
+            $action = $url['action'] ?? null;
+            if ($module && $action) {
+                // Standalone-aware login/logout interception
+                if ('user' === $module && defined('HERATIO_STANDALONE')) {
+                    if ('login' === $action) {
+                        $url = '/auth/login';
+                    } elseif ('logout' === $action) {
+                        $url = '/auth/logout';
+                    } else {
+                        $url = '/' . $module . '/' . $action;
+                    }
+                } else {
+                    $url = '/index.php/' . $module . '/' . $action;
+                }
+            } else {
+                $routeName = $url['sf_route'] ?? '';
+                unset($url['sf_route'], $url['sf_subject']);
+                $routing = SfContextAdapter::getInstance()->getRouting();
+                $url = $routing->generate($routeName, $url);
+            }
         }
 
         // Handle @routeName patterns (may arrive unresolved)
