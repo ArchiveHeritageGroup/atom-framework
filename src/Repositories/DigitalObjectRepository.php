@@ -352,7 +352,7 @@ class DigitalObjectRepository
                 } else {
                     DB::table('property_i18n')->insert([
                         'id' => $existing->id,
-                        'culture' => 'en',
+                        'culture' => \AtomExtensions\Helpers\CultureHelper::getCulture(),
                         'value' => $value,
                     ]);
                 }
@@ -378,7 +378,7 @@ class DigitalObjectRepository
 
             DB::table('property_i18n')->insert([
                 'id' => $propId,
-                'culture' => 'en',
+                'culture' => \AtomExtensions\Helpers\CultureHelper::getCulture(),
                 'value' => $value,
             ]);
         }

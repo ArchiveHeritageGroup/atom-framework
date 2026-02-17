@@ -271,7 +271,7 @@ class ContributorService
             ->join('heritage_contribution_type as t', 'c.contribution_type_id', '=', 't.id')
             ->leftJoin('information_object_i18n as ioi', function ($join) {
                 $join->on('c.information_object_id', '=', 'ioi.id')
-                    ->where('ioi.culture', '=', 'en');
+                    ->where('ioi.culture', '=', \AtomExtensions\Helpers\CultureHelper::getCulture());
             })
             ->leftJoin('slug as s', 'c.information_object_id', '=', 's.object_id')
             ->where('c.contributor_id', $contributorId)

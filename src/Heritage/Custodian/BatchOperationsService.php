@@ -303,7 +303,7 @@ class BatchOperationsService
                 // Get current values
                 $object = DB::table('information_object_i18n')
                     ->where('id', $item->object_id)
-                    ->where('culture', 'en')
+                    ->where('culture', \AtomExtensions\Helpers\CultureHelper::getCulture())
                     ->first();
 
                 $oldValues = [];
@@ -319,7 +319,7 @@ class BatchOperationsService
                 // Apply update
                 DB::table('information_object_i18n')
                     ->where('id', $item->object_id)
-                    ->where('culture', 'en')
+                    ->where('culture', \AtomExtensions\Helpers\CultureHelper::getCulture())
                     ->update($updates);
 
                 DB::table('heritage_batch_item')

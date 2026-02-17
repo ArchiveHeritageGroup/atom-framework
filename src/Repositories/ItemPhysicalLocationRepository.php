@@ -84,7 +84,7 @@ class ItemPhysicalLocationRepository
             ->join('information_object as io', 'io.id', '=', 'ipl.information_object_id')
             ->leftJoin('information_object_i18n as ioi', function ($join) {
                 $join->on('ioi.id', '=', 'io.id')
-                     ->where('ioi.culture', '=', 'en');
+                     ->where('ioi.culture', '=', \AtomExtensions\Helpers\CultureHelper::getCulture());
             })
             ->leftJoin('slug as s', 's.object_id', '=', 'io.id')
             ->where('ipl.physical_object_id', $physicalObjectId)
@@ -110,7 +110,7 @@ class ItemPhysicalLocationRepository
             ->join('information_object as io', 'io.id', '=', 'ipl.information_object_id')
             ->leftJoin('information_object_i18n as ioi', function ($join) {
                 $join->on('ioi.id', '=', 'io.id')
-                     ->where('ioi.culture', '=', 'en');
+                     ->where('ioi.culture', '=', \AtomExtensions\Helpers\CultureHelper::getCulture());
             })
             ->leftJoin('slug as s', 's.object_id', '=', 'io.id')
             ->where('ipl.access_status', $status)
@@ -133,7 +133,7 @@ class ItemPhysicalLocationRepository
             ->join('information_object as io', 'io.id', '=', 'ipl.information_object_id')
             ->leftJoin('information_object_i18n as ioi', function ($join) {
                 $join->on('ioi.id', '=', 'io.id')
-                     ->where('ioi.culture', '=', 'en');
+                     ->where('ioi.culture', '=', \AtomExtensions\Helpers\CultureHelper::getCulture());
             })
             ->leftJoin('slug as s', 's.object_id', '=', 'io.id')
             ->where('ipl.condition_status', $condition)
@@ -156,7 +156,7 @@ class ItemPhysicalLocationRepository
             ->join('information_object as io', 'io.id', '=', 'ipl.information_object_id')
             ->leftJoin('information_object_i18n as ioi', function ($join) {
                 $join->on('ioi.id', '=', 'io.id')
-                     ->where('ioi.culture', '=', 'en');
+                     ->where('ioi.culture', '=', \AtomExtensions\Helpers\CultureHelper::getCulture());
             })
             ->leftJoin('slug as s', 's.object_id', '=', 'io.id')
             ->where('ipl.barcode', $barcode)
@@ -208,7 +208,7 @@ class ItemPhysicalLocationRepository
             $container = DB::table('physical_object as po')
                 ->leftJoin('physical_object_i18n as poi', function ($join) {
                     $join->on('poi.id', '=', 'po.id')
-                         ->where('poi.culture', '=', 'en');
+                         ->where('poi.culture', '=', \AtomExtensions\Helpers\CultureHelper::getCulture());
                 })
                 ->leftJoin('physical_object_extended as poe', 'poe.physical_object_id', '=', 'po.id')
                 ->leftJoin('slug as s', 's.object_id', '=', 'po.id')

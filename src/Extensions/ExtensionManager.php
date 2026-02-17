@@ -879,7 +879,7 @@ class ExtensionManager implements ExtensionManagerContract
     private function updateSymfonyPlugins(string $machineName, bool $add): void
     {
         try {
-            $row = DB::table('setting_i18n')->where('id', 1)->where('culture', 'en')->first();
+            $row = DB::table('setting_i18n')->where('id', 1)->where('culture', \AtomExtensions\Helpers\CultureHelper::getCulture())->first();
             if (!$row || empty($row->value)) {
                 return;
             }
@@ -890,11 +890,11 @@ class ExtensionManager implements ExtensionManagerContract
             $key = array_search($machineName, $plugins);
             if ($add && $key === false) {
                 $plugins[] = $machineName;
-                DB::table('setting_i18n')->where('id', 1)->where('culture', 'en')->update(['value' => serialize($plugins)]);
+                DB::table('setting_i18n')->where('id', 1)->where('culture', \AtomExtensions\Helpers\CultureHelper::getCulture())->update(['value' => serialize($plugins)]);
             } elseif (!$add && $key !== false) {
                 unset($plugins[$key]);
                 $plugins = array_values($plugins);
-                DB::table('setting_i18n')->where('id', 1)->where('culture', 'en')->update(['value' => serialize($plugins)]);
+                DB::table('setting_i18n')->where('id', 1)->where('culture', \AtomExtensions\Helpers\CultureHelper::getCulture())->update(['value' => serialize($plugins)]);
             }
         } catch (\Exception $e) {}
     }

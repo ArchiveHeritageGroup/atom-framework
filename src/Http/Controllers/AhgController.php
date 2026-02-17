@@ -882,9 +882,12 @@ class AhgController extends AhgControllerBase
         }
 
         $dirs = [];
-        $pluginsDir = $rootDir . '/plugins';
+        $pluginsDirs = array_filter([
+            $rootDir . '/plugins',
+            $rootDir . '/atom-ahg-plugins',
+        ], 'is_dir');
 
-        if (is_dir($pluginsDir)) {
+        foreach ($pluginsDirs as $pluginsDir) {
             $matches = glob($pluginsDir . '/*/modules/' . $moduleName . '/templates');
             foreach ($matches as $dir) {
                 if (is_dir($dir)) {

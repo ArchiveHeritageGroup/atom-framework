@@ -224,7 +224,7 @@ class HeratioVerifyCommand extends BaseCommand
             if ($row) {
                 $i18n = DB::table('setting_i18n')
                     ->where('id', $row->id)
-                    ->where('culture', 'en')
+                    ->where('culture', \AtomExtensions\Helpers\CultureHelper::getCulture())
                     ->first();
                 $settingsRoundtrip = $i18n && 'verify_ok' === $i18n->value;
                 // Clean up
@@ -265,7 +265,7 @@ class HeratioVerifyCommand extends BaseCommand
             if ($actorId > 0) {
                 $i18n = DB::table('actor_i18n')
                     ->where('id', $actorId)
-                    ->where('culture', 'en')
+                    ->where('culture', \AtomExtensions\Helpers\CultureHelper::getCulture())
                     ->first();
                 $actorCreateOk = $i18n && $i18n->authorized_form_of_name === $actorName;
                 // Clean up

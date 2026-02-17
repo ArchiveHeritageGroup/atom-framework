@@ -97,7 +97,7 @@ class ExtendedLevelsOfDescription
         $existing = DB::table('term as t')
             ->join('term_i18n as ti', 't.id', '=', 'ti.id')
             ->where('t.taxonomy_id', self::TAXONOMY_ID)
-            ->where('ti.culture', 'en')
+            ->where('ti.culture', \AtomExtensions\Helpers\CultureHelper::getCulture())
             ->where('ti.name', $level['name'])
             ->first();
 
@@ -122,14 +122,14 @@ class ExtendedLevelsOfDescription
         DB::table('term')->insert([
             'id' => $newId,
             'taxonomy_id' => self::TAXONOMY_ID,
-            'source_culture' => 'en',
+            'source_culture' => \AtomExtensions\Helpers\CultureHelper::getCulture(),
             'class_name' => 'QubitTerm',
         ]);
 
         // Create term_i18n
         DB::table('term_i18n')->insert([
             'id' => $newId,
-            'culture' => 'en',
+            'culture' => \AtomExtensions\Helpers\CultureHelper::getCulture(),
             'name' => $level['name'],
         ]);
 
@@ -207,7 +207,7 @@ class ExtendedLevelsOfDescription
             $term = DB::table('term as t')
                 ->join('term_i18n as ti', 't.id', '=', 'ti.id')
                 ->where('t.taxonomy_id', self::TAXONOMY_ID)
-                ->where('ti.culture', 'en')
+                ->where('ti.culture', \AtomExtensions\Helpers\CultureHelper::getCulture())
                 ->where('ti.name', $levelName)
                 ->first();
 
@@ -241,7 +241,7 @@ class ExtendedLevelsOfDescription
                 $term = DB::table('term as t')
                     ->join('term_i18n as ti', 't.id', '=', 'ti.id')
                     ->where('t.taxonomy_id', self::TAXONOMY_ID)
-                    ->where('ti.culture', 'en')
+                    ->where('ti.culture', \AtomExtensions\Helpers\CultureHelper::getCulture())
                     ->where('ti.name', $level['name'])
                     ->first();
 

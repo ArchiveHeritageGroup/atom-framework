@@ -223,6 +223,9 @@ class RouteCollector
                     $route->where($param, $pattern);
                 }
             }
+
+            // Register in reverse route registry for url_for('@name') resolution
+            RouteRegistry::register($routeName, $url);
         }
     }
 
@@ -425,6 +428,9 @@ class RouteCollector
                             $laravelRoute->where($param, $pattern);
                         }
                     }
+
+                    // Register in reverse route registry
+                    \AtomFramework\Http\RouteRegistry::register($name, $url);
                 } catch (\Throwable $e) {
                     // Duplicate route name or other issue — skip
                 }

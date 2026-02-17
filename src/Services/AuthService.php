@@ -114,7 +114,7 @@ class AuthService
         return DB::table('acl_user_group as ug')
             ->join('acl_group_i18n as gi', function ($join) {
                 $join->on('ug.group_id', '=', 'gi.id')
-                    ->where('gi.culture', '=', 'en');
+                    ->where('gi.culture', '=', \AtomExtensions\Helpers\CultureHelper::getCulture());
             })
             ->where('ug.user_id', $userId)
             ->pluck('gi.name')

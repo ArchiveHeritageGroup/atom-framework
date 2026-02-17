@@ -55,7 +55,7 @@ final class PhysicalObjectReportService
 
         // If showLinkedIO is true, get linked information objects
         if ($filter->get('showLinkedIO')) {
-            $results = $this->attachLinkedInformationObjects($results, $filter->get('culture', 'en'));
+            $results = $this->attachLinkedInformationObjects($results, $filter->get('culture', CultureHelper::getCulture()));
         }
 
         return [
@@ -68,7 +68,7 @@ final class PhysicalObjectReportService
 
     private function buildQuery(ReportFilter $filter): Builder
     {
-        $culture = $filter->get('culture', 'en');
+        $culture = $filter->get('culture', CultureHelper::getCulture());
 
         $query = DB::table('physical_object as po')
             ->join('object as o', 'po.id', '=', 'o.id')

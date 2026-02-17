@@ -55,7 +55,7 @@ class TermHelper
             if (null === $name && 'en' !== $culture) {
                 $name = DB::table('term_i18n')
                     ->where('id', $id)
-                    ->where('culture', 'en')
+                    ->where('culture', \AtomExtensions\Helpers\CultureHelper::getCulture())
                     ->value('name');
             }
 

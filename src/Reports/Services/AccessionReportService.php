@@ -61,7 +61,7 @@ final class AccessionReportService
 
     private function buildQuery(ReportFilter $filter): Builder
     {
-        $culture = $filter->get('culture', 'en');
+        $culture = $filter->get('culture', CultureHelper::getCulture());
 
         $query = DB::table('accession as acc')
             ->leftJoin('accession_i18n as i18n', function ($join) use ($culture) {

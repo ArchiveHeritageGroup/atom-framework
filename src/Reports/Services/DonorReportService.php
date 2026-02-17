@@ -61,7 +61,7 @@ final class DonorReportService
 
     private function buildQuery(ReportFilter $filter): Builder
     {
-        $culture = $filter->get('culture', 'en');
+        $culture = $filter->get('culture', CultureHelper::getCulture());
 
         $query = DB::table('donor as d')
             ->join('actor as a', 'd.id', '=', 'a.id')

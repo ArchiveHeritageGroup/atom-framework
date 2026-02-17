@@ -7,6 +7,7 @@ use AtomFramework\Http\Compatibility\SfConfigShim;
 use AtomFramework\Http\Compatibility\SfContextAdapter;
 use AtomFramework\Http\Controllers;
 use AtomFramework\Http\Controllers\ActionBridge;
+use AtomFramework\Http\RouteRegistry;
 use AtomFramework\Http\Middleware\AuthMiddleware;
 use AtomFramework\Http\Middleware\CspMiddleware;
 use AtomFramework\Http\Middleware\ForceHttpsMiddleware;
@@ -436,6 +437,9 @@ class Kernel
     {
         $pluginsDir = $this->rootDir . '/plugins';
         if (!is_dir($pluginsDir)) {
+            $pluginsDir = $this->rootDir . '/atom-ahg-plugins';
+        }
+        if (!is_dir($pluginsDir)) {
             return;
         }
 
@@ -455,13 +459,14 @@ class Kernel
         $aliases = [
             ['/actor/browse', 'actorManage', 'browse', 'atom_actor_browse'],
             ['/repository/browse', 'repositoryManage', 'browse', 'atom_repository_browse'],
-            ['/taxonomy/index', 'termTaxonomy', 'browse', 'atom_taxonomy_index'],
+            ['/taxonomy/index', 'termTaxonomy', 'taxonomyIndex', 'atom_taxonomy_index'],
         ];
         foreach ($aliases as [$url, $module, $action, $name]) {
             try {
                 $this->router->match(['GET', 'POST'], $url, $bridge)
                     ->name($name)
                     ->setDefaults(['_module' => $module, '_action' => $action]);
+                RouteRegistry::register($name, $url);
             } catch (\Throwable $e) {
                 // Route may already exist from plugin routing.yml — skip
             }

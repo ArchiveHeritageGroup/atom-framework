@@ -62,15 +62,26 @@ class RouteLoader
                 $options['sf_method'] = $route['methods'];
             }
 
+            $routeDefaults = array_merge(
+                ['module' => $this->module, 'action' => $route['action']],
+                $options,
+                $route['defaults']
+            );
+
             $routing->prependRoute($route['name'], new \sfRoute(
                 $route['url'],
-                array_merge(
-                    ['module' => $this->module, 'action' => $route['action']],
-                    $options,
-                    $route['defaults']
-                ),
+                $routeDefaults,
                 $route['requirements']
             ));
+
+            // Also register trailing-slash variant so /path/ matches /path
+            if (!str_ends_with($route['url'], '/')) {
+                $routing->prependRoute($route['name'] . '_ts', new \sfRoute(
+                    $route['url'] . '/',
+                    $routeDefaults,
+                    $route['requirements']
+                ));
+            }
         }
     }
 

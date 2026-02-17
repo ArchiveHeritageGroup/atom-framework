@@ -99,7 +99,7 @@ class PhysicalObjectExtendedRepository
             ->join('physical_object as po', 'po.id', '=', 'poe.physical_object_id')
             ->leftJoin('physical_object_i18n as poi', function ($join) {
                 $join->on('poi.id', '=', 'po.id')
-                     ->where('poi.culture', '=', 'en');
+                     ->where('poi.culture', '=', \AtomExtensions\Helpers\CultureHelper::getCulture());
             })
             ->where('poe.status', 'active')
             ->where('poe.available_capacity', '>=', $minCapacity)
@@ -177,7 +177,7 @@ class PhysicalObjectExtendedRepository
             ->join('information_object as io', 'io.id', '=', 'r.object_id')
             ->leftJoin('information_object_i18n as ioi', function ($join) {
                 $join->on('ioi.id', '=', 'io.id')
-                     ->where('ioi.culture', '=', 'en');
+                     ->where('ioi.culture', '=', \AtomExtensions\Helpers\CultureHelper::getCulture());
             })
             ->leftJoin('slug as s', 's.object_id', '=', 'io.id')
             ->where('r.subject_id', $physicalObjectId)

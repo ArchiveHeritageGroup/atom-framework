@@ -90,7 +90,7 @@ class AddSuperuserCommand extends BaseCommand
             // Step 3: Insert into actor_i18n for the display name
             DB::table('actor_i18n')->insert([
                 'id' => $objectId,
-                'culture' => 'en',
+                'culture' => \AtomExtensions\Helpers\CultureHelper::getCulture(),
                 'authorized_form_of_name' => $username,
             ]);
 

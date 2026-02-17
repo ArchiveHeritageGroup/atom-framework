@@ -68,7 +68,7 @@ class SfConfigShim
             'sf_log_dir' => $rootDir . '/log',
             'sf_data_dir' => $rootDir . '/data',
             'sf_config_dir' => $rootDir . '/config',
-            'sf_plugins_dir' => $rootDir . '/plugins',
+            'sf_plugins_dir' => is_dir($rootDir . '/plugins') ? $rootDir . '/plugins' : $rootDir . '/atom-ahg-plugins',
             'sf_lib_dir' => $rootDir . '/lib',
             'sf_app' => 'qubit',
             'sf_environment' => 'prod',

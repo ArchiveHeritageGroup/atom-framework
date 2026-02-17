@@ -601,7 +601,7 @@ class KnowledgeGraphService
             ->join('information_object as io', 'go.object_id', '=', 'io.id')
             ->leftJoin('information_object_i18n as ioi', function ($join) {
                 $join->on('io.id', '=', 'ioi.id')
-                    ->where('ioi.culture', '=', 'en');
+                    ->where('ioi.culture', '=', \AtomExtensions\Helpers\CultureHelper::getCulture());
             })
             ->leftJoin('slug as s', 'io.id', '=', 's.object_id')
             ->where('go.node_id', $nodeId)

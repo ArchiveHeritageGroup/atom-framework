@@ -568,7 +568,7 @@ class NumberingService
         // Get the term name for this display standard
         $term = DB::table('term_i18n')
             ->where('id', $displayStandardId)
-            ->where('culture', 'en')
+            ->where('culture', \AtomExtensions\Helpers\CultureHelper::getCulture())
             ->value('name');
 
         if (!$term) {

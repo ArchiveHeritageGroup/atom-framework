@@ -46,7 +46,7 @@ class ActionBridge
     private const ACTION_ALIASES = [
         'actor'          => ['browse' => ['actorManage', 'browse']],
         'repository'     => ['browse' => ['repositoryManage', 'browse']],
-        'taxonomy'       => ['index' => ['termTaxonomy', 'index'], 'browse' => ['termTaxonomy', 'index']],
+        'taxonomy'       => ['index' => ['termTaxonomy', 'taxonomyIndex'], 'browse' => ['termTaxonomy', 'taxonomyIndex']],
         'accession'      => ['browse' => ['accessionManage', 'browse']],
         'donor'          => ['browse' => ['donorManage', 'browse']],
         'rightsholder'   => ['browse' => ['rightsHolderManage', 'browse']],
@@ -102,14 +102,14 @@ class ActionBridge
         // Slug-as-action detection: when a plugin route like "user/{slug}"
         // or "actor/{slug}" captures a URL like /user/login or /actor/browse,
         // the slug value is actually a base AtoM action name, not an entity slug.
-        // Detect this by checking if the slug matches an action file in the
-        // URL's first path segment module.
+        // Detect this by checking if the slug matches an action file or an
+        // ACTION_ALIAS in the URL's first path segment module.
         if ($slug) {
             $urlSegments = explode('/', trim($request->getPathInfo(), '/'));
             $originalModule = $urlSegments[0] ?? $module;
             $potentialAction = $slug;
             $altFile = $this->findActionFile($originalModule, $potentialAction);
-            if ($altFile) {
+            if ($altFile || isset(self::ACTION_ALIASES[$originalModule][$potentialAction])) {
                 // Slug is really an action name — re-route to the base module
                 $module = $originalModule;
                 $action = $potentialAction;
@@ -186,6 +186,21 @@ class ActionBridge
             }
         }
 
+        // Fallback: if slug didn't resolve from path, try query parameter ?slug=xxx
+        // This handles URLs like /slug?slug=railing-pillar where the real slug is
+        // in the query string rather than the path.
+        if (null === $actionFile && $request->query('slug') && $request->query('slug') !== $slug) {
+            $qSlug = $request->query('slug');
+            $resolved = $this->resolveSlugRoute($qSlug, 'index');
+            if ($resolved) {
+                $module = $resolved['module'];
+                $action = $resolved['action'];
+                $slug = $qSlug;
+                $request->route()->setParameter('slug', $qSlug);
+                $actionFile = $this->findActionFile($module, $action);
+            }
+        }
+
         if (null === $actionFile) {
             return new Response("Action not found: {$module}/{$action}", 404);
         }
@@ -213,18 +228,20 @@ class ActionBridge
                 return null;
             }
 
-            // Map Propel class to module name
+            // Map Propel class to module + action for entity view pages.
+            // In AtoM, each entity type has a specific descriptive standard
+            // plugin that handles viewing. The action is always 'index'.
             $classToModule = [
                 'QubitInformationObject' => 'sfIsadPlugin',
-                'QubitActor' => 'actor',
-                'QubitRepository' => 'repository',
-                'QubitTerm' => 'term',
-                'QubitAccession' => 'accession',
-                'QubitFunction' => 'sfIsdfiPlugin',
-                'QubitRightsHolder' => 'rightsholder',
-                'QubitDonor' => 'donor',
-                'QubitPhysicalObject' => 'physicalobject',
-                'QubitStaticPage' => 'staticpage',
+                'QubitActor'             => 'sfIsaarPlugin',
+                'QubitRepository'        => 'sfIsdiahPlugin',
+                'QubitTerm'              => 'term',
+                'QubitAccession'         => 'accession',
+                'QubitFunction'          => 'sfIsdfPlugin',
+                'QubitRightsHolder'      => 'rightsholder',
+                'QubitDonor'             => 'donor',
+                'QubitPhysicalObject'    => 'physicalobject',
+                'QubitStaticPage'        => 'staticpage',
             ];
 
             $module = $classToModule[$row->class_name] ?? null;
@@ -232,9 +249,10 @@ class ActionBridge
                 return null;
             }
 
+            // Entity view pages always use 'index' action (not 'show')
             return [
                 'module' => $module,
-                'action' => $defaultAction,
+                'action' => 'index',
             ];
         } catch (\Exception $e) {
             error_log('[heratio] Slug resolution failed: ' . $e->getMessage());
@@ -249,23 +267,26 @@ class ActionBridge
     private function findActionFile(string $module, string $action): ?string
     {
         $rootDir = $this->getRootDir();
-        $pluginsDir = $rootDir . '/plugins';
-        if (!is_dir($pluginsDir)) {
-            return null;
-        }
 
-        // Search all plugin directories for the module's actions
-        $plugins = glob($pluginsDir . '/*/modules/' . $module);
-        foreach ($plugins as $moduleDir) {
-            $actionFile = $moduleDir . '/actions/' . $action . 'Action.class.php';
-            if (file_exists($actionFile)) {
-                return $actionFile;
-            }
+        // Search plugin directories: plugins/ (symlinks) and atom-ahg-plugins/ (source)
+        $pluginsDirs = array_filter([
+            $rootDir . '/plugins',
+            $rootDir . '/atom-ahg-plugins',
+        ], 'is_dir');
 
-            // Also check for combined actions file
-            $actionsFile = $moduleDir . '/actions/actions.class.php';
-            if (file_exists($actionsFile)) {
-                return $actionsFile;
+        foreach ($pluginsDirs as $pluginsDir) {
+            $plugins = glob($pluginsDir . '/*/modules/' . $module);
+            foreach ($plugins as $moduleDir) {
+                $actionFile = $moduleDir . '/actions/' . $action . 'Action.class.php';
+                if (file_exists($actionFile)) {
+                    return $actionFile;
+                }
+
+                // Also check for combined actions file
+                $actionsFile = $moduleDir . '/actions/actions.class.php';
+                if (file_exists($actionsFile)) {
+                    return $actionsFile;
+                }
             }
         }
 
@@ -296,12 +317,28 @@ class ActionBridge
         // and plugins that other action classes extend.
         $this->registerActionAutoloader();
 
-        // Require the action file
-        require_once $actionFile;
+        // Require the action file — may fail in standalone mode when parent classes
+        // depend on Symfony/Propel libraries that aren't available.
+        try {
+            require_once $actionFile;
+        } catch (\Throwable $e) {
+            // Class hierarchy can't be loaded — show graceful error page
+            return $this->renderStandaloneErrorPage(
+                $module, $action, $request,
+                'This page requires components that are not available in standalone mode: ' . $e->getMessage()
+            );
+        }
 
         // Determine the class name
         $className = $this->resolveClassName($actionFile, $module, $action);
         if (null === $className || !class_exists($className, false)) {
+            // In standalone mode, the class may not have loaded due to missing parents
+            if (defined('HERATIO_STANDALONE')) {
+                return $this->renderStandaloneErrorPage(
+                    $module, $action, $request,
+                    'Action class could not be loaded in standalone mode'
+                );
+            }
             return new Response("Action class not found for {$module}/{$action}", 500);
         }
 
@@ -318,10 +355,30 @@ class ActionBridge
         $sfRequest->setParameter('module', $module);
         $sfRequest->setParameter('action', $action);
 
+        // Ensure sf_route attribute exists — actions may access
+        // $request->getAttribute('sf_route')->resource.
+        if (!$sfRequest->getAttribute('sf_route')) {
+            $sfRequest->setAttribute('sf_route', new class () {
+                public $resource = null;
+            });
+        }
+
         // Set module/action on the context
         $context = SfContextAdapter::getInstance();
         $context->setModuleName($module);
         $context->setActionName($action);
+
+        // Set URL-facing module/action on the context's request for pagination.
+        // Templates call $sf_request->getParameterHolder()->getAll() to rebuild
+        // the current URL for page links. We use the original URL path segments
+        // (e.g. "taxonomy"/"index") rather than the internal AHG module names
+        // (e.g. "termTaxonomy"/"taxonomyIndex") so url_for() produces correct URLs.
+        $ctxRequest = $context->getRequest();
+        $pathSegments = explode('/', trim($request->getPathInfo(), '/'));
+        $ctxRequest->setParameter('module', $pathSegments[0] ?? $module);
+        if (isset($pathSegments[1]) && !is_numeric($pathSegments[1])) {
+            $ctxRequest->setParameter('action', $pathSegments[1]);
+        }
 
         try {
             // WP2: Check if action class extends AhgController (new standalone base)
@@ -473,18 +530,22 @@ class ActionBridge
 
         // Set up sf_route attribute for actions that use $this->getRoute()->resource.
         // This mimics QubitMetadataRoute which resolves slugs to Propel objects.
+        // Must be set on BOTH the local sfRequest AND the context's request because
+        // the action instance uses context->getRequest() (via sfComponent constructor).
         $slug = $sfRequest->getParameter('slug');
         if ($slug) {
             $resource = $this->resolveResource($slug);
             if ($resource) {
-                $sfRequest->setAttribute('sf_route', new class($resource) {
+                $sfRoute = new class($resource) {
                     public $resource;
 
                     public function __construct($resource)
                     {
                         $this->resource = $resource;
                     }
-                });
+                };
+                $sfRequest->setAttribute('sf_route', $sfRoute);
+                $context->getRequest()->setAttribute('sf_route', $sfRoute);
             }
         }
 
@@ -501,6 +562,7 @@ class ActionBridge
 
         // Execute the action — may throw sfStopException on redirect/forward
         $viewName = null;
+        $executionError = null;
         try {
             $viewName = $instance->$method($sfRequest);
         } catch (\sfStopException $e) {
@@ -515,6 +577,13 @@ class ActionBridge
             } else {
                 throw $e;
             }
+        } catch (\Error $e) {
+            // Class not found (Elasticsearch, Propel, etc.) — render template
+            // with whatever variables were set before the error occurred.
+            // This allows partial page rendering in standalone mode where
+            // some libraries (Elastica, Propel) are unavailable.
+            error_log('[heratio] Action execution partial failure in ' . $module . '/' . $action . ': ' . $e->getMessage());
+            $executionError = $e->getMessage();
         }
 
         // Handle redirect
@@ -798,6 +867,52 @@ class ActionBridge
         return null;
     }
 
+    /**
+     * Render a standalone-mode error page with layout wrapping.
+     *
+     * Used when an action can't be fully executed in standalone mode
+     * due to missing Symfony/Propel dependencies.
+     */
+    private function renderStandaloneErrorPage(string $module, string $action, Request $request, string $message): Response
+    {
+        require_once dirname(__DIR__, 2) . '/Views/blade_shims.php';
+
+        // Try to resolve resource info from slug for context
+        $slug = $request->route()->parameter('slug') ?? $request->query('slug');
+        $entityInfo = '';
+        if ($slug) {
+            try {
+                $row = \Illuminate\Database\Capsule\Manager::table('slug')
+                    ->join('object', 'slug.object_id', '=', 'object.id')
+                    ->where('slug.slug', $slug)
+                    ->select('object.class_name', 'slug.object_id')
+                    ->first();
+                if ($row) {
+                    $entityInfo = ' (' . str_replace('Qubit', '', $row->class_name) . ': ' . $slug . ')';
+                }
+            } catch (\Throwable $e) {
+                // ignore
+            }
+        }
+
+        $content = '<div id="content"><div class="text-center">'
+            . '<div class="d-inline-block mt-5 text-start" role="alert">'
+            . '<h1 class="h2 mb-0 p-3 border-bottom d-flex align-items-center">'
+            . '<i class="fas fa-fw fa-lg fa-info-circle me-3" aria-hidden="true"></i>'
+            . 'Page not available in standalone mode' . htmlspecialchars($entityInfo)
+            . '</h1>'
+            . '<div class="p-3">'
+            . '<p>' . htmlspecialchars($message) . '</p>'
+            . '<p class="mb-0">'
+            . '<a href="javascript:history.go(-1)">Back to previous page.</a><br>'
+            . '<a href="/">Go to homepage.</a>'
+            . '</p></div></div></div></div>';
+
+        $html = $this->wrapInLayout($content, []);
+
+        return new Response($html, 200, ['Content-Type' => 'text/html']);
+    }
+
     /** @var bool Whether the action autoloader has been registered */
     private static bool $actionAutoloaderRegistered = false;
 
@@ -822,23 +937,33 @@ class ActionBridge
                 return;
             }
 
+            // Helper: require_once with error tolerance (standalone mode may
+            // be missing apps/qubit, vendor/symfony, etc.)
+            $safeRequire = function (string $file) use ($class): bool {
+                try {
+                    require_once $file;
+
+                    return class_exists($class, false);
+                } catch (\Throwable $e) {
+                    return false;
+                }
+            };
+
             // Search default module first (most common parent classes)
             $defaultDir = $rootDir . '/apps/qubit/modules/default/actions';
             if (is_dir($defaultDir)) {
                 // Try ClassName.class.php
                 $file = $defaultDir . '/' . lcfirst($class) . '.class.php';
-                if (file_exists($file)) {
-                    require_once $file;
-
+                if (file_exists($file) && $safeRequire($file)) {
                     return;
                 }
                 // Try walking the directory
                 foreach (glob($defaultDir . '/*.class.php') as $candidate) {
                     $content = file_get_contents($candidate);
                     if (preg_match('/class\s+' . preg_quote($class) . '\b/', $content)) {
-                        require_once $candidate;
-
-                        return;
+                        if ($safeRequire($candidate)) {
+                            return;
+                        }
                     }
                 }
             }
@@ -856,8 +981,25 @@ class ActionBridge
                 foreach (glob($libDir . '/*.class.php') as $candidate) {
                     $basename = basename($candidate, '.class.php');
                     if (strcasecmp($basename, $class) === 0) {
-                        require_once $candidate;
+                        if ($safeRequire($candidate)) {
+                            return;
+                        }
+                    }
+                }
+            }
 
+            // Convention-based lookup: AtoM names action classes as
+            // {ModuleName}{ActionName}Action, e.g. InformationObjectIndexAction
+            // lives in modules/informationobject/actions/indexAction.class.php.
+            // Extract the module and action from the class name pattern.
+            if (preg_match('/^(.+?)(Index|Browse|Edit|Delete|Update|Create|List|Autocomplete|TreeView)Action$/i', $class, $m)) {
+                $moduleName = strtolower($m[1]);
+                $actionPart = lcfirst($m[2]) . 'Action';
+                $conventionDirs = array_filter([
+                    $rootDir . '/apps/qubit/modules/' . $moduleName . '/actions/' . $actionPart . '.class.php',
+                ], 'file_exists');
+                foreach ($conventionDirs as $candidate) {
+                    if ($safeRequire($candidate)) {
                         return;
                     }
                 }
@@ -866,6 +1008,7 @@ class ActionBridge
             // Search all plugin and base module action directories
             $searchDirs = array_merge(
                 glob($rootDir . '/plugins/*/modules/*/actions') ?: [],
+                glob($rootDir . '/atom-ahg-plugins/*/modules/*/actions') ?: [],
                 glob($rootDir . '/apps/qubit/modules/*/actions') ?: []
             );
 
@@ -873,9 +1016,22 @@ class ActionBridge
                 foreach (glob($dir . '/*.class.php') as $candidate) {
                     $basename = basename($candidate, '.class.php');
                     if (strcasecmp($basename, $class) === 0) {
-                        require_once $candidate;
+                        if ($safeRequire($candidate)) {
+                            return;
+                        }
+                    }
+                }
+            }
 
-                        return;
+            // Last resort: content-based search — read each file looking for the class
+            // definition. Slower but handles cases where filename != class name.
+            foreach ($searchDirs as $dir) {
+                foreach (glob($dir . '/*.class.php') as $candidate) {
+                    $content = file_get_contents($candidate);
+                    if (preg_match('/class\s+' . preg_quote($class, '/') . '\b/', $content)) {
+                        if ($safeRequire($candidate)) {
+                            return;
+                        }
                     }
                 }
             }
