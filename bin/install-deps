@@ -1,0 +1,426 @@
+#!/bin/bash
+# =============================================================================
+# AtoM Extensions — Dependency Installer v1.0
+# Installs all required and optional software on Ubuntu 22.04 / 24.04
+# =============================================================================
+#
+# Usage:
+#   bash bin/install-deps              # Install required dependencies only
+#   bash bin/install-deps --all        # Install required + optional
+#   bash bin/install-deps --ai         # Install AI/NLP packages only
+#   bash bin/install-deps --preserve   # Install preservation tools only
+#   bash bin/install-deps --3d         # Install 3D processing tools only
+#   bash bin/install-deps --check      # Just check, don't install (alias for check-dependencies)
+#
+# =============================================================================
+
+set -e
+
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+CYAN='\033[0;36m'
+NC='\033[0m'
+BOLD='\033[1m'
+
+# Parse arguments
+INSTALL_REQUIRED=true
+INSTALL_AI=false
+INSTALL_PRESERVE=false
+INSTALL_3D=false
+INSTALL_ALL=false
+
+for arg in "$@"; do
+    case "$arg" in
+        --all)       INSTALL_ALL=true ;;
+        --ai)        INSTALL_AI=true ;;
+        --preserve)  INSTALL_PRESERVE=true ;;
+        --3d)        INSTALL_3D=true ;;
+        --check)
+            SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+            exec bash "$SCRIPT_DIR/check-dependencies"
+            ;;
+        --help|-h)
+            echo "Usage: bash bin/install-deps [OPTIONS]"
+            echo ""
+            echo "Options:"
+            echo "  (none)       Install required dependencies only"
+            echo "  --all        Install required + all optional packages"
+            echo "  --ai         Install AI/NLP packages (spaCy, PyMuPDF, etc.)"
+            echo "  --preserve   Install preservation tools (Siegfried, ClamAV, BagIt)"
+            echo "  --3d         Install 3D processing tools (Blender, MeshLab)"
+            echo "  --check      Run dependency check (no install)"
+            echo "  --help       Show this help"
+            exit 0
+            ;;
+        *)
+            echo -e "${RED}Unknown option: $arg${NC}"
+            echo "Run: bash bin/install-deps --help"
+            exit 1
+            ;;
+    esac
+done
+
+if [ "$INSTALL_ALL" = true ]; then
+    INSTALL_AI=true
+    INSTALL_PRESERVE=true
+    INSTALL_3D=true
+fi
+
+# Check root
+if [ "$EUID" -ne 0 ]; then
+    echo -e "${RED}This script must be run as root (sudo).${NC}"
+    echo "  sudo bash bin/install-deps $*"
+    exit 1
+fi
+
+echo -e "${BOLD}${CYAN}"
+echo "=============================================="
+echo "  AtoM Extensions — Dependency Installer v1.0"
+echo "=============================================="
+echo -e "${NC}"
+
+# Detect OS
+OS_ID=$(. /etc/os-release && echo "$ID")
+OS_VERSION=$(. /etc/os-release && echo "$VERSION_ID")
+OS_CODENAME=$(. /etc/os-release && echo "$VERSION_CODENAME")
+
+echo -e "${YELLOW}OS:${NC} $OS_ID $OS_VERSION ($OS_CODENAME)"
+
+if [ "$OS_ID" != "ubuntu" ] && [ "$OS_ID" != "debian" ]; then
+    echo -e "${RED}This installer is designed for Ubuntu/Debian.${NC}"
+    echo "For other distributions, install the equivalent packages manually."
+    exit 1
+fi
+
+# =============================================================================
+# Step 1: System update
+# =============================================================================
+echo ""
+echo -e "${BLUE}Step 1: Updating package lists...${NC}"
+apt-get update -qq
+echo -e "  ${GREEN}✓${NC} Package lists updated"
+
+# =============================================================================
+# Step 2: Core infrastructure
+# =============================================================================
+echo ""
+echo -e "${BLUE}Step 2: Installing core infrastructure...${NC}"
+
+# PHP 8.3
+if ! php -v 2>/dev/null | grep -q "PHP 8.3"; then
+    echo -e "  ${YELLOW}→${NC} Installing PHP 8.3..."
+    apt-get install -y -qq software-properties-common > /dev/null 2>&1
+    add-apt-repository -y ppa:ondrej/php > /dev/null 2>&1
+    apt-get update -qq
+    apt-get install -y -qq \
+        php8.3-fpm php8.3-cli php8.3-mysql php8.3-xml php8.3-mbstring \
+        php8.3-curl php8.3-gd php8.3-zip php8.3-intl php8.3-xsl \
+        php8.3-opcache php8.3-apcu php8.3-redis php8.3-memcached \
+        php8.3-imagick php8.3-fileinfo > /dev/null 2>&1
+    echo -e "  ${GREEN}✓${NC} PHP 8.3 installed"
+else
+    echo -e "  ${GREEN}✓${NC} PHP 8.3 already installed"
+fi
+
+# MySQL 8
+if ! mysql --version 2>/dev/null | grep -q "8\."; then
+    echo -e "  ${YELLOW}→${NC} Installing MySQL 8..."
+    apt-get install -y -qq mysql-server > /dev/null 2>&1
+    systemctl enable mysql
+    systemctl start mysql
+    echo -e "  ${GREEN}✓${NC} MySQL 8 installed"
+else
+    echo -e "  ${GREEN}✓${NC} MySQL already installed"
+fi
+
+# Nginx
+if ! command -v nginx &> /dev/null; then
+    echo -e "  ${YELLOW}→${NC} Installing Nginx..."
+    apt-get install -y -qq nginx > /dev/null 2>&1
+    systemctl enable nginx
+    echo -e "  ${GREEN}✓${NC} Nginx installed"
+else
+    echo -e "  ${GREEN}✓${NC} Nginx already installed"
+fi
+
+# Gearman
+if ! command -v gearmand &> /dev/null; then
+    echo -e "  ${YELLOW}→${NC} Installing Gearman..."
+    apt-get install -y -qq gearman-job-server php8.3-gearman > /dev/null 2>&1 || \
+    apt-get install -y -qq gearman-job-server > /dev/null 2>&1
+    systemctl enable gearman-job-server
+    systemctl start gearman-job-server
+    echo -e "  ${GREEN}✓${NC} Gearman installed"
+else
+    echo -e "  ${GREEN}✓${NC} Gearman already installed"
+fi
+
+# Composer
+if ! command -v composer &> /dev/null; then
+    echo -e "  ${YELLOW}→${NC} Installing Composer..."
+    curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer > /dev/null 2>&1
+    echo -e "  ${GREEN}✓${NC} Composer installed"
+else
+    echo -e "  ${GREEN}✓${NC} Composer already installed"
+fi
+
+# Node.js (LTS)
+if ! command -v node &> /dev/null; then
+    echo -e "  ${YELLOW}→${NC} Installing Node.js LTS..."
+    curl -fsSL https://deb.nodesource.com/setup_lts.x | bash - > /dev/null 2>&1
+    apt-get install -y -qq nodejs > /dev/null 2>&1
+    echo -e "  ${GREEN}✓${NC} Node.js installed"
+else
+    echo -e "  ${GREEN}✓${NC} Node.js already installed"
+fi
+
+# Git
+if ! command -v git &> /dev/null; then
+    echo -e "  ${YELLOW}→${NC} Installing Git..."
+    apt-get install -y -qq git > /dev/null 2>&1
+    echo -e "  ${GREEN}✓${NC} Git installed"
+else
+    echo -e "  ${GREEN}✓${NC} Git already installed"
+fi
+
+echo -e "${GREEN}✓ Core infrastructure complete${NC}"
+
+# =============================================================================
+# Step 3: Media processing tools
+# =============================================================================
+echo ""
+echo -e "${BLUE}Step 3: Installing media processing tools...${NC}"
+
+MEDIA_PKGS="imagemagick ffmpeg ghostscript poppler-utils"
+for pkg in $MEDIA_PKGS; do
+    if dpkg -l "$pkg" 2>/dev/null | grep -q "^ii"; then
+        echo -e "  ${GREEN}✓${NC} $pkg already installed"
+    else
+        echo -e "  ${YELLOW}→${NC} Installing $pkg..."
+        apt-get install -y -qq "$pkg" > /dev/null 2>&1
+        echo -e "  ${GREEN}✓${NC} $pkg installed"
+    fi
+done
+
+echo -e "${GREEN}✓ Media processing tools complete${NC}"
+
+# =============================================================================
+# Step 4: Python 3 + pip
+# =============================================================================
+echo ""
+echo -e "${BLUE}Step 4: Installing Python 3...${NC}"
+
+if ! command -v python3 &> /dev/null; then
+    apt-get install -y -qq python3 python3-pip python3-venv > /dev/null 2>&1
+    echo -e "  ${GREEN}✓${NC} Python 3 installed"
+else
+    echo -e "  ${GREEN}✓${NC} Python 3 already installed ($(python3 --version 2>&1))"
+    # Ensure pip is available
+    apt-get install -y -qq python3-pip > /dev/null 2>&1 || true
+fi
+
+echo -e "${GREEN}✓ Python complete${NC}"
+
+# =============================================================================
+# Step 5: Elasticsearch / OpenSearch
+# =============================================================================
+echo ""
+echo -e "${BLUE}Step 5: Checking search engine...${NC}"
+
+ES_RUNNING=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:9200 2>/dev/null || echo "000")
+if [ "$ES_RUNNING" = "200" ]; then
+    echo -e "  ${GREEN}✓${NC} Search engine already running on :9200"
+else
+    echo -e "  ${YELLOW}⚠${NC} No search engine detected on localhost:9200"
+    echo -e "  ${YELLOW}  Install Elasticsearch or OpenSearch manually.${NC}"
+    echo -e "  ${YELLOW}  See: https://www.accesstomemory.org/en/docs/2.8/admin-manual/installation/linux/ubuntu-2204/#install-elasticsearch${NC}"
+fi
+
+# =============================================================================
+# Step 6: AI & Processing (optional)
+# =============================================================================
+if [ "$INSTALL_AI" = true ]; then
+    echo ""
+    echo -e "${BLUE}Step 6: Installing AI & processing packages...${NC}"
+
+    # Tesseract OCR
+    if ! command -v tesseract &> /dev/null; then
+        echo -e "  ${YELLOW}→${NC} Installing Tesseract OCR..."
+        apt-get install -y -qq tesseract-ocr tesseract-ocr-eng tesseract-ocr-afr > /dev/null 2>&1
+        echo -e "  ${GREEN}✓${NC} Tesseract OCR installed"
+    else
+        echo -e "  ${GREEN}✓${NC} Tesseract OCR already installed"
+    fi
+
+    # GNU Aspell
+    if ! command -v aspell &> /dev/null; then
+        echo -e "  ${YELLOW}→${NC} Installing GNU Aspell..."
+        apt-get install -y -qq aspell aspell-en aspell-af > /dev/null 2>&1
+        echo -e "  ${GREEN}✓${NC} Aspell installed"
+    else
+        echo -e "  ${GREEN}✓${NC} Aspell already installed"
+    fi
+
+    # Python AI packages
+    PIP_BREAK="--break-system-packages"
+    # Check if --break-system-packages is needed (Python 3.11+)
+    PY_MINOR=$(python3 -c "import sys; print(sys.version_info.minor)" 2>/dev/null || echo "10")
+    if [ "$PY_MINOR" -lt 11 ]; then
+        PIP_BREAK=""
+    fi
+
+    echo -e "  ${YELLOW}→${NC} Installing Python AI packages..."
+
+    # PyMuPDF
+    if ! python3 -c "import fitz" 2>/dev/null; then
+        pip3 install $PIP_BREAK pymupdf > /dev/null 2>&1
+        echo -e "  ${GREEN}✓${NC} PyMuPDF installed"
+    else
+        echo -e "  ${GREEN}✓${NC} PyMuPDF already installed"
+    fi
+
+    # spaCy
+    if ! python3 -c "import spacy" 2>/dev/null; then
+        pip3 install $PIP_BREAK spacy > /dev/null 2>&1
+        python3 -m spacy download en_core_web_sm > /dev/null 2>&1 || true
+        echo -e "  ${GREEN}✓${NC} spaCy installed (+ en_core_web_sm model)"
+    else
+        echo -e "  ${GREEN}✓${NC} spaCy already installed"
+    fi
+
+    # Argos Translate
+    if ! python3 -c "import argostranslate" 2>/dev/null; then
+        pip3 install $PIP_BREAK argostranslate > /dev/null 2>&1
+        echo -e "  ${GREEN}✓${NC} Argos Translate installed"
+    else
+        echo -e "  ${GREEN}✓${NC} Argos Translate already installed"
+    fi
+
+    # Pillow
+    if ! python3 -c "from PIL import Image" 2>/dev/null; then
+        pip3 install $PIP_BREAK Pillow > /dev/null 2>&1
+        echo -e "  ${GREEN}✓${NC} Pillow installed"
+    else
+        echo -e "  ${GREEN}✓${NC} Pillow already installed"
+    fi
+
+    # OpenCV
+    if ! python3 -c "import cv2" 2>/dev/null; then
+        pip3 install $PIP_BREAK opencv-python-headless > /dev/null 2>&1
+        echo -e "  ${GREEN}✓${NC} OpenCV installed"
+    else
+        echo -e "  ${GREEN}✓${NC} OpenCV already installed"
+    fi
+
+    echo -e "${GREEN}✓ AI & processing packages complete${NC}"
+else
+    echo ""
+    echo -e "${YELLOW}Step 6: Skipping AI packages (use --ai or --all to install)${NC}"
+fi
+
+# =============================================================================
+# Step 7: Digital Preservation (optional)
+# =============================================================================
+if [ "$INSTALL_PRESERVE" = true ]; then
+    echo ""
+    echo -e "${BLUE}Step 7: Installing preservation tools...${NC}"
+
+    # Siegfried
+    if ! command -v sf &> /dev/null; then
+        echo -e "  ${YELLOW}→${NC} Installing Siegfried..."
+        # Add Siegfried repo
+        curl -sL "http://keyserver.ubuntu.com/pks/lookup?op=get&search=0x20F802FE798E6857" | gpg --dearmor > /usr/share/keyrings/siegfried-archive-keyring.gpg 2>/dev/null
+        echo "deb [signed-by=/usr/share/keyrings/siegfried-archive-keyring.gpg] https://www.itforarchivists.com/ buster main" > /etc/apt/sources.list.d/siegfried.list
+        apt-get update -qq 2>/dev/null
+        apt-get install -y -qq siegfried > /dev/null 2>&1
+        sf -update > /dev/null 2>&1 || true
+        echo -e "  ${GREEN}✓${NC} Siegfried installed"
+    else
+        echo -e "  ${GREEN}✓${NC} Siegfried already installed"
+    fi
+
+    # ClamAV
+    if ! command -v clamscan &> /dev/null; then
+        echo -e "  ${YELLOW}→${NC} Installing ClamAV..."
+        apt-get install -y -qq clamav clamav-daemon > /dev/null 2>&1
+        systemctl stop clamav-freshclam 2>/dev/null || true
+        freshclam > /dev/null 2>&1 || true
+        systemctl start clamav-freshclam 2>/dev/null || true
+        echo -e "  ${GREEN}✓${NC} ClamAV installed"
+    else
+        echo -e "  ${GREEN}✓${NC} ClamAV already installed"
+    fi
+
+    # BagIt (Python)
+    PIP_BREAK="--break-system-packages"
+    PY_MINOR=$(python3 -c "import sys; print(sys.version_info.minor)" 2>/dev/null || echo "10")
+    if [ "$PY_MINOR" -lt 11 ]; then PIP_BREAK=""; fi
+
+    if ! python3 -c "import bagit" 2>/dev/null; then
+        pip3 install $PIP_BREAK bagit > /dev/null 2>&1
+        echo -e "  ${GREEN}✓${NC} BagIt installed"
+    else
+        echo -e "  ${GREEN}✓${NC} BagIt already installed"
+    fi
+
+    echo -e "${GREEN}✓ Preservation tools complete${NC}"
+else
+    echo ""
+    echo -e "${YELLOW}Step 7: Skipping preservation tools (use --preserve or --all to install)${NC}"
+fi
+
+# =============================================================================
+# Step 8: 3D Processing (optional)
+# =============================================================================
+if [ "$INSTALL_3D" = true ]; then
+    echo ""
+    echo -e "${BLUE}Step 8: Installing 3D processing tools...${NC}"
+
+    # Blender
+    if ! command -v blender &> /dev/null; then
+        echo -e "  ${YELLOW}→${NC} Installing Blender..."
+        apt-get install -y -qq blender > /dev/null 2>&1
+        echo -e "  ${GREEN}✓${NC} Blender installed"
+    else
+        echo -e "  ${GREEN}✓${NC} Blender already installed"
+    fi
+
+    # MeshLab
+    if ! command -v meshlabserver &> /dev/null && ! command -v meshlab &> /dev/null; then
+        echo -e "  ${YELLOW}→${NC} Installing MeshLab..."
+        apt-get install -y -qq meshlab > /dev/null 2>&1
+        echo -e "  ${GREEN}✓${NC} MeshLab installed"
+    else
+        echo -e "  ${GREEN}✓${NC} MeshLab already installed"
+    fi
+
+    echo -e "${GREEN}✓ 3D processing tools complete${NC}"
+else
+    echo ""
+    echo -e "${YELLOW}Step 8: Skipping 3D tools (use --3d or --all to install)${NC}"
+fi
+
+# =============================================================================
+# Complete
+# =============================================================================
+echo ""
+echo -e "${BOLD}${CYAN}=============================================="
+echo "  Installation Complete!"
+echo "==============================================${NC}"
+echo ""
+echo "Next steps:"
+echo "  1. Run: bash bin/check-dependencies    (verify everything)"
+echo "  2. Run: bash bin/install                (install framework)"
+echo "  3. Run: sudo systemctl restart php8.3-fpm"
+echo ""
+if [ "$INSTALL_ALL" != true ]; then
+    echo "To install optional packages:"
+    echo "  sudo bash bin/install-deps --all        (everything)"
+    echo "  sudo bash bin/install-deps --ai         (AI/NLP packages)"
+    echo "  sudo bash bin/install-deps --preserve   (preservation tools)"
+    echo "  sudo bash bin/install-deps --3d         (3D processing)"
+    echo ""
+fi

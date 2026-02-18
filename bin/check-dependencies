@@ -1,0 +1,219 @@
+#!/bin/bash
+# =============================================================================
+# AtoM Extensions — Dependency Checker v1.0
+# Verifies all required and optional software is installed
+# =============================================================================
+
+# No set -e: arithmetic on zero returns exit 1
+
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+CYAN='\033[0;36m'
+NC='\033[0m'
+BOLD='\033[1m'
+
+PASS=0
+WARN=0
+FAIL=0
+
+check() {
+    local label="$1"
+    local cmd="$2"
+    local required="$3"  # "required" or "optional"
+    local version=""
+
+    version=$(eval "$cmd" 2>/dev/null) || version=""
+
+    if [ -n "$version" ]; then
+        printf "  ${GREEN}✓${NC} %-25s %s\n" "$label" "$version"
+        ((PASS++))
+    elif [ "$required" = "required" ]; then
+        printf "  ${RED}✗${NC} %-25s ${RED}NOT INSTALLED (required)${NC}\n" "$label"
+        ((FAIL++))
+    else
+        printf "  ${YELLOW}–${NC} %-25s ${YELLOW}not installed (optional)${NC}\n" "$label"
+        ((WARN++))
+    fi
+}
+
+check_python_pkg() {
+    local label="$1"
+    local import_cmd="$2"
+    local required="$3"
+    local version=""
+
+    version=$(python3 -c "$import_cmd" 2>/dev/null) || version=""
+
+    if [ -n "$version" ]; then
+        printf "  ${GREEN}✓${NC} %-25s %s\n" "$label" "$version"
+        ((PASS++))
+    elif [ "$required" = "required" ]; then
+        printf "  ${RED}✗${NC} %-25s ${RED}NOT INSTALLED (required)${NC}\n" "$label"
+        ((FAIL++))
+    else
+        printf "  ${YELLOW}–${NC} %-25s ${YELLOW}not installed (optional)${NC}\n" "$label"
+        ((WARN++))
+    fi
+}
+
+check_service() {
+    local label="$1"
+    local service="$2"
+    local required="$3"
+
+    if systemctl is-active --quiet "$service" 2>/dev/null; then
+        printf "  ${GREEN}✓${NC} %-25s ${GREEN}running${NC}\n" "$label"
+        ((PASS++))
+    elif systemctl is-enabled --quiet "$service" 2>/dev/null; then
+        printf "  ${YELLOW}–${NC} %-25s ${YELLOW}enabled but not running${NC}\n" "$label"
+        ((WARN++))
+    elif [ "$required" = "required" ]; then
+        printf "  ${RED}✗${NC} %-25s ${RED}NOT RUNNING (required)${NC}\n" "$label"
+        ((FAIL++))
+    else
+        printf "  ${YELLOW}–${NC} %-25s ${YELLOW}not installed (optional)${NC}\n" "$label"
+        ((WARN++))
+    fi
+}
+
+echo -e "${BOLD}${CYAN}"
+echo "=============================================="
+echo "  AtoM Extensions — Dependency Checker v1.0"
+echo "=============================================="
+echo -e "${NC}"
+
+# --- OS ---
+echo -e "${BOLD}Operating System${NC}"
+OS_DESC=$(lsb_release -d 2>/dev/null | cut -f2 || cat /etc/os-release | grep PRETTY_NAME | cut -d'"' -f2)
+ARCH=$(uname -m)
+printf "  %-25s %s (%s)\n" "OS" "$OS_DESC" "$ARCH"
+echo ""
+
+# --- Core Infrastructure ---
+echo -e "${BOLD}${BLUE}Core Infrastructure (required)${NC}"
+check "PHP"          "php -r 'echo PHP_VERSION;'"                                         required
+check "MySQL"        "mysql --version 2>&1 | grep -oP '\\d+\\.\\d+\\.\\d+' | head -1"   required
+check "Nginx"        "nginx -v 2>&1 | grep -oP '\\d+\\.\\d+\\.\\d+'"                    required
+check "Composer"     "composer --version 2>&1 | grep -oP '\\d+\\.\\d+\\.\\d+'"           required
+check "Node.js"      "node --version 2>&1 | grep -oP '\\d+\\.\\d+\\.\\d+'"              required
+check "Git"          "git --version 2>&1 | grep -oP '\\d+\\.\\d+\\.\\d+'"               required
+check "Gearman"      "gearmand --version 2>&1 | grep -oP '\\d+\\.\\d+\\.\\d+'"          required
+echo ""
+
+# --- Services ---
+echo -e "${BOLD}${BLUE}Services${NC}"
+check_service "PHP-FPM"       "php8.3-fpm"    required
+check_service "MySQL"         "mysql"         required
+check_service "Nginx"         "nginx"         required
+check_service "Gearman"       "gearman-job-server" required
+check_service "Elasticsearch" "elasticsearch" optional
+check_service "Redis"         "redis-server"  optional
+check_service "Memcached"     "memcached"     optional
+echo ""
+
+# --- Search Engine ---
+echo -e "${BOLD}${BLUE}Search Engine${NC}"
+ES_VERSION=$(curl -s http://localhost:9200 2>/dev/null | python3 -c "import sys,json; print(json.load(sys.stdin)['version']['number'])" 2>/dev/null || echo "")
+if [ -n "$ES_VERSION" ]; then
+    ENGINE=$(curl -s http://localhost:9200 2>/dev/null | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('version',{}).get('distribution','elasticsearch'))" 2>/dev/null || echo "elasticsearch")
+    printf "  ${GREEN}✓${NC} %-25s %s (%s)\n" "Search Engine" "$ES_VERSION" "$ENGINE"
+    ((PASS++))
+else
+    printf "  ${RED}✗${NC} %-25s ${RED}NOT RESPONDING on localhost:9200${NC}\n" "Search Engine"
+    ((FAIL++))
+fi
+echo ""
+
+# --- Python ---
+echo -e "${BOLD}${BLUE}Python (required)${NC}"
+check "Python 3"     "python3 --version 2>&1 | grep -oP '\\d+\\.\\d+\\.\\d+'"   required
+check "pip3"         "pip3 --version 2>&1 | grep -oP 'pip \\K\\d+\\.\\d+\\.?\\d*'"      required
+echo ""
+
+# --- Media Processing ---
+echo -e "${BOLD}${BLUE}Media Processing (required)${NC}"
+check "ImageMagick"  "convert --version 2>&1 | grep -oP 'ImageMagick \\K[\\d.-]+'"  required
+check "FFmpeg"       "ffmpeg -version 2>&1 | grep -oP 'ffmpeg version \\K[\\d.]+'"  required
+check "Ghostscript"  "gs --version 2>&1 | head -1"                                   required
+check "Poppler-utils" "pdftotext -v 2>&1 | grep -oP '\\d+\\.\\d+\\.\\d+'"          required
+echo ""
+
+# --- AI & Processing (optional) ---
+echo -e "${BOLD}${BLUE}AI & Processing (optional — needed by AI plugins)${NC}"
+check "Tesseract OCR"   "tesseract --version 2>&1 | head -1 | grep -oP '\\d+\\.\\d+\\.\\d+'"  optional
+check "GNU Aspell"       "aspell --version 2>&1 | grep -oP '\\d+\\.\\d+\\.\\d+\\.\\d+'"       optional
+check_python_pkg "PyMuPDF (fitz)"    "import fitz; print(fitz.version[0])"                       optional
+check_python_pkg "spaCy"             "import spacy; print(spacy.__version__)"                    optional
+check_python_pkg "Argos Translate"   "import argostranslate; print(argostranslate.__version__)"  optional
+check_python_pkg "Pillow"            "from PIL import Image; import PIL; print(PIL.__version__)" optional
+check_python_pkg "OpenCV"            "import cv2; print(cv2.__version__)"                        optional
+echo ""
+
+# --- Digital Preservation (optional) ---
+echo -e "${BOLD}${BLUE}Digital Preservation (optional — needed by preservation plugins)${NC}"
+check "Siegfried"    "sf -version 2>&1 | grep -oP '\\d+\\.\\d+\\.\\d+'"                     optional
+check "ClamAV"       "clamscan --version 2>&1 | grep -oP '\\d+\\.\\d+\\.\\d+'"              optional
+check_python_pkg "BagIt"  "import bagit; print(bagit.VERSION)"                                optional
+echo ""
+
+# --- 3D Processing (optional) ---
+echo -e "${BOLD}${BLUE}3D Processing (optional — needed by 3D model plugin)${NC}"
+check "Blender"      "blender --version 2>&1 | grep -oP '\\d+\\.\\d+\\.\\d+'"       optional
+check "MeshLab"      "(meshlabserver --version 2>&1 || meshlab --version 2>&1) | grep -oP '\\d+\\.\\d+' | head -1"  optional
+echo ""
+
+# --- IIIF & Media Servers (optional) ---
+echo -e "${BOLD}${BLUE}IIIF & Media Servers (optional)${NC}"
+CANTALOUPE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8182/iiif/2 2>/dev/null || echo "000")
+if [ "$CANTALOUPE" -ge 200 ] && [ "$CANTALOUPE" -lt 400 ]; then
+    printf "  ${GREEN}✓${NC} %-25s ${GREEN}responding on :8182${NC}\n" "Cantaloupe"
+    ((PASS++))
+else
+    printf "  ${YELLOW}–${NC} %-25s ${YELLOW}not responding (optional)${NC}\n" "Cantaloupe"
+    ((WARN++))
+fi
+
+OLLAMA=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:11434/api/tags 2>/dev/null || echo "000")
+if [ "$OLLAMA" = "200" ]; then
+    MODELS=$(curl -s http://localhost:11434/api/tags 2>/dev/null | python3 -c "import sys,json; print(len(json.load(sys.stdin).get('models',[])))" 2>/dev/null || echo "?")
+    printf "  ${GREEN}✓${NC} %-25s ${GREEN}running (%s models)${NC}\n" "Ollama (LLM)" "$MODELS"
+    ((PASS++))
+else
+    printf "  ${YELLOW}–${NC} %-25s ${YELLOW}not responding (optional)${NC}\n" "Ollama (LLM)"
+    ((WARN++))
+fi
+
+check "Redis"        "redis-server --version 2>&1 | grep -oP 'v=\\K[\\d.]+'"   optional
+check "Memcached"    "memcached -V 2>&1 | grep -oP '\\d+\\.\\d+\\.\\d+'"       optional
+echo ""
+
+# --- Summary ---
+TOTAL=$((PASS + WARN + FAIL))
+echo -e "${BOLD}${CYAN}=============================================="
+echo -e "  Summary"
+echo -e "==============================================${NC}"
+printf "  ${GREEN}✓ Installed:    %d${NC}\n" "$PASS"
+printf "  ${YELLOW}– Optional:     %d${NC}\n" "$WARN"
+printf "  ${RED}✗ Missing:      %d${NC}\n" "$FAIL"
+printf "  Total checked: %d\n" "$TOTAL"
+echo ""
+
+if [ "$FAIL" -gt 0 ]; then
+    echo -e "  ${RED}${BOLD}Some required dependencies are missing.${NC}"
+    echo -e "  Run: ${YELLOW}bash bin/install-deps${NC} to install them."
+    echo ""
+    exit 1
+elif [ "$WARN" -gt 0 ]; then
+    echo -e "  ${GREEN}${BOLD}All required dependencies installed.${NC}"
+    echo -e "  Some optional packages are missing — install them for full functionality."
+    echo -e "  Run: ${YELLOW}bash bin/install-deps --all${NC} to install everything."
+    echo ""
+    exit 0
+else
+    echo -e "  ${GREEN}${BOLD}All dependencies installed!${NC}"
+    echo ""
+    exit 0
+fi
