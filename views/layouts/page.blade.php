@@ -52,5 +52,9 @@ if (file_exists($adminNotificationsPath)) {
 </body>
 </html>
 @else
+@php
+$footerPath = \sfConfig::get('sf_plugins_dir') . '/ahgThemeB5Plugin/templates/a_footer.php';
+if (file_exists($footerPath)) { include($footerPath); }
+@endphp
 {!! get_partial('layout_end') !!}
 @endif
