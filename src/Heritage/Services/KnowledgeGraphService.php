@@ -265,9 +265,11 @@ class KnowledgeGraphService
 
         try {
             if ($rebuild) {
+                DB::statement('SET FOREIGN_KEY_CHECKS = 0');
                 DB::table('heritage_entity_graph_object')->truncate();
                 DB::table('heritage_entity_graph_edge')->truncate();
                 DB::table('heritage_entity_graph_node')->truncate();
+                DB::statement('SET FOREIGN_KEY_CHECKS = 1');
             }
 
             // Get objects with entities in cache
@@ -292,18 +294,18 @@ class KnowledgeGraphService
                     foreach ($entities as $entity) {
                         $existingNode = DB::table('heritage_entity_graph_node')
                             ->where('entity_type', $entity->entity_type)
-                            ->where('normalized_value', $entity->normalized_value)
+                            ->where('normalized_value', $this->normalizeValue($entity->entity_value))
                             ->first();
 
+                        $nodeId = $this->addEntity([
+                            'entity_type' => $entity->entity_type,
+                            'entity_value' => $entity->entity_value,
+                            'confidence' => $entity->confidence_score,
+                        ]);
+
                         if ($existingNode) {
-                            $nodeId = (int) $existingNode->id;
                             $stats['nodes_updated']++;
                         } else {
-                            $nodeId = $this->addEntity([
-                                'entity_type' => $entity->entity_type,
-                                'entity_value' => $entity->entity_value,
-                                'confidence' => $entity->confidence_score,
-                            ]);
                             $stats['nodes_created']++;
                         }
 
