@@ -460,7 +460,9 @@ class DiscoveryService
                 ])
                 ->toArray();
 
-            return ['items' => $items, 'total' => count($items)];
+            if (!empty($items)) {
+                return ['items' => $items, 'total' => count($items)];
+            }
         }
 
         // Fallback to recent additions
