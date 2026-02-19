@@ -625,7 +625,7 @@ class DiscoveryService
     {
         $do = DB::table('digital_object')
             ->where('object_id', $objectId)
-            ->select('path', 'name')
+            ->select('path', 'name', 'mime_type')
             ->first();
 
         if (!$do || !$do->path || !$do->name) {
@@ -634,8 +634,24 @@ class DiscoveryService
 
         $path = rtrim($do->path, '/');
         $basename = pathinfo($do->name, PATHINFO_FILENAME);
+        $root = defined('ATOM_ROOT_PATH') ? ATOM_ROOT_PATH
+            : (defined('ATOM_ROOT') ? ATOM_ROOT
+            : (getenv('ATOM_ROOT') ?: dirname(dirname(dirname(dirname(__DIR__))))));
 
-        return $path . '/' . $basename . '_142.jpg';
+        // Candidates in priority order: AtoM thumbnail, 3D thumbnail, reference image
+        $candidates = [
+            $path . '/' . $basename . '_142.jpg',
+            $path . '/' . $basename . '_thumbnail.png',
+            $path . '/' . $basename . '_reference.png',
+        ];
+
+        foreach ($candidates as $candidate) {
+            if (file_exists($root . $candidate)) {
+                return $candidate;
+            }
+        }
+
+        return null;
     }
 
     /**
