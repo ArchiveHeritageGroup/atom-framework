@@ -266,7 +266,7 @@ class DiscoveryService
         // Map taxonomy code to AtoM taxonomy ID
         $taxonomyIds = [
             'subject' => 35,
-            'contentType' => 79,
+            'contentType' => 78,  // Genre taxonomy (document types/formats)
             'glamSector' => 450,
         ];
 
@@ -514,7 +514,7 @@ class DiscoveryService
      */
     public function getTimelinePeriods(?int $institutionId = null): array
     {
-        return DB::table('heritage_timeline_period')
+        $periods = DB::table('heritage_timeline_period')
             ->where('is_enabled', 1)
             ->where(function ($q) use ($institutionId) {
                 $q->whereNull('institution_id')
@@ -522,8 +522,28 @@ class DiscoveryService
             })
             ->orderBy('display_order')
             ->orderBy('start_year')
-            ->get()
-            ->map(fn ($period) => [
+            ->get();
+
+        return $periods->map(function ($period) use ($institutionId) {
+            // Dynamically compute item count from event dates
+            $endYear = $period->end_year ?? (int) date('Y');
+            $count = DB::table('event as e')
+                ->join('information_object as io', 'e.object_id', '=', 'io.id')
+                ->join('status as pub', function ($join) {
+                    $join->on('io.id', '=', 'pub.object_id')
+                        ->where('pub.type_id', '=', 158);
+                })
+                ->where('pub.status_id', 160)
+                ->whereNotNull('io.parent_id')
+                ->where(function ($q) use ($period, $endYear) {
+                    $q->whereRaw('YEAR(e.start_date) BETWEEN ? AND ?', [$period->start_year, $endYear])
+                        ->orWhereRaw('YEAR(e.end_date) BETWEEN ? AND ?', [$period->start_year, $endYear]);
+                })
+                ->when($institutionId, fn ($q) => $q->where('io.repository_id', $institutionId))
+                ->distinct()
+                ->count('e.object_id');
+
+            return [
                 'id' => $period->id,
                 'name' => $period->name,
                 'short_name' => $period->short_name ?? $period->name,
@@ -534,10 +554,10 @@ class DiscoveryService
                 'cover_image' => $period->cover_image,
                 'thumbnail_image' => $period->thumbnail_image,
                 'background_color' => $period->background_color,
-                'item_count' => $period->item_count ?? 0,
+                'item_count' => $count,
                 'year_label' => $this->formatYearRange($period->start_year, $period->end_year, (bool) $period->circa),
-            ])
-            ->toArray();
+            ];
+        })->toArray();
     }
 
     /**
