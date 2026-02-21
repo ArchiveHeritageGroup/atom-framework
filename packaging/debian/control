@@ -1,0 +1,64 @@
+Source: atom-heratio
+Section: web
+Priority: optional
+Maintainer: The Archive and Heritage Group (Pty) Ltd <info@theahg.co.za>
+Build-Depends: debhelper (>= 13)
+Standards-Version: 4.6.0
+Homepage: https://github.com/ArchiveHeritageGroup/atom-framework
+Vcs-Git: https://github.com/ArchiveHeritageGroup/atom-framework.git
+
+Package: atom-heratio
+Architecture: all
+Depends: nginx,
+ php8.1-fpm | php8.2-fpm | php8.3-fpm,
+ php-mysql,
+ php-xml,
+ php-mbstring,
+ php-curl,
+ php-gd,
+ php-zip,
+ php-intl,
+ php-xsl,
+ php-opcache,
+ mysql-server (>= 8.0) | mariadb-server (>= 10.6),
+ composer,
+ git,
+ curl,
+ unzip,
+ whiptail | dialog
+Recommends: php-apcu,
+ php-memcached,
+ php-gearman,
+ gearman-job-server,
+ memcached,
+ imagemagick,
+ ghostscript,
+ poppler-utils,
+ ffmpeg,
+ nodejs
+Suggests: certbot,
+ python3-certbot-nginx,
+ tesseract-ocr,
+ clamav,
+ clamav-daemon
+Conflicts: atom-ahg-extensions, atom-ahg-complete
+Replaces: atom-ahg-extensions, atom-ahg-complete
+Provides: atom-ahg-extensions, atom-ahg-complete
+Description: AtoM Heratio - Modern GLAM/DAM Platform
+ AtoM Heratio transforms Access to Memory (AtoM) 2.10 into a modern
+ Laravel-based GLAM/DAM platform with Bootstrap 5 theme, 79 plugins,
+ AI automation, digital preservation, and multi-jurisdiction compliance.
+ .
+ Three installation modes:
+   complete     - AtoM 2.10 + Heratio framework + all plugins (recommended)
+   atom-only    - Vanilla AtoM 2.10 (no Heratio)
+   heratio-only - Layer Heratio onto existing AtoM >= 2.8
+ .
+ Features include:
+   - Bootstrap 5 responsive theme
+   - GLAM sector plugins (Library, Museum, Gallery, DAM)
+   - AI automation (NER, translation, summarization, OCR)
+   - Digital preservation (PREMIS, fixity, PRONOM)
+   - Multi-jurisdiction compliance (POPIA, GDPR, CCPA, NARSSA)
+   - OAIS-aligned batch ingest with 6-step wizard
+   - Web-based configuration wizard

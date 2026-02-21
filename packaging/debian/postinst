@@ -1,0 +1,253 @@
+#!/bin/bash
+#===============================================================================
+# atom-heratio post-install orchestrator
+# Reads debconf answers and calls modular helper scripts
+#===============================================================================
+set -e
+
+# Source helper scripts
+HERATIO_LIB="/usr/share/atom-heratio/lib"
+. "${HERATIO_LIB}/functions.sh"
+. "${HERATIO_LIB}/detect-atom.sh"
+. "${HERATIO_LIB}/install-atom.sh"
+. "${HERATIO_LIB}/install-heratio.sh"
+. "${HERATIO_LIB}/configure-db.sh"
+. "${HERATIO_LIB}/configure-nginx.sh"
+. "${HERATIO_LIB}/configure-ssl.sh"
+. "${HERATIO_LIB}/configure-fpm.sh"
+. "${HERATIO_LIB}/configure-es.sh"
+. "${HERATIO_LIB}/web-wizard.sh"
+. "${HERATIO_LIB}/migrate.sh"
+
+TEMPLATE_DIR="/usr/share/atom-heratio/templates"
+
+case "$1" in
+    configure)
+        # Load debconf
+        . /usr/share/debconf/confmodule
+
+        echo ""
+        echo "============================================================"
+        echo "  AtoM Heratio - Installation"
+        echo "============================================================"
+        echo ""
+
+        #---------------------------------------------------------------
+        # 1. Read all debconf answers
+        #---------------------------------------------------------------
+        log_step "Reading configuration..."
+
+        db_get atom-heratio/install-mode;      INSTALL_MODE="$RET"
+        db_get atom-heratio/atom-path;         ATOM_PATH="$RET"
+        db_get atom-heratio/db-host;           DB_HOST="$RET"
+        db_get atom-heratio/db-name;           DB_NAME="$RET"
+        db_get atom-heratio/db-user;           DB_USER="$RET"
+        db_get atom-heratio/db-password;       DB_PASS="$RET"
+        db_get atom-heratio/db-root-password;  DB_ROOT_PASS="$RET"
+        db_get atom-heratio/site-title;        SITE_TITLE="$RET"
+        db_get atom-heratio/site-url;          SITE_URL="$RET"
+        db_get atom-heratio/admin-email;       ADMIN_EMAIL="$RET"
+        db_get atom-heratio/admin-password;    ADMIN_PASS="$RET"
+        db_get atom-heratio/ssl-mode;          SSL_MODE="$RET"
+        db_get atom-heratio/ssl-domain;        SSL_DOMAIN="$RET"
+        db_get atom-heratio/elasticsearch-host; ES_HOST="$RET"
+        db_get atom-heratio/enable-web-wizard; ENABLE_WEB_WIZARD="$RET"
+        db_get atom-heratio/web-wizard-port;   WEB_WIZARD_PORT="$RET"
+
+        # ES install option (only for new installs)
+        INSTALL_SEARCH="false"
+        if [ "$INSTALL_MODE" = "complete" ] || [ "$INSTALL_MODE" = "atom-only" ]; then
+            db_get atom-heratio/install-search; INSTALL_SEARCH="$RET"
+        fi
+
+        # Default site URL to server IP if empty
+        if [ -z "$SITE_URL" ]; then
+            local_ip=$(hostname -I 2>/dev/null | awk '{print $1}')
+            SITE_URL="http://${local_ip}"
+        fi
+
+        # Get framework version
+        HERATIO_VERSION=$(php -r "echo json_decode(file_get_contents('/usr/share/atom-heratio/atom-framework/version.json'),true)['version'] ?? 'unknown';" 2>/dev/null || echo "unknown")
+
+        #---------------------------------------------------------------
+        # 2. Save configuration
+        #---------------------------------------------------------------
+        log_step "Saving configuration..."
+        mkdir -p /etc/atom-heratio
+
+        save_config "INSTALL_MODE" "$INSTALL_MODE"
+        save_config "ATOM_PATH" "$ATOM_PATH"
+        save_config "HERATIO_VERSION" "$HERATIO_VERSION"
+        save_config "DB_HOST" "$DB_HOST"
+        save_config "DB_NAME" "$DB_NAME"
+        save_config "DB_USER" "$DB_USER"
+        save_config "DB_PASS" "$DB_PASS"
+        save_config "SITE_TITLE" "$SITE_TITLE"
+        save_config "SITE_URL" "$SITE_URL"
+        save_config "SSL_MODE" "$SSL_MODE"
+        save_config "SSL_DOMAIN" "$SSL_DOMAIN"
+        save_config "ES_HOST" "$ES_HOST"
+        save_config "INSTALL_SEARCH" "$INSTALL_SEARCH"
+        save_config "ADMIN_EMAIL" "$ADMIN_EMAIL"
+        save_config "ENABLE_WEB_WIZARD" "$ENABLE_WEB_WIZARD"
+        save_config "WEB_WIZARD_PORT" "$WEB_WIZARD_PORT"
+
+        chmod 600 /etc/atom-heratio/atom-heratio.conf
+        log_info "Configuration saved to /etc/atom-heratio/atom-heratio.conf"
+
+        #---------------------------------------------------------------
+        # 3. Install AtoM (complete or atom-only modes)
+        #---------------------------------------------------------------
+        if [ "$INSTALL_MODE" = "complete" ] || [ "$INSTALL_MODE" = "atom-only" ]; then
+            install_atom "$ATOM_PATH"
+        fi
+
+        #---------------------------------------------------------------
+        # 4. Install Heratio framework (complete or heratio-only modes)
+        #---------------------------------------------------------------
+        if [ "$INSTALL_MODE" = "complete" ] || [ "$INSTALL_MODE" = "heratio-only" ]; then
+            install_heratio "$ATOM_PATH"
+        fi
+
+        #---------------------------------------------------------------
+        # 5. Configure database
+        #---------------------------------------------------------------
+        configure_database "$DB_HOST" "$DB_NAME" "$DB_USER" "$DB_PASS" "$DB_ROOT_PASS"
+
+        #---------------------------------------------------------------
+        # 6. Write AtoM config.php
+        #---------------------------------------------------------------
+        log_step "Writing AtoM configuration..."
+        export DB_HOST DB_NAME DB_USER DB_PASS
+        render_template "${TEMPLATE_DIR}/atom/config.php.tpl" "${ATOM_PATH}/apps/qubit/config/config.php"
+        chown www-data:www-data "${ATOM_PATH}/apps/qubit/config/config.php"
+        chmod 640 "${ATOM_PATH}/apps/qubit/config/config.php"
+        log_info "AtoM config.php written"
+
+        #---------------------------------------------------------------
+        # 7. Configure PHP-FPM
+        #---------------------------------------------------------------
+        configure_fpm "$ATOM_PATH"
+
+        #---------------------------------------------------------------
+        # 8. Configure Nginx
+        #---------------------------------------------------------------
+        configure_nginx "$ATOM_PATH" "$SITE_URL" "$SSL_MODE" "$SSL_DOMAIN"
+
+        #---------------------------------------------------------------
+        # 9. Configure SSL
+        #---------------------------------------------------------------
+        if [ "$SSL_MODE" != "none" ]; then
+            configure_ssl "$SSL_MODE" "$SSL_DOMAIN"
+        fi
+
+        #---------------------------------------------------------------
+        # 10. Elasticsearch
+        #---------------------------------------------------------------
+        configure_elasticsearch "$ES_HOST" "$INSTALL_SEARCH"
+
+        #---------------------------------------------------------------
+        # 11. Database migrations
+        #---------------------------------------------------------------
+        run_migrations "$ATOM_PATH" "$DB_HOST" "$DB_NAME" "$DB_USER" "$DB_PASS"
+
+        #---------------------------------------------------------------
+        # 12. Set permissions
+        #---------------------------------------------------------------
+        log_step "Setting file permissions..."
+        mkdir -p "${ATOM_PATH}/cache" "${ATOM_PATH}/log" "${ATOM_PATH}/uploads" "${ATOM_PATH}/downloads"
+        chown -R www-data:www-data "$ATOM_PATH"
+        chmod -R 755 "$ATOM_PATH"
+        chmod -R 775 "${ATOM_PATH}/cache" "${ATOM_PATH}/log" "${ATOM_PATH}/uploads" "${ATOM_PATH}/downloads"
+        log_info "Permissions set"
+
+        #---------------------------------------------------------------
+        # 13. Systemd worker service
+        #---------------------------------------------------------------
+        log_step "Creating systemd worker service..."
+        export ATOM_PATH
+        render_template "${TEMPLATE_DIR}/systemd/atom-worker.service.tpl" /etc/systemd/system/atom-worker.service
+        systemctl daemon-reload
+        systemctl enable atom-worker 2>/dev/null || true
+        if systemctl is-active gearman-job-server &>/dev/null; then
+            systemctl start atom-worker 2>/dev/null || true
+            log_info "Gearman worker service started"
+        else
+            log_warn "Gearman not running - atom-worker service created but not started"
+        fi
+
+        #---------------------------------------------------------------
+        # 14. Restart services
+        #---------------------------------------------------------------
+        log_step "Restarting services..."
+        local php_ver
+        php_ver=$(detect_php_version)
+        restart_service "php${php_ver}-fpm"
+        restart_service nginx
+        log_info "Services restarted"
+
+        #---------------------------------------------------------------
+        # 15. Clear caches
+        #---------------------------------------------------------------
+        log_step "Clearing caches..."
+        rm -rf "${ATOM_PATH}/cache/"* 2>/dev/null || true
+        cd "$ATOM_PATH" && sudo -u www-data php symfony cc 2>/dev/null || true
+        log_info "Caches cleared"
+
+        #---------------------------------------------------------------
+        # 16. Install CLI tool
+        #---------------------------------------------------------------
+        if [ -f /usr/share/atom-heratio/atom-heratio.sh ]; then
+            ln -sf /usr/share/atom-heratio/atom-heratio.sh /usr/bin/atom-heratio
+            chmod +x /usr/share/atom-heratio/atom-heratio.sh
+            log_info "CLI tool installed: atom-heratio"
+        fi
+
+        #---------------------------------------------------------------
+        # 17. Launch web wizard
+        #---------------------------------------------------------------
+        if [ "$ENABLE_WEB_WIZARD" = "true" ]; then
+            start_wizard "$WEB_WIZARD_PORT" "$ATOM_PATH"
+        fi
+
+        #---------------------------------------------------------------
+        # 18. Print summary
+        #---------------------------------------------------------------
+        echo ""
+        echo "============================================================"
+        echo "  AtoM Heratio - Installation Complete"
+        echo "============================================================"
+        echo ""
+        echo "  Mode:      ${INSTALL_MODE}"
+        echo "  Path:      ${ATOM_PATH}"
+        echo "  Version:   ${HERATIO_VERSION}"
+        echo "  URL:       ${SITE_URL}"
+        echo "  Database:  ${DB_NAME}@${DB_HOST}"
+        echo ""
+        if [ "$INSTALL_MODE" != "atom-only" ]; then
+            echo "  Framework: ${ATOM_PATH}/atom-framework"
+            echo "  Plugins:   ${ATOM_PATH}/atom-ahg-plugins"
+        fi
+        echo ""
+        echo "  Config:    /etc/atom-heratio/atom-heratio.conf"
+        echo "  CLI:       atom-heratio status"
+        echo ""
+        echo "  Reconfigure: dpkg-reconfigure atom-heratio"
+        echo ""
+        echo "============================================================"
+        echo ""
+
+        # Stop debconf
+        db_stop
+        ;;
+
+    abort-upgrade|abort-remove|abort-deconfigure)
+        ;;
+
+    *)
+        echo "postinst called with unknown argument: $1" >&2
+        exit 1
+        ;;
+esac
+
+exit 0

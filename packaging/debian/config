@@ -1,0 +1,127 @@
+#!/bin/bash
+#===============================================================================
+# atom-heratio debconf config script
+# Runs BEFORE postinst to collect installation parameters via TUI
+#===============================================================================
+set -e
+
+. /usr/share/debconf/confmodule
+
+# Ensure debconf is in dialog mode for TUI
+db_capb backup
+
+#-------------------------------------------------------------------------------
+# Step 1: Installation mode
+#-------------------------------------------------------------------------------
+db_input high atom-heratio/install-mode || true
+db_go || true
+db_get atom-heratio/install-mode
+INSTALL_MODE="$RET"
+
+#-------------------------------------------------------------------------------
+# Step 2: Installation path
+#-------------------------------------------------------------------------------
+db_input high atom-heratio/atom-path || true
+db_go || true
+db_get atom-heratio/atom-path
+ATOM_PATH="$RET"
+
+#-------------------------------------------------------------------------------
+# Step 2b: For heratio-only mode, detect existing AtoM
+#-------------------------------------------------------------------------------
+if [ "$INSTALL_MODE" = "heratio-only" ]; then
+    # Check if AtoM exists at the given path
+    if [ -f "${ATOM_PATH}/symfony" ]; then
+        # Try to detect version
+        ATOM_VERSION="unknown"
+        if [ -f "${ATOM_PATH}/lib/QubitConfiguration.class.php" ]; then
+            ATOM_VERSION=$(grep -oP "const VERSION\s*=\s*'\K[^']+" "${ATOM_PATH}/lib/QubitConfiguration.class.php" 2>/dev/null || echo "unknown")
+        fi
+        if [ "$ATOM_VERSION" = "unknown" ] && [ -f "${ATOM_PATH}/config/version.yml" ]; then
+            ATOM_VERSION=$(grep -oP 'version:\s*\K\S+' "${ATOM_PATH}/config/version.yml" 2>/dev/null || echo "unknown")
+        fi
+
+        # Validate version >= 2.8
+        MAJOR=$(echo "$ATOM_VERSION" | cut -d. -f1)
+        MINOR=$(echo "$ATOM_VERSION" | cut -d. -f2)
+
+        if [ "$MAJOR" -ge 2 ] 2>/dev/null && [ "$MINOR" -ge 8 ] 2>/dev/null; then
+            db_subst atom-heratio/existing-atom-detected ATOM_VERSION "$ATOM_VERSION"
+            db_input medium atom-heratio/existing-atom-detected || true
+            db_go || true
+        else
+            db_subst atom-heratio/atom-version-too-old ATOM_VERSION "$ATOM_VERSION"
+            db_input critical atom-heratio/atom-version-too-old || true
+            db_go || true
+            # Fall back to complete mode
+            db_set atom-heratio/install-mode complete
+            INSTALL_MODE="complete"
+        fi
+    fi
+fi
+
+#-------------------------------------------------------------------------------
+# Step 3: Database configuration
+#-------------------------------------------------------------------------------
+db_input high atom-heratio/db-host || true
+db_input high atom-heratio/db-name || true
+db_input high atom-heratio/db-user || true
+db_input high atom-heratio/db-password || true
+db_go || true
+
+# Ask for root password to create DB/user
+db_input medium atom-heratio/db-root-password || true
+db_go || true
+
+#-------------------------------------------------------------------------------
+# Step 4: Site configuration
+#-------------------------------------------------------------------------------
+db_input high atom-heratio/site-title || true
+db_input medium atom-heratio/site-url || true
+db_go || true
+
+#-------------------------------------------------------------------------------
+# Step 5: Admin account
+#-------------------------------------------------------------------------------
+db_input high atom-heratio/admin-email || true
+db_input high atom-heratio/admin-password || true
+db_go || true
+
+#-------------------------------------------------------------------------------
+# Step 6: SSL configuration
+#-------------------------------------------------------------------------------
+db_input medium atom-heratio/ssl-mode || true
+db_go || true
+db_get atom-heratio/ssl-mode
+SSL_MODE="$RET"
+
+if [ "$SSL_MODE" != "none" ]; then
+    db_input high atom-heratio/ssl-domain || true
+    db_go || true
+fi
+
+#-------------------------------------------------------------------------------
+# Step 7: Elasticsearch (new install only)
+#-------------------------------------------------------------------------------
+if [ "$INSTALL_MODE" = "complete" ] || [ "$INSTALL_MODE" = "atom-only" ]; then
+    db_input medium atom-heratio/install-search || true
+    db_go || true
+fi
+
+db_input medium atom-heratio/elasticsearch-host || true
+db_go || true
+
+#-------------------------------------------------------------------------------
+# Step 8: Web wizard
+#-------------------------------------------------------------------------------
+db_input medium atom-heratio/enable-web-wizard || true
+db_go || true
+db_get atom-heratio/enable-web-wizard
+ENABLE_WIZARD="$RET"
+
+if [ "$ENABLE_WIZARD" = "true" ]; then
+    db_input low atom-heratio/web-wizard-port || true
+    db_go || true
+fi
+
+exit 0

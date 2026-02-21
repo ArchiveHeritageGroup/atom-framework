@@ -1,0 +1,41 @@
+#!/bin/bash
+#===============================================================================
+# atom-heratio pre-install validation
+#===============================================================================
+set -e
+
+case "$1" in
+    install|upgrade)
+        # Check minimum RAM (1GB)
+        total_ram=$(free -m | awk '/^Mem:/{print $2}')
+        if [ "$total_ram" -lt 1024 ] 2>/dev/null; then
+            echo "WARNING: System has ${total_ram}MB RAM. AtoM recommends at least 2GB."
+            echo "Installation will continue but performance may be poor."
+        fi
+
+        # Check disk space (2GB minimum in /usr/share)
+        avail_mb=$(df -BM --output=avail /usr/share 2>/dev/null | tail -1 | tr -d ' M')
+        if [ "$avail_mb" -lt 2048 ] 2>/dev/null; then
+            echo "ERROR: Insufficient disk space. Need 2GB, have ${avail_mb}MB in /usr/share"
+            exit 1
+        fi
+
+        # Check for conflicting packages
+        if dpkg -l atom-ahg-extensions 2>/dev/null | grep -q "^ii"; then
+            echo "NOTE: atom-ahg-extensions will be replaced by atom-heratio"
+        fi
+        if dpkg -l atom-ahg-complete 2>/dev/null | grep -q "^ii"; then
+            echo "NOTE: atom-ahg-complete will be replaced by atom-heratio"
+        fi
+        ;;
+
+    abort-upgrade)
+        ;;
+
+    *)
+        echo "preinst called with unknown argument: $1" >&2
+        exit 1
+        ;;
+esac
+
+exit 0

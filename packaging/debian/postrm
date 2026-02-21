@@ -1,0 +1,94 @@
+#!/bin/bash
+#===============================================================================
+# atom-heratio post-removal
+#===============================================================================
+set -e
+
+case "$1" in
+    remove)
+        # Remove CLI symlink
+        rm -f /usr/bin/atom-heratio
+
+        # Remove wizard token
+        rm -f /etc/atom-heratio/.wizard-token
+
+        # Disable systemd service
+        systemctl disable atom-worker 2>/dev/null || true
+
+        echo ""
+        echo "atom-heratio removed."
+        echo "AtoM data, database, and uploads have been PRESERVED."
+        echo "To fully remove, run: apt purge atom-heratio"
+        echo ""
+        ;;
+
+    purge)
+        # Remove CLI symlink
+        rm -f /usr/bin/atom-heratio
+
+        # Remove config directory
+        rm -rf /etc/atom-heratio
+
+        # Remove systemd service
+        rm -f /etc/systemd/system/atom-worker.service
+        systemctl daemon-reload 2>/dev/null || true
+
+        # Remove nginx site config
+        rm -f /etc/nginx/sites-available/atom-heratio
+        rm -f /etc/nginx/sites-enabled/atom-heratio
+        rm -f /etc/nginx/snippets/atom-extensions.conf
+
+        # Remove PHP-FPM pool
+        for ver in 8.3 8.2 8.1; do
+            rm -f "/etc/php/${ver}/fpm/pool.d/atom-heratio.conf"
+            rm -f "/etc/php/${ver}/fpm/conf.d/99-atom-heratio.ini"
+            # Restore default pool if we disabled it
+            if [ -f "/etc/php/${ver}/fpm/pool.d/www.conf.disabled" ]; then
+                mv "/etc/php/${ver}/fpm/pool.d/www.conf.disabled" "/etc/php/${ver}/fpm/pool.d/www.conf"
+            fi
+        done
+
+        # Remove self-signed SSL certs
+        rm -rf /etc/ssl/atom-heratio
+
+        # Remove log files
+        rm -f /var/log/atom-heratio-wizard.log
+        rm -f /var/log/php-atom-heratio.log
+
+        # Remove PID files
+        rm -f /run/atom-heratio-wizard.pid
+
+        # Purge debconf data
+        if [ -e /usr/share/debconf/confmodule ]; then
+            . /usr/share/debconf/confmodule
+            db_purge || true
+        fi
+
+        # NOTE: We do NOT remove:
+        #   - AtoM installation directory (user data)
+        #   - MySQL database (user data)
+        #   - uploads/ directory (user files)
+        # These must be removed manually if desired.
+
+        echo ""
+        echo "atom-heratio purged."
+        echo ""
+        echo "NOT removed (contains user data):"
+        echo "  - AtoM installation directory"
+        echo "  - MySQL database"
+        echo "  - Uploaded files"
+        echo ""
+        echo "Remove manually if desired."
+        echo ""
+        ;;
+
+    upgrade|failed-upgrade|abort-install|abort-upgrade|disappear)
+        ;;
+
+    *)
+        echo "postrm called with unknown argument: $1" >&2
+        exit 1
+        ;;
+esac
+
+exit 0

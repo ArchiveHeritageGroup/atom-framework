@@ -1,0 +1,11 @@
+atom-heratio (2.10.18-1) stable; urgency=medium
+
+  * Initial unified package release
+  * Consolidates atom, atom-ahg-extensions, atom-ahg-complete into single package
+  * Three install modes: complete, atom-only, heratio-only
+  * Debconf TUI wizard for guided installation
+  * Web-based configuration wizard for advanced plugin setup
+  * Bundled AtoM 2.10.1 tarball for air-gapped deployments
+  * CLI management tool: atom-heratio
+
+ -- The Archive and Heritage Group (Pty) Ltd <info@theahg.co.za>  Sat, 21 Feb 2026 12:00:00 +0200

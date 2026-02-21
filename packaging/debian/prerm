@@ -1,0 +1,35 @@
+#!/bin/bash
+#===============================================================================
+# atom-heratio pre-removal
+#===============================================================================
+set -e
+
+case "$1" in
+    remove|upgrade|deconfigure)
+        # Stop web wizard if running
+        if [ -f /run/atom-heratio-wizard.pid ]; then
+            pid=$(cat /run/atom-heratio-wizard.pid)
+            if kill -0 "$pid" 2>/dev/null; then
+                kill "$pid" 2>/dev/null || true
+                echo "Web wizard stopped"
+            fi
+            rm -f /run/atom-heratio-wizard.pid
+        fi
+
+        # Stop atom-worker service
+        if systemctl is-active atom-worker &>/dev/null; then
+            systemctl stop atom-worker 2>/dev/null || true
+            echo "Gearman worker stopped"
+        fi
+        ;;
+
+    failed-upgrade)
+        ;;
+
+    *)
+        echo "prerm called with unknown argument: $1" >&2
+        exit 1
+        ;;
+esac
+
+exit 0

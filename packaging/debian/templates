@@ -1,0 +1,155 @@
+Template: atom-heratio/install-mode
+Type: select
+Choices: complete, atom-only, heratio-only
+Default: complete
+Description: Installation mode:
+ Choose how to install AtoM Heratio:
+ .
+  complete     - Extract bundled AtoM 2.10 + install Heratio framework
+                 and all plugins (recommended for new installations)
+ .
+  atom-only    - Extract bundled AtoM 2.10 only (vanilla AtoM, no Heratio)
+ .
+  heratio-only - Detect existing AtoM (>= 2.8) and layer Heratio on top
+                 (for existing AtoM installations)
+
+Template: atom-heratio/atom-path
+Type: string
+Default: /usr/share/nginx/atom
+Description: AtoM installation path:
+ Enter the filesystem path where AtoM should be installed (or where your
+ existing AtoM installation is located for heratio-only mode).
+ .
+ Common paths: /usr/share/nginx/atom, /var/www/atom, /opt/atom
+
+Template: atom-heratio/existing-atom-detected
+Type: note
+Description: Existing AtoM installation detected
+ An existing AtoM installation was found at the specified path.
+ .
+ Detected version: ${ATOM_VERSION}
+ .
+ Heratio will be layered on top of this installation. Your existing
+ data, database, and uploads will be preserved.
+
+Template: atom-heratio/atom-version-too-old
+Type: error
+Description: AtoM version too old
+ The existing AtoM installation is version ${ATOM_VERSION}, but Heratio
+ requires AtoM >= 2.8.
+ .
+ Please upgrade your AtoM installation first, or choose "complete" mode
+ to install a fresh AtoM 2.10 with Heratio.
+
+Template: atom-heratio/db-host
+Type: string
+Default: localhost
+Description: Database host:
+ Enter the hostname or IP address of the MySQL/MariaDB server.
+
+Template: atom-heratio/db-name
+Type: string
+Default: atom
+Description: Database name:
+ Enter the name of the database to use for AtoM. It will be created
+ if it does not exist.
+
+Template: atom-heratio/db-user
+Type: string
+Default: atom
+Description: Database username:
+ Enter the database username for AtoM to connect with. The user will
+ be created if it does not exist.
+
+Template: atom-heratio/db-password
+Type: password
+Description: Database password:
+ Enter the password for the AtoM database user.
+ .
+ Minimum 8 characters recommended for production use.
+
+Template: atom-heratio/db-root-password
+Type: password
+Description: MySQL root password:
+ Enter the MySQL root password so the installer can create the database
+ and user. Leave empty if MySQL allows passwordless root access (e.g.,
+ via unix socket authentication).
+
+Template: atom-heratio/site-title
+Type: string
+Default: My Archive
+Description: Site title:
+ Enter the title for your AtoM site. This appears in the browser title
+ bar and site header.
+
+Template: atom-heratio/site-url
+Type: string
+Description: Site URL:
+ Enter the full URL for your AtoM site (e.g., https://archive.example.com).
+ .
+ If left empty, the server's IP address will be used with http://.
+
+Template: atom-heratio/admin-email
+Type: string
+Description: Administrator email:
+ Enter the email address for the AtoM administrator account.
+
+Template: atom-heratio/admin-password
+Type: password
+Description: Administrator password:
+ Set the password for the AtoM administrator account.
+ .
+ Minimum 8 characters required.
+
+Template: atom-heratio/ssl-mode
+Type: select
+Choices: none, self-signed, letsencrypt
+Default: none
+Description: SSL/TLS configuration:
+ Choose how to configure HTTPS for your AtoM site:
+ .
+  none        - HTTP only (configure SSL later)
+  self-signed - Generate a self-signed certificate (for testing/internal use)
+  letsencrypt - Obtain a free Let's Encrypt certificate (requires valid domain)
+
+Template: atom-heratio/ssl-domain
+Type: string
+Description: Domain name for SSL certificate:
+ Enter the domain name for the SSL certificate (e.g., archive.example.com).
+ .
+ For Let's Encrypt, this domain must already point to this server's IP.
+
+Template: atom-heratio/elasticsearch-host
+Type: string
+Default: localhost:9200
+Description: Elasticsearch host:port:
+ Enter the Elasticsearch host and port. Elasticsearch is required for
+ AtoM's full-text search functionality.
+
+Template: atom-heratio/install-search
+Type: boolean
+Default: true
+Description: Install Elasticsearch/OpenSearch?
+ AtoM requires a search engine for full-text search. This option will
+ install Elasticsearch 8.x and configure it for AtoM.
+ .
+ Choose YES for a new installation. Choose NO if you already have
+ Elasticsearch or OpenSearch running, or want to configure it manually.
+
+Template: atom-heratio/enable-web-wizard
+Type: boolean
+Default: true
+Description: Launch web-based configuration wizard after install?
+ The web wizard provides a browser-based interface for advanced
+ configuration: plugin selection by category, GLAM sector setup,
+ AI & automation, compliance modules, and preservation settings.
+ .
+ It runs temporarily on a separate port and auto-shuts down after
+ 30 minutes of inactivity. Access token is displayed after install.
+
+Template: atom-heratio/web-wizard-port
+Type: string
+Default: 9090
+Description: Web wizard port:
+ Enter the port number for the web-based configuration wizard.
+ Make sure this port is not in use by another service.
