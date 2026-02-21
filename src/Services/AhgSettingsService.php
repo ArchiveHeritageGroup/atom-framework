@@ -116,7 +116,7 @@ class AhgSettingsService
                 [
                     'setting_value' => $value,
                     'setting_group' => $group,
-                    'updated_at' => now()
+                    'updated_at' => date('Y-m-d H:i:s')
                 ]
             );
             self::clearCache();
