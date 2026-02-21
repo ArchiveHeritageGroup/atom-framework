@@ -1,0 +1,63 @@
+#!/bin/bash
+#===============================================================================
+# AtoM 2.10.1 post-removal
+#===============================================================================
+set -e
+
+case "$1" in
+    remove)
+        # Disable systemd service
+        systemctl disable atom-worker 2>/dev/null || true
+
+        echo ""
+        echo "AtoM removed."
+        echo "Data, database, and uploads have been PRESERVED."
+        echo "To fully remove: apt purge atom"
+        echo ""
+        ;;
+
+    purge)
+        # Remove config directory
+        rm -rf /etc/atom
+
+        # Remove systemd service
+        rm -f /etc/systemd/system/atom-worker.service
+        systemctl daemon-reload 2>/dev/null || true
+
+        # Remove nginx config
+        rm -f /etc/nginx/sites-available/atom
+        rm -f /etc/nginx/sites-enabled/atom
+
+        # Remove PHP-FPM pool
+        for ver in 8.3 8.2 8.1; do
+            rm -f "/etc/php/${ver}/fpm/pool.d/atom.conf"
+            rm -f "/etc/php/${ver}/fpm/conf.d/99-atom.ini"
+            if [ -f "/etc/php/${ver}/fpm/pool.d/www.conf.disabled" ]; then
+                mv "/etc/php/${ver}/fpm/pool.d/www.conf.disabled" "/etc/php/${ver}/fpm/pool.d/www.conf"
+            fi
+        done
+
+        # Remove self-signed certs
+        rm -rf /etc/ssl/atom
+
+        # Purge debconf
+        if [ -e /usr/share/debconf/confmodule ]; then
+            . /usr/share/debconf/confmodule
+            db_purge || true
+        fi
+
+        echo ""
+        echo "AtoM purged. Database and uploads NOT removed (manual cleanup required)."
+        echo ""
+        ;;
+
+    upgrade|failed-upgrade|abort-install|abort-upgrade|disappear)
+        ;;
+
+    *)
+        echo "postrm called with unknown argument: $1" >&2
+        exit 1
+        ;;
+esac
+
+exit 0

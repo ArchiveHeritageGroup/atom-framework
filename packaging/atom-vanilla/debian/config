@@ -1,0 +1,77 @@
+#!/bin/bash
+#===============================================================================
+# AtoM 2.10.1 debconf config script
+# Guided TUI wizard for vanilla AtoM installation
+#===============================================================================
+set -e
+
+. /usr/share/debconf/confmodule
+
+db_capb backup
+
+#-------------------------------------------------------------------------------
+# Step 1: Installation path
+#-------------------------------------------------------------------------------
+db_input high atom/install-path || true
+db_go || true
+
+#-------------------------------------------------------------------------------
+# Step 2: Database configuration
+#-------------------------------------------------------------------------------
+db_input high atom/db-host || true
+db_input high atom/db-name || true
+db_input high atom/db-user || true
+db_input high atom/db-password || true
+db_go || true
+
+db_input medium atom/db-root-password || true
+db_go || true
+
+#-------------------------------------------------------------------------------
+# Step 3: Site configuration
+#-------------------------------------------------------------------------------
+db_input high atom/site-title || true
+db_input medium atom/site-description || true
+db_input medium atom/site-url || true
+db_go || true
+
+#-------------------------------------------------------------------------------
+# Step 4: Admin account
+#-------------------------------------------------------------------------------
+db_input high atom/admin-email || true
+db_input high atom/admin-password || true
+db_go || true
+
+#-------------------------------------------------------------------------------
+# Step 5: SSL configuration
+#-------------------------------------------------------------------------------
+db_input medium atom/ssl-mode || true
+db_go || true
+db_get atom/ssl-mode
+SSL_MODE="$RET"
+
+if [ "$SSL_MODE" != "none" ]; then
+    db_input high atom/ssl-domain || true
+    db_go || true
+fi
+
+#-------------------------------------------------------------------------------
+# Step 6: Services
+#-------------------------------------------------------------------------------
+db_input medium atom/install-elasticsearch || true
+db_go || true
+
+db_input medium atom/elasticsearch-host || true
+db_go || true
+
+db_input low atom/install-gearman || true
+db_input low atom/install-ffmpeg || true
+db_go || true
+
+#-------------------------------------------------------------------------------
+# Step 7: Options
+#-------------------------------------------------------------------------------
+db_input low atom/load-demo-data || true
+db_go || true
+
+exit 0

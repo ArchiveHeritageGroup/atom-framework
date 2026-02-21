@@ -1,0 +1,362 @@
+#!/bin/bash
+#===============================================================================
+# AtoM 2.10.1 post-install orchestrator
+# Reads debconf answers and installs/configures AtoM
+#===============================================================================
+set -e
+
+# Source helper scripts
+ATOM_LIB="/usr/share/atom-installer/lib"
+. "${ATOM_LIB}/functions.sh"
+
+TEMPLATE_DIR="/usr/share/atom-installer/templates"
+
+case "$1" in
+    configure)
+        # Load debconf
+        . /usr/share/debconf/confmodule
+
+        echo ""
+        echo "╔══════════════════════════════════════════════════════════════╗"
+        echo "║           Access to Memory (AtoM) 2.10.1 Installer          ║"
+        echo "╚══════════════════════════════════════════════════════════════╝"
+        echo ""
+
+        #---------------------------------------------------------------
+        # 1. Read all debconf answers
+        #---------------------------------------------------------------
+        log_step "Reading configuration..."
+
+        db_get atom/install-path;         ATOM_PATH="$RET"
+        db_get atom/db-host;              DB_HOST="$RET"
+        db_get atom/db-name;              DB_NAME="$RET"
+        db_get atom/db-user;              DB_USER="$RET"
+        db_get atom/db-password;          DB_PASS="$RET"
+        db_get atom/db-root-password;     DB_ROOT_PASS="$RET"
+        db_get atom/site-title;           SITE_TITLE="$RET"
+        db_get atom/site-description;     SITE_DESC="$RET"
+        db_get atom/site-url;             SITE_URL="$RET"
+        db_get atom/admin-email;          ADMIN_EMAIL="$RET"
+        db_get atom/admin-password;       ADMIN_PASS="$RET"
+        db_get atom/ssl-mode;             SSL_MODE="$RET"
+        db_get atom/ssl-domain;           SSL_DOMAIN="$RET"
+        db_get atom/install-elasticsearch; INSTALL_ES="$RET"
+        db_get atom/elasticsearch-host;   ES_HOST="$RET"
+        db_get atom/load-demo-data;       LOAD_DEMO="$RET"
+        db_get atom/install-gearman;      INSTALL_GEARMAN="$RET"
+        db_get atom/install-ffmpeg;       INSTALL_FFMPEG="$RET"
+
+        # Default site URL to server IP
+        if [ -z "$SITE_URL" ]; then
+            local_ip=$(hostname -I 2>/dev/null | awk '{print $1}')
+            SITE_URL="http://${local_ip}"
+        fi
+
+        #---------------------------------------------------------------
+        # 2. Save configuration
+        #---------------------------------------------------------------
+        log_step "Saving configuration..."
+        mkdir -p /etc/atom
+
+        save_config "ATOM_PATH" "$ATOM_PATH"
+        save_config "DB_HOST" "$DB_HOST"
+        save_config "DB_NAME" "$DB_NAME"
+        save_config "DB_USER" "$DB_USER"
+        save_config "DB_PASS" "$DB_PASS"
+        save_config "SITE_TITLE" "$SITE_TITLE"
+        save_config "SITE_URL" "$SITE_URL"
+        save_config "SSL_MODE" "$SSL_MODE"
+        save_config "SSL_DOMAIN" "$SSL_DOMAIN"
+        save_config "ES_HOST" "$ES_HOST"
+        save_config "ADMIN_EMAIL" "$ADMIN_EMAIL"
+
+        chmod 600 /etc/atom/atom.conf
+        log_info "Configuration saved to /etc/atom/atom.conf"
+
+        #---------------------------------------------------------------
+        # 3. Install optional services
+        #---------------------------------------------------------------
+        if [ "$INSTALL_GEARMAN" = "true" ]; then
+            log_step "Installing Gearman..."
+            apt-get install -y -qq gearman-job-server php-gearman 2>/dev/null || {
+                log_warn "Gearman installation had warnings"
+            }
+            systemctl enable gearman-job-server 2>/dev/null || true
+            systemctl start gearman-job-server 2>/dev/null || true
+            log_info "Gearman installed"
+        fi
+
+        if [ "$INSTALL_FFMPEG" = "true" ]; then
+            log_step "Installing media tools..."
+            apt-get install -y -qq ffmpeg imagemagick ghostscript poppler-utils 2>/dev/null || {
+                log_warn "Media tools installation had warnings"
+            }
+            log_info "FFmpeg + ImageMagick installed"
+        fi
+
+        #---------------------------------------------------------------
+        # 4. Install Elasticsearch
+        #---------------------------------------------------------------
+        if [ "$INSTALL_ES" = "true" ]; then
+            install_elasticsearch
+        else
+            check_elasticsearch "$ES_HOST"
+        fi
+
+        #---------------------------------------------------------------
+        # 5. Extract AtoM tarball
+        #---------------------------------------------------------------
+        log_step "Extracting AtoM 2.10.1 to ${ATOM_PATH}..."
+
+        TARBALL="/usr/share/atom-installer/atom-latest.tar.gz"
+        if [ ! -f "$TARBALL" ]; then
+            log_error "AtoM tarball not found: $TARBALL"
+            exit 1
+        fi
+
+        mkdir -p "$ATOM_PATH"
+        tar xzf "$TARBALL" -C "$ATOM_PATH" --strip-components=0 2>/dev/null || \
+        tar xzf "$TARBALL" -C "$ATOM_PATH" 2>/dev/null
+
+        # Verify extraction
+        if [ ! -f "${ATOM_PATH}/symfony" ]; then
+            rm -rf "${ATOM_PATH:?}/"*
+            tar xzf "$TARBALL" -C "$ATOM_PATH" --strip-components=1 2>/dev/null
+        fi
+
+        if [ ! -f "${ATOM_PATH}/symfony" ]; then
+            log_error "AtoM extraction failed"
+            exit 1
+        fi
+
+        mkdir -p "${ATOM_PATH}/cache" "${ATOM_PATH}/log" "${ATOM_PATH}/uploads" "${ATOM_PATH}/downloads"
+        log_info "AtoM extracted"
+
+        # Composer install
+        log_step "Installing PHP dependencies..."
+        cd "$ATOM_PATH"
+        composer install --no-dev --no-interaction --quiet 2>/dev/null || {
+            log_warn "Composer had warnings (non-fatal)"
+        }
+        log_info "Dependencies installed"
+
+        #---------------------------------------------------------------
+        # 6. Configure database
+        #---------------------------------------------------------------
+        log_step "Configuring database..."
+
+        MYSQL_CMD="mysql"
+        if [ -n "$DB_ROOT_PASS" ]; then
+            MYSQL_CMD="mysql -u root -p${DB_ROOT_PASS}"
+        else
+            MYSQL_CMD="mysql -u root"
+        fi
+
+        if $MYSQL_CMD -e "SELECT 1" &>/dev/null; then
+            $MYSQL_CMD -e "CREATE DATABASE IF NOT EXISTS \`${DB_NAME}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;" 2>/dev/null || \
+            $MYSQL_CMD -e "CREATE DATABASE IF NOT EXISTS \`${DB_NAME}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;" 2>/dev/null
+            log_info "Database '${DB_NAME}' ready"
+
+            if [ "$DB_USER" != "root" ]; then
+                $MYSQL_CMD -e "CREATE USER IF NOT EXISTS '${DB_USER}'@'${DB_HOST}' IDENTIFIED BY '${DB_PASS}';" 2>/dev/null
+                $MYSQL_CMD -e "GRANT ALL PRIVILEGES ON \`${DB_NAME}\`.* TO '${DB_USER}'@'${DB_HOST}';" 2>/dev/null
+                $MYSQL_CMD -e "FLUSH PRIVILEGES;" 2>/dev/null
+                log_info "Database user '${DB_USER}' configured"
+            fi
+        else
+            log_warn "Cannot connect to MySQL. Configure database manually."
+        fi
+
+        #---------------------------------------------------------------
+        # 7. Write AtoM config.php
+        #---------------------------------------------------------------
+        log_step "Writing AtoM configuration..."
+
+        export DB_HOST DB_NAME DB_USER DB_PASS
+        render_template "${TEMPLATE_DIR}/atom/config.php.tpl" "${ATOM_PATH}/apps/qubit/config/config.php"
+        chown www-data:www-data "${ATOM_PATH}/apps/qubit/config/config.php"
+        chmod 640 "${ATOM_PATH}/apps/qubit/config/config.php"
+
+        # Write app.yml
+        export SITE_TITLE SITE_DESC SITE_URL ES_HOST
+        render_template "${TEMPLATE_DIR}/atom/app.yml.tpl" "${ATOM_PATH}/apps/qubit/config/app.yml"
+
+        log_info "Configuration written"
+
+        #---------------------------------------------------------------
+        # 8. Configure PHP-FPM
+        #---------------------------------------------------------------
+        log_step "Configuring PHP-FPM..."
+
+        PHP_VER=$(detect_php_version)
+        export ATOM_PATH PHP_VERSION="$PHP_VER"
+
+        POOL_DIR="/etc/php/${PHP_VER}/fpm/pool.d"
+        if [ -d "$POOL_DIR" ]; then
+            render_template "${TEMPLATE_DIR}/php/atom-pool.conf.tpl" "${POOL_DIR}/atom.conf"
+
+            # Disable default www pool
+            [ -f "${POOL_DIR}/www.conf" ] && mv "${POOL_DIR}/www.conf" "${POOL_DIR}/www.conf.disabled" 2>/dev/null || true
+        fi
+
+        # PHP ini overrides
+        INI_DIR="/etc/php/${PHP_VER}/fpm/conf.d"
+        [ -d "$INI_DIR" ] && render_template "${TEMPLATE_DIR}/php/atom-php.ini.tpl" "${INI_DIR}/99-atom.ini"
+
+        systemctl restart "php${PHP_VER}-fpm" 2>/dev/null || true
+        log_info "PHP-FPM ${PHP_VER} configured"
+
+        #---------------------------------------------------------------
+        # 9. Configure Nginx
+        #---------------------------------------------------------------
+        log_step "Configuring Nginx..."
+
+        SERVER_NAME="_"
+        if [ -n "$SITE_URL" ]; then
+            SERVER_NAME=$(echo "$SITE_URL" | sed -E 's|https?://||; s|/.*||; s|:.*||')
+        fi
+        [ -n "$SSL_DOMAIN" ] && SERVER_NAME="$SSL_DOMAIN"
+
+        FPM_SOCKET="/run/php/php${PHP_VER}-fpm.sock"
+        export SERVER_NAME FPM_SOCKET
+
+        CONF_FILE="/etc/nginx/sites-available/atom"
+
+        if [ "$SSL_MODE" = "self-signed" ] || [ "$SSL_MODE" = "letsencrypt" ]; then
+            render_template "${TEMPLATE_DIR}/nginx/atom-ssl.conf.tpl" "$CONF_FILE"
+        else
+            render_template "${TEMPLATE_DIR}/nginx/atom.conf.tpl" "$CONF_FILE"
+        fi
+
+        ln -sf "$CONF_FILE" /etc/nginx/sites-enabled/atom
+        rm -f /etc/nginx/sites-enabled/default
+
+        if nginx -t &>/dev/null; then
+            systemctl restart nginx 2>/dev/null || true
+            log_info "Nginx configured for ${SERVER_NAME}"
+        else
+            log_warn "Nginx config test failed. Check: nginx -t"
+        fi
+
+        #---------------------------------------------------------------
+        # 10. Configure SSL
+        #---------------------------------------------------------------
+        if [ "$SSL_MODE" = "self-signed" ]; then
+            log_step "Generating self-signed SSL certificate..."
+            mkdir -p /etc/ssl/atom
+            openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
+                -keyout /etc/ssl/atom/server.key \
+                -out /etc/ssl/atom/server.crt \
+                -subj "/C=ZA/ST=Gauteng/L=Pretoria/O=AtoM/CN=${SSL_DOMAIN:-localhost}" \
+                2>/dev/null
+            chmod 600 /etc/ssl/atom/server.key
+            log_info "Self-signed certificate generated"
+            systemctl reload nginx 2>/dev/null || true
+
+        elif [ "$SSL_MODE" = "letsencrypt" ]; then
+            log_step "Obtaining Let's Encrypt certificate..."
+            if command -v certbot &>/dev/null && [ -n "$SSL_DOMAIN" ]; then
+                certbot --nginx -d "$SSL_DOMAIN" --non-interactive --agree-tos \
+                    --email "${ADMIN_EMAIL:-admin@${SSL_DOMAIN}}" --redirect 2>/dev/null || {
+                    log_warn "Certbot failed. Run manually: certbot --nginx -d ${SSL_DOMAIN}"
+                }
+            else
+                log_warn "certbot not found. Install: apt install certbot python3-certbot-nginx"
+            fi
+        fi
+
+        #---------------------------------------------------------------
+        # 11. Set permissions
+        #---------------------------------------------------------------
+        log_step "Setting file permissions..."
+        chown -R www-data:www-data "$ATOM_PATH"
+        chmod -R 755 "$ATOM_PATH"
+        chmod -R 775 "${ATOM_PATH}/cache" "${ATOM_PATH}/log" "${ATOM_PATH}/uploads" "${ATOM_PATH}/downloads"
+        log_info "Permissions set"
+
+        #---------------------------------------------------------------
+        # 12. Initialize AtoM database
+        #---------------------------------------------------------------
+        log_step "Initializing AtoM database..."
+        cd "$ATOM_PATH"
+
+        INSTALL_OPTS="--no-confirmation"
+        [ "$LOAD_DEMO" = "true" ] && INSTALL_OPTS="${INSTALL_OPTS} --demo"
+
+        sudo -u www-data php symfony tools:install $INSTALL_OPTS 2>/dev/null || {
+            log_warn "tools:install completed with warnings"
+        }
+        log_info "AtoM database initialized"
+
+        #---------------------------------------------------------------
+        # 13. Populate search index
+        #---------------------------------------------------------------
+        log_step "Populating search index..."
+        sudo -u www-data php symfony search:populate 2>/dev/null || {
+            log_warn "Search population skipped (Elasticsearch may not be available)"
+        }
+
+        #---------------------------------------------------------------
+        # 14. Create systemd worker service
+        #---------------------------------------------------------------
+        log_step "Creating Gearman worker service..."
+        render_template "${TEMPLATE_DIR}/systemd/atom-worker.service.tpl" /etc/systemd/system/atom-worker.service
+        systemctl daemon-reload
+        systemctl enable atom-worker 2>/dev/null || true
+        if systemctl is-active gearman-job-server &>/dev/null; then
+            systemctl start atom-worker 2>/dev/null || true
+            log_info "Worker service started"
+        else
+            log_warn "Gearman not running - worker created but not started"
+        fi
+
+        #---------------------------------------------------------------
+        # 15. Clear caches
+        #---------------------------------------------------------------
+        log_step "Clearing caches..."
+        rm -rf "${ATOM_PATH}/cache/"* 2>/dev/null || true
+        cd "$ATOM_PATH" && sudo -u www-data php symfony cc 2>/dev/null || true
+        log_info "Caches cleared"
+
+        #---------------------------------------------------------------
+        # 16. Print summary
+        #---------------------------------------------------------------
+        local_ip=$(hostname -I 2>/dev/null | awk '{print $1}')
+
+        echo ""
+        echo "╔══════════════════════════════════════════════════════════════╗"
+        echo "║              AtoM 2.10.1 - Installation Complete             ║"
+        echo "╠══════════════════════════════════════════════════════════════╣"
+        echo "║                                                              ║"
+        echo "║  Access your AtoM installation at:                           ║"
+        echo "║    ${SITE_URL:-http://${local_ip}}"
+        echo "║                                                              ║"
+        echo "║  Login:                                                      ║"
+        echo "║    Email:    ${ADMIN_EMAIL}"
+        echo "║    Password: (the password you set)                          ║"
+        echo "║                                                              ║"
+        echo "║  Path:       ${ATOM_PATH}"
+        echo "║  Database:   ${DB_NAME}@${DB_HOST}"
+        echo "║  Config:     /etc/atom/atom.conf                             ║"
+        echo "║                                                              ║"
+        echo "║  Commands:                                                   ║"
+        echo "║    Clear cache:     php symfony cc                           ║"
+        echo "║    Rebuild search:  php symfony search:populate              ║"
+        echo "║    Reconfigure:     dpkg-reconfigure atom                    ║"
+        echo "║                                                              ║"
+        echo "╚══════════════════════════════════════════════════════════════╝"
+        echo ""
+
+        db_stop
+        ;;
+
+    abort-upgrade|abort-remove|abort-deconfigure)
+        ;;
+
+    *)
+        echo "postinst called with unknown argument: $1" >&2
+        exit 1
+        ;;
+esac
+
+exit 0

@@ -71,11 +71,11 @@ mkdir -p "${PKG_DIR}/usr/bin"
 step "Copying control files..."
 
 # Generate binary control file (dpkg-deb needs binary format, not source+binary)
-# Extract the binary package stanza from debian/control and add Version
+# Extract the Package stanza + Maintainer from Source stanza
+MAINTAINER=$(grep '^Maintainer:' "${SCRIPT_DIR}/debian/control" | head -1)
 awk '/^Package:/{found=1} found{print}' "${SCRIPT_DIR}/debian/control" > "${PKG_DIR}/DEBIAN/control"
-
-# Add version line after Package line
 sed -i "/^Package:/a Version: ${PKG_VERSION}" "${PKG_DIR}/DEBIAN/control"
+sed -i "/^Architecture:/a ${MAINTAINER}" "${PKG_DIR}/DEBIAN/control"
 
 for f in conffiles copyright; do
     cp "${SCRIPT_DIR}/debian/${f}" "${PKG_DIR}/DEBIAN/"

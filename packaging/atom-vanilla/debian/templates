@@ -1,0 +1,129 @@
+Template: atom/install-path
+Type: string
+Default: /usr/share/nginx/atom
+Description: AtoM installation path:
+ Enter the filesystem path where AtoM should be installed.
+ .
+ Common paths: /usr/share/nginx/atom, /var/www/atom, /opt/atom
+
+Template: atom/db-host
+Type: string
+Default: localhost
+Description: Database host:
+ Enter the hostname or IP address of the MySQL/MariaDB server.
+
+Template: atom/db-name
+Type: string
+Default: atom
+Description: Database name:
+ Enter the name of the database to use for AtoM. It will be created
+ if it does not exist.
+
+Template: atom/db-user
+Type: string
+Default: atom
+Description: Database username:
+ Enter the database username for AtoM to connect with. The user will
+ be created if it does not exist.
+
+Template: atom/db-password
+Type: password
+Description: Database password:
+ Enter the password for the AtoM database user.
+ .
+ Minimum 8 characters recommended for production use.
+
+Template: atom/db-root-password
+Type: password
+Description: MySQL root password:
+ Enter the MySQL root password so the installer can create the database
+ and user. Leave empty if MySQL allows passwordless root access (e.g.,
+ via unix socket authentication).
+
+Template: atom/site-title
+Type: string
+Default: My Archive
+Description: Site title:
+ Enter the title for your AtoM site. This appears in the browser title
+ bar and site header.
+
+Template: atom/site-description
+Type: string
+Default: Archival Management System
+Description: Site description:
+ Enter a short description for your AtoM site.
+
+Template: atom/site-url
+Type: string
+Description: Site URL:
+ Enter the full URL for your AtoM site (e.g., https://archive.example.com).
+ .
+ If left empty, the server's IP address will be used with http://.
+
+Template: atom/admin-email
+Type: string
+Description: Administrator email:
+ Enter the email address for the AtoM administrator account.
+
+Template: atom/admin-password
+Type: password
+Description: Administrator password:
+ Set the password for the AtoM administrator account.
+ .
+ Minimum 8 characters required.
+
+Template: atom/ssl-mode
+Type: select
+Choices: none, self-signed, letsencrypt
+Default: none
+Description: SSL/TLS configuration:
+ Choose how to configure HTTPS for your AtoM site:
+ .
+  none        - HTTP only (configure SSL later)
+  self-signed - Generate a self-signed certificate (for testing/internal use)
+  letsencrypt - Obtain a free Let's Encrypt certificate (requires valid domain)
+
+Template: atom/ssl-domain
+Type: string
+Description: Domain name for SSL certificate:
+ Enter the domain name for the SSL certificate (e.g., archive.example.com).
+ .
+ For Let's Encrypt, this domain must already point to this server's IP.
+
+Template: atom/install-elasticsearch
+Type: boolean
+Default: true
+Description: Install Elasticsearch?
+ AtoM requires Elasticsearch for full-text search. This option will
+ install Elasticsearch 8.x and configure it for AtoM.
+ .
+ Choose YES for a new installation. Choose NO if you already have
+ Elasticsearch or OpenSearch running, or want to configure it manually.
+
+Template: atom/elasticsearch-host
+Type: string
+Default: localhost:9200
+Description: Elasticsearch host:port:
+ Enter the Elasticsearch host and port.
+
+Template: atom/load-demo-data
+Type: boolean
+Default: false
+Description: Load demo/sample data?
+ Install AtoM with sample archival descriptions for evaluation purposes.
+ .
+ Choose NO for production installations.
+
+Template: atom/install-gearman
+Type: boolean
+Default: true
+Description: Install Gearman job server?
+ Gearman handles background tasks (imports, exports, search indexing).
+ Recommended for production use.
+
+Template: atom/install-ffmpeg
+Type: boolean
+Default: true
+Description: Install FFmpeg and ImageMagick?
+ FFmpeg and ImageMagick are used for generating thumbnails, derivatives,
+ and processing multimedia files. Recommended for most installations.

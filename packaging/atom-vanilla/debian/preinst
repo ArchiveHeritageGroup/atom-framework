@@ -1,0 +1,32 @@
+#!/bin/bash
+#===============================================================================
+# AtoM 2.10.1 pre-install validation
+#===============================================================================
+set -e
+
+case "$1" in
+    install|upgrade)
+        # Check minimum RAM (1GB)
+        total_ram=$(free -m | awk '/^Mem:/{print $2}')
+        if [ "$total_ram" -lt 1024 ] 2>/dev/null; then
+            echo "WARNING: System has ${total_ram}MB RAM. AtoM recommends at least 2GB."
+        fi
+
+        # Check disk space (2GB minimum)
+        avail_mb=$(df -BM --output=avail /usr/share 2>/dev/null | tail -1 | tr -d ' M')
+        if [ "$avail_mb" -lt 2048 ] 2>/dev/null; then
+            echo "ERROR: Insufficient disk space. Need 2GB, have ${avail_mb}MB in /usr/share"
+            exit 1
+        fi
+        ;;
+
+    abort-upgrade)
+        ;;
+
+    *)
+        echo "preinst called with unknown argument: $1" >&2
+        exit 1
+        ;;
+esac
+
+exit 0

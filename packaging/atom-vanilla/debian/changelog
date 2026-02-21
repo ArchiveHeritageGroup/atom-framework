@@ -1,0 +1,10 @@
+atom (2.10.1-1) stable; urgency=medium
+
+  * Initial DEB package with guided TUI installer
+  * Bundled AtoM 2.10.1 tarball for air-gapped deployments
+  * Debconf wizard for database, Nginx, SSL, admin configuration
+  * Optional Elasticsearch 8.x installation
+  * Gearman worker systemd service
+  * PHP-FPM pool with AtoM-optimized settings
+
+ -- The Archive and Heritage Group (Pty) Ltd <info@theahg.co.za>  Sat, 21 Feb 2026 12:00:00 +0200
