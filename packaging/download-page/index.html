@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Download AtoM Heratio - The Archive and Heritage Group</title>
+    <style>
+        :root {
+            --primary: #1a1a2e;
+            --secondary: #16213e;
+            --accent: #0f3460;
+            --highlight: #e94560;
+            --success: #2d6a4f;
+            --bg: #f8f9fa;
+            --card-bg: #ffffff;
+            --text: #1a1a2e;
+            --text-muted: #6c757d;
+            --border: #e9ecef;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+            line-height: 1.6;
+            color: var(--text);
+            background: var(--bg);
+        }
+
+        /* Header */
+        .header {
+            background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 50%, var(--accent) 100%);
+            color: white;
+            padding: 20px 0;
+        }
+        .header-inner {
+            max-width: 1100px;
+            margin: 0 auto;
+            padding: 0 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .header .logo { font-size: 1.3em; font-weight: 700; }
+        .header nav a { color: rgba(255,255,255,0.85); text-decoration: none; margin-left: 24px; font-size: 0.95em; }
+        .header nav a:hover { color: white; }
+
+        /* Hero */
+        .hero {
+            background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 50%, var(--accent) 100%);
+            color: white;
+            padding: 60px 20px 80px;
+            text-align: center;
+        }
+        .hero h1 { font-size: 2.8em; margin-bottom: 16px; font-weight: 700; }
+        .hero .subtitle { font-size: 1.3em; opacity: 0.9; max-width: 650px; margin: 0 auto 30px; }
+        .hero .version-badge {
+            display: inline-block;
+            background: rgba(255,255,255,0.15);
+            border: 1px solid rgba(255,255,255,0.3);
+            padding: 6px 20px;
+            border-radius: 30px;
+            font-size: 0.95em;
+        }
+
+        /* Container */
+        .container { max-width: 1100px; margin: 0 auto; padding: 0 20px; }
+
+        /* Download Cards */
+        .download-section { margin-top: -40px; padding-bottom: 40px; }
+        .download-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+        @media (max-width: 768px) { .download-grid { grid-template-columns: 1fr; } }
+
+        .download-card {
+            background: var(--card-bg);
+            border-radius: 16px;
+            padding: 36px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+            position: relative;
+            overflow: hidden;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .download-card:hover { transform: translateY(-2px); box-shadow: 0 8px 30px rgba(0,0,0,0.12); }
+        .download-card.featured { border: 2px solid var(--accent); }
+        .download-card .recommended {
+            position: absolute;
+            top: 16px;
+            right: -30px;
+            background: var(--highlight);
+            color: white;
+            padding: 4px 40px;
+            font-size: 0.75em;
+            font-weight: 600;
+            text-transform: uppercase;
+            transform: rotate(45deg);
+        }
+        .download-card h2 { font-size: 1.5em; margin-bottom: 8px; }
+        .download-card .desc { color: var(--text-muted); margin-bottom: 20px; }
+        .download-card .features { list-style: none; margin-bottom: 24px; }
+        .download-card .features li { padding: 6px 0; padding-left: 24px; position: relative; }
+        .download-card .features li::before { content: "\2713"; position: absolute; left: 0; color: var(--success); font-weight: bold; }
+        .download-card .size { color: var(--text-muted); font-size: 0.9em; margin-bottom: 16px; }
+
+        .btn {
+            display: inline-block;
+            padding: 12px 28px;
+            border-radius: 8px;
+            text-decoration: none;
+            font-weight: 600;
+            font-size: 1em;
+            transition: background 0.2s, transform 0.1s;
+            cursor: pointer;
+            border: none;
+        }
+        .btn:active { transform: scale(0.98); }
+        .btn-primary { background: var(--accent); color: white; }
+        .btn-primary:hover { background: var(--secondary); }
+        .btn-outline { background: transparent; color: var(--accent); border: 2px solid var(--accent); }
+        .btn-outline:hover { background: var(--accent); color: white; }
+
+        /* Install Methods */
+        .install-section { padding: 50px 0; }
+        .install-section h2 { font-size: 1.8em; text-align: center; margin-bottom: 40px; }
+
+        .method-tabs {
+            display: flex;
+            justify-content: center;
+            gap: 8px;
+            margin-bottom: 24px;
+        }
+        .method-tab {
+            padding: 10px 20px;
+            border: 2px solid var(--border);
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 500;
+            background: white;
+            transition: all 0.2s;
+        }
+        .method-tab.active { border-color: var(--accent); background: var(--accent); color: white; }
+        .method-tab:hover:not(.active) { border-color: var(--accent); }
+
+        .method-content { display: none; }
+        .method-content.active { display: block; }
+
+        .install-card {
+            background: var(--card-bg);
+            border-radius: 12px;
+            padding: 30px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+        }
+
+        pre {
+            background: var(--primary);
+            color: #e2e8f0;
+            padding: 20px 24px;
+            border-radius: 8px;
+            overflow-x: auto;
+            font-size: 0.9em;
+            line-height: 1.8;
+            margin: 16px 0;
+            position: relative;
+        }
+        pre .comment { color: #64748b; }
+        code { font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace; }
+
+        .copy-btn {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            background: rgba(255,255,255,0.1);
+            border: 1px solid rgba(255,255,255,0.2);
+            color: rgba(255,255,255,0.7);
+            padding: 4px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.8em;
+        }
+        .copy-btn:hover { background: rgba(255,255,255,0.2); color: white; }
+
+        /* Requirements */
+        .req-section { padding: 40px 0 60px; }
+        .req-section h2 { font-size: 1.8em; text-align: center; margin-bottom: 30px; }
+        .req-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; }
+        @media (max-width: 768px) { .req-grid { grid-template-columns: 1fr; } }
+        .req-card {
+            background: var(--card-bg);
+            border-radius: 12px;
+            padding: 24px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+            text-align: center;
+        }
+        .req-card .icon { font-size: 2em; margin-bottom: 12px; }
+        .req-card h3 { margin-bottom: 8px; }
+        .req-card p { color: var(--text-muted); font-size: 0.95em; }
+
+        /* Footer */
+        .footer {
+            background: var(--primary);
+            color: rgba(255,255,255,0.7);
+            padding: 30px 0;
+            text-align: center;
+            font-size: 0.9em;
+        }
+        .footer a { color: rgba(255,255,255,0.9); text-decoration: none; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="header-inner">
+            <div class="logo">The Archive &amp; Heritage Group</div>
+            <nav>
+                <a href="https://theahg.co.za">Home</a>
+                <a href="https://github.com/ArchiveHeritageGroup">GitHub</a>
+                <a href="https://github.com/ArchiveHeritageGroup/atom-extensions-catalog">Documentation</a>
+            </nav>
+        </div>
+    </div>
+
+    <div class="hero">
+        <h1>Download AtoM Heratio</h1>
+        <p class="subtitle">The complete GLAM/DAM platform for Galleries, Libraries, Archives, Museums and Digital Asset Management</p>
+        <span class="version-badge">Version {{HERATIO_VERSION}} &mdash; Released {{RELEASE_DATE}}</span>
+    </div>
+
+    <div class="container download-section">
+        <div class="download-grid">
+            <!-- Heratio Package -->
+            <div class="download-card featured">
+                <div class="recommended">Recommended</div>
+                <h2>AtoM Heratio</h2>
+                <p class="desc">Complete platform with 79 GLAM/DAM plugins, Bootstrap 5 theme, and guided setup wizard.</p>
+                <ul class="features">
+                    <li>AtoM 2.10 base (bundled, no internet needed)</li>
+                    <li>Heratio framework v{{HERATIO_VERSION}}</li>
+                    <li>79 GLAM/DAM plugins included</li>
+                    <li>Bootstrap 5 responsive theme</li>
+                    <li>Debconf TUI setup wizard</li>
+                    <li>Web-based configuration wizard</li>
+                    <li><code>atom-heratio</code> CLI management tool</li>
+                </ul>
+                <p class="size">~45 MB &middot; .deb package &middot; Ubuntu 22.04+ / Debian 12+</p>
+                <a href="https://github.com/ArchiveHeritageGroup/atom-framework/releases/latest/download/atom-heratio_{{HERATIO_VERSION}}-1_all.deb" class="btn btn-primary">Download .deb</a>
+            </div>
+
+            <!-- Vanilla AtoM -->
+            <div class="download-card">
+                <h2>AtoM 2.10.1</h2>
+                <p class="desc">Standard Access to Memory installation without Heratio extensions.</p>
+                <ul class="features">
+                    <li>AtoM 2.10.1 (bundled tarball)</li>
+                    <li>Debconf TUI setup wizard</li>
+                    <li>Automated nginx + PHP-FPM config</li>
+                    <li>Elasticsearch auto-configuration</li>
+                    <li>Database setup included</li>
+                </ul>
+                <p class="size">~25 MB &middot; .deb package &middot; Ubuntu 22.04+ / Debian 12+</p>
+                <a href="https://github.com/ArchiveHeritageGroup/atom-framework/releases/latest/download/atom_2.10.1-1_all.deb" class="btn btn-outline">Download .deb</a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Install Methods -->
+    <div class="install-section">
+        <div class="container">
+            <h2>Installation Methods</h2>
+
+            <div class="method-tabs">
+                <div class="method-tab active" onclick="showMethod('apt')">APT Repository</div>
+                <div class="method-tab" onclick="showMethod('direct')">Direct Download</div>
+                <div class="method-tab" onclick="showMethod('oneliner')">One-Liner</div>
+            </div>
+
+            <!-- APT Repository -->
+            <div class="method-content active" id="method-apt">
+                <div class="install-card">
+                    <h3>Add the APT Repository (one-time setup)</h3>
+                    <pre><button class="copy-btn" onclick="copyCode(this)">Copy</button><code><span class="comment"># Add the GPG key</span>
+curl -fsSL https://archiveheritagegroup.github.io/atom-framework/gpg.key | sudo gpg --dearmor -o /usr/share/keyrings/atom-heratio.gpg
+
+<span class="comment"># Add the repository</span>
+echo "deb [signed-by=/usr/share/keyrings/atom-heratio.gpg] https://archiveheritagegroup.github.io/atom-framework stable main" | sudo tee /etc/apt/sources.list.d/atom-heratio.list
+
+<span class="comment"># Update and install</span>
+sudo apt update
+sudo apt install atom-heratio</code></pre>
+                    <p style="color: var(--text-muted); margin-top: 12px;">The installer will launch an interactive setup wizard to configure your database, web server, and plugins.</p>
+                </div>
+            </div>
+
+            <!-- Direct Download -->
+            <div class="method-content" id="method-direct">
+                <div class="install-card">
+                    <h3>Download and Install Directly</h3>
+                    <pre><button class="copy-btn" onclick="copyCode(this)">Copy</button><code><span class="comment"># Download the package</span>
+wget https://github.com/ArchiveHeritageGroup/atom-framework/releases/latest/download/atom-heratio_{{HERATIO_VERSION}}-1_all.deb
+
+<span class="comment"># Install (will resolve dependencies automatically)</span>
+sudo apt install ./atom-heratio_{{HERATIO_VERSION}}-1_all.deb</code></pre>
+                </div>
+            </div>
+
+            <!-- One-Liner -->
+            <div class="method-content" id="method-oneliner">
+                <div class="install-card">
+                    <h3>Quick Install Script</h3>
+                    <pre><button class="copy-btn" onclick="copyCode(this)">Copy</button><code>curl -fsSL https://archiveheritagegroup.github.io/atom-framework/install.sh | sudo bash</code></pre>
+                    <p style="color: var(--text-muted); margin-top: 12px;">This adds the APT repository. After running, install with: <code>sudo apt install atom-heratio</code></p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Requirements -->
+    <div class="req-section" style="background: white;">
+        <div class="container">
+            <h2>System Requirements</h2>
+            <div class="req-grid">
+                <div class="req-card">
+                    <div class="icon">&#x1F4BB;</div>
+                    <h3>Operating System</h3>
+                    <p>Ubuntu 22.04+ or Debian 12+<br>64-bit (amd64)</p>
+                </div>
+                <div class="req-card">
+                    <div class="icon">&#x2699;</div>
+                    <h3>Server Stack</h3>
+                    <p>PHP 8.1+ (8.3 recommended)<br>MySQL 8.0+ / MariaDB 10.6+<br>Nginx</p>
+                </div>
+                <div class="req-card">
+                    <div class="icon">&#x1F4BE;</div>
+                    <h3>Resources</h3>
+                    <p>2 GB RAM (4 GB recommended)<br>5 GB disk space<br>Elasticsearch 7.x (optional)</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- What's Included -->
+    <div class="install-section">
+        <div class="container">
+            <h2>What's Included in AtoM Heratio</h2>
+            <div class="req-grid">
+                <div class="req-card" style="text-align: left;">
+                    <h3>GLAM Sectors</h3>
+                    <p>Gallery, Library, Archive, Museum, and Digital Asset Management sector plugins with sector-specific cataloging standards.</p>
+                </div>
+                <div class="req-card" style="text-align: left;">
+                    <h3>AI & Automation</h3>
+                    <p>NER extraction, machine translation, summarization, face detection, duplicate detection, and LLM suggestions.</p>
+                </div>
+                <div class="req-card" style="text-align: left;">
+                    <h3>Compliance</h3>
+                    <p>POPIA, GDPR, CCPA, NARSSA compliance. Audit trail, security clearance, and privacy management.</p>
+                </div>
+                <div class="req-card" style="text-align: left;">
+                    <h3>Digital Preservation</h3>
+                    <p>OAIS-aligned ingest, fixity checks, PREMIS events, format identification, PRONOM registry sync.</p>
+                </div>
+                <div class="req-card" style="text-align: left;">
+                    <h3>Import & Export</h3>
+                    <p>CSV/EAD/XML import, batch ingest with AI processing, metadata export, portable catalogue generation.</p>
+                </div>
+                <div class="req-card" style="text-align: left;">
+                    <h3>Modern Interface</h3>
+                    <p>Bootstrap 5 responsive theme, IIIF viewer, 3D model viewer, landing page builder, advanced search.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="footer">
+        <p>&copy; The Archive and Heritage Group (Pty) Ltd &middot; <a href="https://theahg.co.za">theahg.co.za</a> &middot; <a href="mailto:info@theahg.co.za">info@theahg.co.za</a></p>
+    </div>
+
+    <script>
+        function showMethod(id) {
+            document.querySelectorAll('.method-content').forEach(function(el) { el.classList.remove('active'); });
+            document.querySelectorAll('.method-tab').forEach(function(el) { el.classList.remove('active'); });
+            document.getElementById('method-' + id).classList.add('active');
+            event.target.classList.add('active');
+        }
+
+        function copyCode(btn) {
+            var code = btn.parentElement.querySelector('code');
+            var text = code.innerText;
+            navigator.clipboard.writeText(text).then(function() {
+                btn.textContent = 'Copied!';
+                setTimeout(function() { btn.textContent = 'Copy'; }, 2000);
+            });
+        }
+    </script>
+</body>
+</html>
