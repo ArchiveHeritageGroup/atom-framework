@@ -688,17 +688,19 @@ class ExtensionCommand
         if (!empty($localUpgrades)) {
             $this->line('');
             $this->warning('⚡ UPGRADE NEEDED (run install.sql):');
-            $this->line('───────────────────────────────────────────────────────────────────────────────');
-            $this->line(sprintf('  %-30s %-12s %-12s %s', 'Name', 'DB Ver', 'File Ver', 'Machine Name'));
-            $this->line('───────────────────────────────────────────────────────────────────────────────');
+            $this->line('─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────');
+            $this->line(sprintf('  %-30s %-12s %-12s %-35s %s', 'Name', 'DB Ver', 'File Ver', 'Machine Name', 'Description'));
+            $this->line('─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────');
 
             foreach ($localUpgrades as $machineName => $ext) {
                 $name = $ext['name'] ?? $machineName;
-                $this->line(sprintf("  %-30s %-12s \033[33m%-12s\033[0m %s",
+                $desc = $ext['description'] ?? '';
+                $this->line(sprintf("  %-30s %-12s \033[33m%-12s\033[0m %-35s %s",
                     $this->truncate($name, 30),
                     $ext['db_version'],
                     $ext['file_version'],
-                    $machineName
+                    $machineName,
+                    $this->truncate($desc, 50)
                 ));
             }
             $this->line('');
@@ -709,17 +711,19 @@ class ExtensionCommand
         if (!empty($updates)) {
             $this->line('');
             $this->warning('⬆ UPDATES AVAILABLE:');
-            $this->line('───────────────────────────────────────────────────────────────────────────────');
-            $this->line(sprintf('  %-30s %-12s %-12s %s', 'Name', 'Current', 'Available', 'Machine Name'));
-            $this->line('───────────────────────────────────────────────────────────────────────────────');
+            $this->line('─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────');
+            $this->line(sprintf('  %-30s %-12s %-12s %-35s %s', 'Name', 'Current', 'Available', 'Machine Name', 'Description'));
+            $this->line('─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────');
 
             foreach ($updates as $machineName => $ext) {
                 $name = $ext['name'] ?? $machineName;
-                $this->line(sprintf("  %-30s %-12s \033[32m%-12s\033[0m %s",
+                $desc = $ext['description'] ?? '';
+                $this->line(sprintf("  %-30s %-12s \033[32m%-12s\033[0m %-35s %s",
                     $this->truncate($name, 30),
                     $ext['local_version'],
                     $ext['remote_version'],
-                    $machineName
+                    $machineName,
+                    $this->truncate($desc, 50)
                 ));
             }
         }
@@ -728,16 +732,18 @@ class ExtensionCommand
         if (!empty($enabledList)) {
             $this->line('');
             $this->info('✓ ENABLED:');
-            $this->line('───────────────────────────────────────────────────────────────────────────────');
-            $this->line(sprintf('  %-30s %-12s %s', 'Name', 'Version', 'Machine Name'));
-            $this->line('───────────────────────────────────────────────────────────────────────────────');
+            $this->line('─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────');
+            $this->line(sprintf('  %-30s %-12s %-35s %s', 'Name', 'Version', 'Machine Name', 'Description'));
+            $this->line('─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────');
 
             foreach ($enabledList as $machineName => $ext) {
                 $name = $ext['name'] ?? $machineName;
-                $this->line(sprintf('  %-30s %-12s %s',
+                $desc = $ext['description'] ?? '';
+                $this->line(sprintf('  %-30s %-12s %-35s %s',
                     $this->truncate($name, 30),
                     $ext['local_version'],
-                    $machineName
+                    $machineName,
+                    $this->truncate($desc, 50)
                 ));
             }
         }
@@ -746,16 +752,18 @@ class ExtensionCommand
         if (!empty($localNotEnabled)) {
             $this->line('');
             $this->line('○ LOCAL (Not enabled):');
-            $this->line('───────────────────────────────────────────────────────────────────────────────');
-            $this->line(sprintf('  %-30s %-12s %s', 'Name', 'Version', 'Machine Name'));
-            $this->line('───────────────────────────────────────────────────────────────────────────────');
+            $this->line('─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────');
+            $this->line(sprintf('  %-30s %-12s %-35s %s', 'Name', 'Version', 'Machine Name', 'Description'));
+            $this->line('─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────');
 
             foreach ($localNotEnabled as $machineName => $ext) {
                 $name = $ext['name'] ?? $machineName;
-                $this->line(sprintf('  %-30s %-12s %s',
+                $desc = $ext['description'] ?? '';
+                $this->line(sprintf('  %-30s %-12s %-35s %s',
                     $this->truncate($name, 30),
                     $ext['local_version'] ?? '?',
-                    $machineName
+                    $machineName,
+                    $this->truncate($desc, 50)
                 ));
             }
         }
@@ -764,17 +772,19 @@ class ExtensionCommand
         if (!empty($remoteAvailable)) {
             $this->line('');
             $this->line("\033[36m⬇ AVAILABLE (Download):\033[0m");
-            $this->line('───────────────────────────────────────────────────────────────────────────────');
-            $this->line(sprintf('  %-30s %-12s %s', 'Name', 'Version', 'Machine Name'));
-            $this->line('───────────────────────────────────────────────────────────────────────────────');
+            $this->line('─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────');
+            $this->line(sprintf('  %-30s %-12s %-35s %s', 'Name', 'Version', 'Machine Name', 'Description'));
+            $this->line('─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────');
 
             foreach ($remoteAvailable as $machineName => $ext) {
                 $name = $ext['name'] ?? $machineName;
                 $version = $ext['version'] ?? '?';
-                $this->line(sprintf('  %-30s %-12s %s',
+                $desc = $ext['description'] ?? '';
+                $this->line(sprintf('  %-30s %-12s %-35s %s',
                     $this->truncate($name, 30),
                     $version,
-                    $machineName
+                    $machineName,
+                    $this->truncate($desc, 50)
                 ));
             }
         }
