@@ -538,6 +538,9 @@ class RicSyncService implements RicSyncContract
         ]);
         $response = curl_exec($ch);
         curl_close($ch);
+        if ($response === false || $response === '') {
+            return [];
+        }
         $data = json_decode($response, true);
         return $data['results']['bindings'] ?? [];
     }
