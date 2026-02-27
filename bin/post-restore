@@ -1,0 +1,213 @@
+#!/bin/bash
+# =============================================================================
+# AtoM Framework Post-Restore Recovery
+# Re-applies framework registration after a database restore.
+#
+# A database restore overwrites:
+#   - atom_plugin table (plugin registration)
+#   - Plugin versions
+#
+# This script re-registers MVP plugins, syncs all plugin versions,
+# re-patches QubitMetadataRoute, and rebuilds caches.
+#
+# Usage:
+#   ./bin/post-restore              # Standard recovery
+#   ./bin/post-restore --all        # Also re-run all plugin install.sql files
+# =============================================================================
+
+set -e
+
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m'
+
+echo -e "${GREEN}"
+echo "=============================================="
+echo "  AtoM Framework Post-Restore Recovery"
+echo "=============================================="
+echo -e "${NC}"
+
+# Detect paths
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+FRAMEWORK_PATH="$(dirname "$SCRIPT_DIR")"
+ATOM_ROOT="$(dirname "$FRAMEWORK_PATH")"
+AHG_PLUGINS="${ATOM_ROOT}/atom-ahg-plugins"
+
+echo -e "${YELLOW}Paths detected:${NC}"
+echo "  Framework: $FRAMEWORK_PATH"
+echo "  AtoM Root: $ATOM_ROOT"
+echo "  Plugins:   $AHG_PLUGINS"
+
+# Get database credentials from config.php
+CONFIG_FILE="${ATOM_ROOT}/config/config.php"
+if [ ! -f "$CONFIG_FILE" ]; then
+    echo -e "${RED}Error: config.php not found at $CONFIG_FILE${NC}"
+    exit 1
+fi
+
+DB_HOST=$(php -r "\$c=require('${CONFIG_FILE}'); preg_match('/host=([^;]+)/', \$c['all']['propel']['param']['dsn'] ?? '', \$m); echo \$m[1] ?? 'localhost';")
+DB_USER=$(php -r "\$c=require('${CONFIG_FILE}'); echo \$c['all']['propel']['param']['username'] ?? 'atom';")
+DB_PASS=$(php -r "\$c=require('${CONFIG_FILE}'); echo \$c['all']['propel']['param']['password'] ?? '';")
+DB_NAME=$(php -r "\$c=require('${CONFIG_FILE}'); preg_match('/dbname=([^;]+)/', \$c['all']['propel']['param']['dsn'] ?? '', \$m); echo \$m[1] ?? 'atom';")
+
+echo -e "${YELLOW}Database:${NC} $DB_NAME @ $DB_HOST"
+
+# MySQL command wrapper
+mysql_cmd() {
+    mysql -h "$DB_HOST" -u "$DB_USER" -p"$DB_PASS" "$DB_NAME" "$@" 2>/dev/null
+}
+
+mysql_cmd_file() {
+    mysql -h "$DB_HOST" -u "$DB_USER" -p"$DB_PASS" "$DB_NAME" < "$1" 2>/dev/null
+}
+
+# =============================================================================
+# Step 1: Re-register MVP plugins in atom_plugin table
+# =============================================================================
+echo ""
+echo -e "${BLUE}Step 1: Re-registering MVP plugins...${NC}"
+
+mysql_cmd -e "
+INSERT INTO atom_plugin (name, class_name, version, is_enabled, is_core, is_locked, load_order, category, description, created_at, updated_at) VALUES
+('ahgCorePlugin', 'ahgCorePluginConfiguration', '1.0.0', 1, 1, 1, 5, 'ahg', 'Core framework plugin', NOW(), NOW()),
+('ahgThemeB5Plugin', 'ahgThemeB5PluginConfiguration', '1.2.0', 0, 1, 1, 10, 'theme', 'Bootstrap 5 theme', NOW(), NOW()),
+('ahgSecurityClearancePlugin', 'ahgSecurityClearancePluginConfiguration', '1.0.0', 1, 1, 1, 20, 'ahg', 'Security classification system', NOW(), NOW()),
+('ahgDisplayPlugin', 'ahgDisplayPluginConfiguration', '1.0.0', 1, 1, 1, 30, 'ahg', 'GLAM browse and display profiles', NOW(), NOW()),
+('ahgSettingsPlugin', 'ahgSettingsPluginConfiguration', '1.0.1', 1, 1, 1, 15, 'admin', 'Admin settings and plugin management', NOW(), NOW()),
+('ahgAuditTrailPlugin', 'ahgAuditTrailPluginConfiguration', '1.0.0', 1, 0, 0, 40, 'ahg', 'Compliance audit trail', NOW(), NOW()),
+('ahgBackupPlugin', 'ahgBackupPluginConfiguration', '1.0.0', 1, 0, 0, 50, 'ahg', 'Backup and restore', NOW(), NOW())
+ON DUPLICATE KEY UPDATE is_enabled = VALUES(is_enabled), is_core = VALUES(is_core), is_locked = VALUES(is_locked), updated_at = NOW();
+"
+echo -e "  ${GREEN}✓${NC} 7 MVP plugins registered"
+
+# =============================================================================
+# Step 2: Re-register all other plugins that have symlinks
+# =============================================================================
+echo ""
+echo -e "${BLUE}Step 2: Re-registering additional enabled plugins...${NC}"
+
+ADDITIONAL=0
+for symlink in ${ATOM_ROOT}/plugins/ahg*Plugin; do
+    if [ -L "$symlink" ]; then
+        plugin_name=$(basename "$symlink")
+        class_name="${plugin_name}Configuration"
+        manifest="${AHG_PLUGINS}/${plugin_name}/extension.json"
+        version=""
+        category="general"
+        description=""
+        if [ -f "$manifest" ]; then
+            version=$(grep -o '"version"[[:space:]]*:[[:space:]]*"[^"]*"' "$manifest" | head -1 | sed 's/.*"\([^"]*\)"$/\1/')
+            category=$(grep -o '"category"[[:space:]]*:[[:space:]]*"[^"]*"' "$manifest" | head -1 | sed 's/.*"\([^"]*\)"$/\1/')
+            description=$(grep -o '"description"[[:space:]]*:[[:space:]]*"[^"]*"' "$manifest" | head -1 | sed 's/.*"\([^"]*\)"$/\1/')
+        fi
+        mysql_cmd -e "
+            INSERT INTO atom_plugin (name, class_name, version, is_enabled, category, description, created_at, updated_at)
+            VALUES ('$plugin_name', '$class_name', '$version', 1, '${category:-general}', '$(echo "$description" | sed "s/'/''/g")', NOW(), NOW())
+            ON DUPLICATE KEY UPDATE is_enabled = 1, version = IF(VALUES(version) != '', VALUES(version), version), updated_at = NOW();
+        " 2>/dev/null
+        ADDITIONAL=$((ADDITIONAL + 1))
+    fi
+done
+echo -e "  ${GREEN}✓${NC} $ADDITIONAL additional plugins re-registered"
+
+# =============================================================================
+# Step 3: Sync plugin versions from extension.json
+# =============================================================================
+echo ""
+echo -e "${BLUE}Step 3: Syncing plugin versions...${NC}"
+
+SYNCED=0
+for plugin_dir in ${AHG_PLUGINS}/*Plugin; do
+    if [ -d "$plugin_dir" ]; then
+        plugin_name=$(basename "$plugin_dir")
+        manifest="${plugin_dir}/extension.json"
+        if [ -f "$manifest" ]; then
+            version=$(grep -o '"version"[[:space:]]*:[[:space:]]*"[^"]*"' "$manifest" | head -1 | sed 's/.*"\([^"]*\)"$/\1/')
+            if [ -n "$version" ]; then
+                mysql_cmd -e "UPDATE atom_plugin SET version = '$version' WHERE name = '$plugin_name' AND (version IS NULL OR version = '' OR version != '$version');" 2>/dev/null || true
+                SYNCED=$((SYNCED + 1))
+            fi
+        fi
+    fi
+done
+echo -e "  ${GREEN}✓${NC} $SYNCED plugin versions synced"
+
+# =============================================================================
+# Step 4: Patch QubitMetadataRoute for GLAM sector support
+# =============================================================================
+echo ""
+echo -e "${BLUE}Step 4: Patching QubitMetadataRoute...${NC}"
+
+ROUTE_FILE="${ATOM_ROOT}/lib/routing/QubitMetadataRoute.class.php"
+if [ -f "$ROUTE_FILE" ]; then
+    if ! grep -q "ahgLibraryPlugin\|'library' => 'library'" "$ROUTE_FILE"; then
+        sed -i "/'isdf' => 'sfIsdfPlugin',/a\        'library' => 'library'," "$ROUTE_FILE"
+        sed -i "/'isdf' => 'sfIsdfPlugin',/a\        'gallery' => 'gallery'," "$ROUTE_FILE"
+        sed -i "/'isdf' => 'sfIsdfPlugin',/a\        'dam' => 'dam'," "$ROUTE_FILE"
+        sed -i "/'isdf' => 'sfIsdfPlugin',/a\        'museum' => 'museum'," "$ROUTE_FILE"
+        echo -e "  ${GREEN}✓${NC} Added GLAM plugins to METADATA_PLUGINS"
+    else
+        echo -e "  ${GREEN}✓${NC} GLAM plugins already in METADATA_PLUGINS"
+    fi
+    if ! grep -q "museum.*dam.*gallery.*library" "$ROUTE_FILE"; then
+        sed -i "s/\['isad', 'dc', 'mods', 'rad', 'ead', 'dacs'\]/['isad', 'dc', 'mods', 'rad', 'ead', 'dacs', 'museum', 'dam', 'gallery', 'library']/" "$ROUTE_FILE"
+        echo -e "  ${GREEN}✓${NC} Added GLAM to getActionParameter"
+    else
+        echo -e "  ${GREEN}✓${NC} GLAM already in getActionParameter"
+    fi
+else
+    echo -e "  ${YELLOW}⚠${NC} QubitMetadataRoute.class.php not found"
+fi
+
+# =============================================================================
+# Step 5: Re-run plugin install.sql files (optional, --all flag)
+# =============================================================================
+if [ "$1" = "--all" ]; then
+    echo ""
+    echo -e "${BLUE}Step 5: Re-running plugin install.sql files...${NC}"
+
+    for symlink in ${ATOM_ROOT}/plugins/ahg*Plugin; do
+        if [ -L "$symlink" ]; then
+            plugin_name=$(basename "$symlink")
+            DB_SQL="${AHG_PLUGINS}/${plugin_name}/database/install.sql"
+            if [ -f "$DB_SQL" ]; then
+                echo -e "  ${YELLOW}→${NC} Loading $plugin_name..."
+                if mysql_cmd_file "$DB_SQL" 2>/dev/null; then
+                    echo -e "  ${GREEN}✓${NC} $plugin_name"
+                else
+                    echo -e "  ${YELLOW}⚠${NC} $plugin_name (warnings, may be expected)"
+                fi
+            fi
+        fi
+    done
+fi
+
+# =============================================================================
+# Step 6: Clear caches
+# =============================================================================
+echo ""
+echo -e "${BLUE}Step 6: Clearing caches...${NC}"
+
+rm -rf "${ATOM_ROOT}/cache/"*
+echo -e "  ${GREEN}✓${NC} Symfony cache cleared"
+
+# =============================================================================
+# Complete
+# =============================================================================
+echo ""
+echo -e "${GREEN}=============================================="
+echo "  Post-Restore Recovery Complete!"
+echo "==============================================${NC}"
+echo ""
+echo "Remaining steps (run manually):"
+echo "  1. sudo systemctl restart php8.3-fpm"
+echo "  2. php bin/atom search:populate          (rebuild Elasticsearch)"
+echo "  3. php symfony ahg:refresh-facet-cache   (rebuild display facets)"
+echo "  4. php symfony display:auto-detect        (re-detect GLAM types)"
+echo ""
+TOTAL=$(mysql_cmd -N -e "SELECT COUNT(*) FROM atom_plugin WHERE is_enabled = 1;" 2>/dev/null || echo "?")
+echo -e "Enabled plugins: ${GREEN}${TOTAL}${NC}"
+echo ""

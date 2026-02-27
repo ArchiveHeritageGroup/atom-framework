@@ -326,7 +326,7 @@ class FilterService
     {
         $fieldMap = [
             'date' => 'event.start_date',
-            'repository' => 'information_object.repository_id',
+            'repository' => 'io.repository_id',
         ];
 
         $field = $fieldMap[$filter->source_reference] ?? null;
