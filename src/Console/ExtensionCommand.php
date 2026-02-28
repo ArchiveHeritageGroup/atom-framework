@@ -1017,7 +1017,7 @@ class ExtensionCommand
                 if (is_dir($ahgPluginsPath . '/.git')) {
                     $this->info('Updating atom-ahg-plugins repository...');
                     $gitOutput = [];
-                    exec("cd {$ahgPluginsPath} && git pull origin main 2>&1", $gitOutput, $gitCode);
+                    exec('cd ' . escapeshellarg($ahgPluginsPath) . ' && git pull origin main 2>&1', $gitOutput, $gitCode);
                     if ($gitCode === 0) {
                         $this->success('Repository updated');
                     } else {
@@ -1465,12 +1465,12 @@ class ExtensionCommand
         $output = [];
         $returnCode = 0;
         
-        exec("cd {$repoPath} && git fetch origin 2>&1", $output, $returnCode);
+        exec('cd ' . escapeshellarg($repoPath) . ' && git fetch origin 2>&1', $output, $returnCode);
         if ($returnCode !== 0) {
             return false;
         }
-        
-        exec("cd {$repoPath} && git pull origin main 2>&1", $output, $returnCode);
+
+        exec('cd ' . escapeshellarg($repoPath) . ' && git pull origin main 2>&1', $output, $returnCode);
         return $returnCode === 0;
     }
     protected function audit(array $args): int

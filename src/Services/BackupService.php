@@ -428,18 +428,12 @@ class BackupService
         $sqlFile = $dbDir . '/' . $database . '.sql';
         $errorFile = $dbDir . '/mysqldump_errors.log';
         
-        $passwordArg = '';
-        if (!empty($password)) {
-            $passwordArg = "-p'" . addslashes($password) . "'";
-        }
-        
-        $cmd = sprintf(
-            "mysqldump -h '%s' -P '%s' -u '%s' %s --single-transaction --routines --triggers --events --opt --quick --max_allowed_packet=512M '%s' > '%s' 2>'%s'",
-            addslashes($host),
-            addslashes($port),
-            addslashes($username),
-            $passwordArg,
-            addslashes($database),
+        $cmd = ShellCommandService::buildMysqldumpCommand(
+            $host,
+            $port,
+            $username,
+            $password,
+            $database,
             $sqlFile,
             $errorFile
         );
@@ -528,18 +522,19 @@ class BackupService
             $customPlugins = json_decode($customPlugins, true) ?? [];
         }
 
-        $includeArgs = '';
+        $safePlugins = [];
         foreach ($customPlugins as $plugin) {
             if (is_dir($pluginsDir . '/' . $plugin)) {
-                $includeArgs .= " '" . addslashes($plugin) . "'";
+                $safePlugins[] = $plugin;
             }
         }
 
-        if (empty(trim($includeArgs))) {
+        if (empty($safePlugins)) {
             return ['status' => 'skipped', 'reason' => 'no custom plugins found'];
         }
 
-        $cmd = "tar -czf '{$tarFile}' -C '{$pluginsDir}' {$includeArgs} 2>/dev/null";
+        $includeArgs = implode(' ', array_map('escapeshellarg', $safePlugins));
+        $cmd = 'tar -czf ' . escapeshellarg($tarFile) . ' -C ' . escapeshellarg($pluginsDir) . ' ' . $includeArgs . ' 2>/dev/null';
         exec($cmd, $output, $returnCode);
 
         return [
@@ -672,7 +667,7 @@ class BackupService
         }
 
         $this->log("Deleting backup: {$backupId}");
-        exec("rm -rf '" . addslashes($backupDir) . "'", $output, $returnCode);
+        exec("rm -rf " . escapeshellarg($backupDir), $output, $returnCode);
         
         try {
             DB::table('backup_history')->where('backup_id', $backupId)->delete();
@@ -717,19 +712,14 @@ class BackupService
         $password = $this->settings->get('db_password', '');
         $port = $this->settings->get('db_port', 3306);
 
-        $passwordArg = '';
-        if (!empty($password)) {
-            $passwordArg = "-p'" . addslashes($password) . "'";
-        }
-
-        $cmd = sprintf(
-            "gunzip -c '%s' | mysql -h '%s' -P '%s' -u '%s' %s '%s' 2>&1",
+        $cmd = ShellCommandService::buildMysqlRestoreCommand(
+            $host,
+            $port,
+            $username,
+            $password,
+            $database,
             $sqlGzFile,
-            addslashes($host),
-            addslashes($port),
-            addslashes($username),
-            $passwordArg,
-            addslashes($database)
+            true
         );
 
         exec($cmd, $output, $returnCode);
@@ -814,35 +804,18 @@ class BackupService
         $password = $dbConfig['db_password'] ?? '';
         $port = $dbConfig['db_port'] ?? 3306;
 
-        $passwordArg = '';
-        if (!empty($password)) {
-            $passwordArg = "-p'" . addslashes($password) . "'";
-        }
-
         // Check if gzipped
-        $isGzipped = preg_match('/\.gz$/i', $sqlFile);
+        $isGzipped = (bool) preg_match('/\.gz$/i', $sqlFile);
 
-        if ($isGzipped) {
-            $cmd = sprintf(
-                "gunzip -c %s | mysql -h %s -P %s -u %s %s %s 2>&1",
-                escapeshellarg($sqlFile),
-                escapeshellarg($host),
-                escapeshellarg($port),
-                escapeshellarg($username),
-                $passwordArg,
-                escapeshellarg($database)
-            );
-        } else {
-            $cmd = sprintf(
-                "mysql -h %s -P %s -u %s %s %s < %s 2>&1",
-                escapeshellarg($host),
-                escapeshellarg($port),
-                escapeshellarg($username),
-                $passwordArg,
-                escapeshellarg($database),
-                escapeshellarg($sqlFile)
-            );
-        }
+        $cmd = ShellCommandService::buildMysqlRestoreCommand(
+            $host,
+            $port,
+            $username,
+            $password,
+            $database,
+            $sqlFile,
+            $isGzipped
+        );
 
         exec($cmd, $output, $returnCode);
 

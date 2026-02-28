@@ -29,7 +29,7 @@ class PluginFetcher
             $this->cleanup();
             return false;
         }
-        exec("cp -r {$sourcePath} {$targetPath} 2>&1", $output, $code);
+        exec('cp -r ' . escapeshellarg($sourcePath) . ' ' . escapeshellarg($targetPath) . ' 2>&1', $output, $code);
         $this->cleanup();
         return $code === 0;
     }
@@ -150,13 +150,13 @@ class PluginFetcher
             return;
         }
         $this->tempPath = '/tmp/ahg-plugins-' . getmypid();
-        exec("git clone --depth 1 {$this->repoUrl} {$this->tempPath} 2>/dev/null");
+        exec('git clone --depth 1 ' . escapeshellarg($this->repoUrl) . ' ' . escapeshellarg($this->tempPath) . ' 2>/dev/null');
     }
 
     protected function cleanup(): void
     {
         if ($this->tempPath && is_dir($this->tempPath)) {
-            exec("rm -rf {$this->tempPath}");
+            exec('rm -rf ' . escapeshellarg($this->tempPath));
             $this->tempPath = null;
         }
     }

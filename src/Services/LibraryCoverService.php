@@ -104,49 +104,24 @@ class LibraryCoverService
             return false;
         }
 
-        $ch = curl_init($url);
-        curl_setopt_array($ch, [
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_FOLLOWLOCATION => true,
-            CURLOPT_NOBODY => true,
-            CURLOPT_TIMEOUT => 10,
-            CURLOPT_SSL_VERIFYPEER => false,
-        ]);
-        curl_exec($ch);
-        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        $contentLength = curl_getinfo($ch, CURLINFO_CONTENT_LENGTH_DOWNLOAD);
-        curl_close($ch);
+        $response = HttpClientService::get($url, [], ['timeout' => 10]);
 
         // Open Library returns a 1x1 pixel for missing covers
-        return $httpCode === 200 && $contentLength > 1000;
+        return $response['status'] === 200 && strlen($response['body']) > 1000;
     }
 
     /**
-     * Download image from URL
+     * Download image from URL using HttpClientService for SSRF protection.
      */
     private function downloadImage(string $url): ?string
     {
-        $ch = curl_init($url);
-        curl_setopt_array($ch, [
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_FOLLOWLOCATION => true,
-            CURLOPT_MAXREDIRS => 5,
-            CURLOPT_TIMEOUT => 30,
-            CURLOPT_SSL_VERIFYPEER => false,
-            CURLOPT_USERAGENT => 'AtoM/2.10 (Archive Management System)',
-        ]);
+        $response = HttpClientService::get($url, [], ['timeout' => 30]);
 
-        $data = curl_exec($ch);
-        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        $contentLength = strlen($data);
-        curl_close($ch);
-
-        // Open Library returns a tiny 1x1 pixel for missing covers
-        if ($httpCode !== 200 || empty($data) || $contentLength < 1000) {
+        if ($response['status'] !== 200 || empty($response['body']) || strlen($response['body']) < 1000) {
             return null;
         }
 
-        return $data;
+        return $response['body'];
     }
 
     /**

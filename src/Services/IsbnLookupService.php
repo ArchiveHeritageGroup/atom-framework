@@ -193,21 +193,9 @@ class IsbnLookupService
 
     private function httpGet(string $url): ?string
     {
-        $ch = curl_init();
-        curl_setopt_array($ch, [
-            CURLOPT_URL => $url,
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_TIMEOUT => 10,
-            CURLOPT_FOLLOWLOCATION => true,
-            CURLOPT_USERAGENT => 'AtoM-AHG-Framework/1.0',
-            CURLOPT_SSL_VERIFYPEER => true,
-        ]);
+        $response = HttpClientService::get($url, [], ['timeout' => 10]);
 
-        $response = curl_exec($ch);
-        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        curl_close($ch);
-
-        return ($httpCode === 200 && $response !== false) ? $response : null;
+        return ($response['status'] === 200 && !empty($response['body'])) ? $response['body'] : null;
     }
 
     public function mapToLibraryFields(array $lookupResult): array

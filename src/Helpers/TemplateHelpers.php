@@ -542,3 +542,35 @@ if (!function_exists('esc_raw')) {
         return $value;
     }
 }
+
+// ─── CSRF Protection Helpers ────────────────────────────────────────────
+
+if (!function_exists('csrf_field')) {
+    /**
+     * Render a hidden input field containing the CSRF token.
+     */
+    function csrf_field(): string
+    {
+        return \AtomFramework\Services\CsrfService::renderHiddenField();
+    }
+}
+
+if (!function_exists('csrf_token')) {
+    /**
+     * Get the current CSRF token string.
+     */
+    function csrf_token(): string
+    {
+        return \AtomFramework\Services\CsrfService::generateToken();
+    }
+}
+
+if (!function_exists('csrf_meta')) {
+    /**
+     * Render a meta tag containing the CSRF token for JS access.
+     */
+    function csrf_meta(): string
+    {
+        return \AtomFramework\Services\CsrfService::getMetaTag();
+    }
+}

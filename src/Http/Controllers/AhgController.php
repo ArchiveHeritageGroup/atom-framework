@@ -312,6 +312,19 @@ if (!class_exists(__NAMESPACE__ . '\\AhgControllerBase', false)) {
  */
 class AhgController extends AhgControllerBase
 {
+    // ─── CSRF Protection ────────────────────────────────────────────
+
+    /**
+     * Whether CSRF protection is enabled for this controller.
+     * Set to false in subclasses to disable (e.g., API controllers).
+     */
+    protected bool $csrfProtection = true;
+
+    /**
+     * CSRF token for use in templates (set during enforceCsrf).
+     */
+    public string $csrf_token = '';
+
     // ─── Lifecycle Hooks ────────────────────────────────────────────
 
     /**
@@ -323,6 +336,32 @@ class AhgController extends AhgControllerBase
     public function boot(): void
     {
         // Override in subclass if needed
+    }
+
+    /**
+     * Enforce CSRF protection if enabled.
+     *
+     * Called automatically during dispatch. Generates a token for templates
+     * and validates incoming tokens on mutating requests.
+     */
+    protected function enforceCsrf(): void
+    {
+        if (!$this->csrfProtection) {
+            return;
+        }
+
+        // Always generate a token for template use
+        $this->csrf_token = \AtomFramework\Services\CsrfService::generateToken();
+
+        // Enforce on mutating requests
+        $allowed = \AtomFramework\Services\CsrfService::enforce();
+        if (!$allowed) {
+            if (class_exists(\Symfony\Component\HttpFoundation\Response::class)) {
+                http_response_code(403);
+                echo json_encode(['error' => 'CSRF token validation failed']);
+                exit;
+            }
+        }
     }
 
     /**
@@ -365,6 +404,9 @@ class AhgController extends AhgControllerBase
 
         // Run boot hook
         $this->boot();
+
+        // Enforce CSRF protection
+        $this->enforceCsrf();
 
         // Check for redirect/forward set during boot
         if (!class_exists('sfActions', false)) {
