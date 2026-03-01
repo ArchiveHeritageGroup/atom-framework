@@ -1,0 +1,26 @@
+[Unit]
+Description=AtoM Heratio Queue Worker (%i)
+After=network.target mysql.service
+Wants=mysql.service
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/usr/share/nginx/archive
+ExecStart=/usr/bin/php /usr/share/nginx/archive/bin/atom queue:work --queue=%i --sleep=3 --max-memory=256
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=atom-queue-%i
+
+# Resource limits
+MemoryMax=512M
+TasksMax=10
+
+# Environment
+Environment=ATOM_ROOT=/usr/share/nginx/archive
+
+[Install]
+WantedBy=multi-user.target

@@ -88,6 +88,8 @@ git commit -m "Description of changes"
 - [ ] Admin dashboard loads without errors
 - [ ] Key plugin features functional
 - [ ] No JavaScript console errors (CSP violations)
+- [ ] Queue worker running: `sudo systemctl status atom-queue-worker@default`
+- [ ] Queue status healthy: `php atom-framework/bin/atom queue:status`
 
 ### ANC Instance (if applicable)
 - [ ] Pull to ANC instance: `cd /usr/share/nginx/atom/atom-framework && git pull origin main`

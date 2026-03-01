@@ -591,4 +591,22 @@ class LandingPageRepository
                 'updated_at' => date('Y-m-d H:i:s')
             ]) > 0;
     }
+
+    /**
+     * Reorder blocks within a column
+     */
+    public function reorderColumnBlocks(?int $parentBlockId, ?string $columnSlot, array $order): bool
+    {
+        foreach ($order as $position => $blockId) {
+            DB::table($this->blockTable)
+                ->where('id', (int)$blockId)
+                ->where('parent_block_id', $parentBlockId)
+                ->update([
+                    'position' => $position,
+                    'updated_at' => date('Y-m-d H:i:s')
+                ]);
+        }
+
+        return true;
+    }
 }
