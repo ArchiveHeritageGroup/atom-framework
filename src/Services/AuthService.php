@@ -3,6 +3,7 @@
 namespace AtomFramework\Services;
 
 use AtomExtensions\Helpers\CultureHelper;
+use AtomFramework\Core\Security\LoginSecurityService;
 use Illuminate\Database\Capsule\Manager as DB;
 
 /**
@@ -17,6 +18,9 @@ use Illuminate\Database\Capsule\Manager as DB;
  *
  * The inner SHA1 layer is legacy; the outer Argon2i/Bcrypt layer was added
  * in AtoM 2.x. Both layers must be checked for backward compatibility.
+ *
+ * Includes brute force protection via LoginSecurityService — accounts are
+ * locked after 5 failed attempts within 15 minutes.
  */
 class AuthService
 {
@@ -24,19 +28,39 @@ class AuthService
      * Authenticate a user by email or username.
      *
      * Tries email first, then username (matching QubitUser::checkCredentials order).
+     * Enforces account lockout after excessive failed attempts.
      *
      * @return object|null User object on success, null on failure
      */
-    public static function authenticate(string $emailOrUsername, string $password): ?object
+    public static function authenticate(string $emailOrUsername, string $password, ?string $ipAddress = null): ?object
     {
+        $ip = $ipAddress ?? ($_SERVER['REMOTE_ADDR'] ?? '0.0.0.0');
+
+        // Check account lockout before attempting authentication
+        if (LoginSecurityService::isLockedOut($emailOrUsername, $ip)) {
+            $remaining = LoginSecurityService::lockoutRemaining($emailOrUsername);
+            error_log(sprintf(
+                'Login blocked (account locked): %s from %s — unlocks in %d seconds',
+                $emailOrUsername,
+                $ip,
+                $remaining
+            ));
+
+            return null;
+        }
+
         // Try email first
         $user = self::findUser($emailOrUsername);
 
         if (!$user) {
+            LoginSecurityService::recordAttempt($emailOrUsername, $ip, false);
+
             return null;
         }
 
         if (!$user->active) {
+            LoginSecurityService::recordAttempt($emailOrUsername, $ip, false);
+
             return null;
         }
 
@@ -44,8 +68,13 @@ class AuthService
         $sha1Hash = sha1($user->salt . $password);
 
         if (!password_verify($sha1Hash, $user->password_hash)) {
+            LoginSecurityService::recordAttempt($emailOrUsername, $ip, false);
+
             return null;
         }
+
+        // Success — clear any previous failures
+        LoginSecurityService::recordAttempt($emailOrUsername, $ip, true);
 
         return $user;
     }

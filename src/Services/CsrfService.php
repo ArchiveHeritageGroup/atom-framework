@@ -9,8 +9,8 @@ namespace AtomFramework\Services;
  * Tokens rotate after 1 hour. Validation uses constant-time comparison.
  *
  * Enforcement modes (configurable via ahg_settings key 'csrf_enforcement'):
- *   - 'log'     : Log violations but allow request (default, safe rollout)
- *   - 'enforce' : Block requests with invalid/missing tokens (403)
+ *   - 'enforce' : Block requests with invalid/missing tokens (403) [default]
+ *   - 'log'     : Log violations but allow request (for debugging)
  *   - 'off'     : Disable CSRF checking entirely
  */
 class CsrfService
@@ -169,7 +169,7 @@ class CsrfService
         // Try AhgSettingsService if available
         if (class_exists(AhgSettingsService::class)) {
             try {
-                $mode = AhgSettingsService::get('csrf_enforcement', 'log');
+                $mode = AhgSettingsService::get('csrf_enforcement', 'enforce');
                 if (in_array($mode, ['log', 'enforce', 'off'], true)) {
                     return $mode;
                 }
@@ -178,7 +178,7 @@ class CsrfService
             }
         }
 
-        return 'log';
+        return 'enforce';
     }
 
     /**
