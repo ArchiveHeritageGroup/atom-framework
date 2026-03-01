@@ -68,6 +68,11 @@ class AccessFilterService
         return date('Y-m-d');
     }
 
+    public const DENIED_STAR_PROPERTY = 'star_property';
+
+    /** Write actions that are subject to Bell-LaPadula Star Property */
+    private const WRITE_ACTIONS = ['edit', 'create', 'update', 'delete', 'publish'];
+
     /**
      * Check if user can access a specific object
      */
@@ -85,7 +90,7 @@ class AccessFilterService
 
         $userContext = $this->getUserContext($userId);
 
-        // 1. Check Security Classification
+        // 1. Check Security Classification (Simple Security Property — no read-up)
         $classificationCheck = $this->checkSecurityClassification($objectId, $userContext);
         if (!$classificationCheck['granted']) {
             $result['granted'] = false;
@@ -95,6 +100,21 @@ class AccessFilterService
             return $result;
         }
         $result['classification'] = $classificationCheck['classification'];
+
+        // 1b. Bell-LaPadula Star Property — no write-down
+        // A user with high clearance cannot write to objects at a lower classification
+        // level. This prevents accidental leakage of classified information into
+        // lower-classification records.
+        if (in_array($action, self::WRITE_ACTIONS, true) && !$userContext['is_administrator']) {
+            $starCheck = $this->checkStarProperty($objectId, $userContext);
+            if (!$starCheck['granted']) {
+                $result['granted'] = false;
+                $result['level'] = self::ACCESS_DENIED;
+                $result['reasons'][] = self::DENIED_STAR_PROPERTY;
+                $result['classification'] = $starCheck['classification'];
+                return $result;
+            }
+        }
 
         // 2. Check Donor Restrictions
         $donorCheck = $this->checkDonorRestrictions($objectId, $userContext, $action);
@@ -204,6 +224,51 @@ class AccessFilterService
             'user_clearance' => $userContext['clearance_level'],
             'required_clearance' => $classification->level,
         ];
+    }
+
+    /**
+     * Bell-LaPadula Star Property — prevent writing to lower classification levels.
+     *
+     * A user with TOP SECRET clearance cannot write to a CONFIDENTIAL or PUBLIC
+     * object, because they might inadvertently embed classified information into
+     * a record that lower-clearance users can read.
+     *
+     * Exception: objects with no classification are unrestricted for writes.
+     * Exception: administrators are exempt (handled by caller).
+     */
+    private function checkStarProperty(int $objectId, array $userContext): array
+    {
+        $classification = DB::table('object_security_classification as osc')
+            ->join('security_classification as sc', 'sc.id', '=', 'osc.classification_id')
+            ->where('osc.object_id', $objectId)
+            ->where('osc.active', 1)
+            ->select('sc.id', 'sc.code', 'sc.level', 'sc.name')
+            ->first();
+
+        // No classification on the object — write is allowed
+        if (!$classification) {
+            return ['granted' => true, 'classification' => null];
+        }
+
+        $userLevel = $userContext['clearance_level'];
+        $objectLevel = $classification->level;
+
+        // Star Property: user clearance must match or be below the object level
+        // (no write-down). A user at level 5 cannot write to a level 2 object.
+        if ($userLevel > $objectLevel) {
+            return [
+                'granted' => false,
+                'classification' => (array) $classification,
+                'reason' => sprintf(
+                    'Star Property violation: user clearance %d > object classification %d (%s). Cannot write down.',
+                    $userLevel,
+                    $objectLevel,
+                    $classification->code
+                ),
+            ];
+        }
+
+        return ['granted' => true, 'classification' => (array) $classification];
     }
 
     /**

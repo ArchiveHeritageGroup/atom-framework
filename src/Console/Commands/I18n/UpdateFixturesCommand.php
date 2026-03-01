@@ -136,7 +136,7 @@ EOF;
     private static function getTargetCulture(string $filename): ?string
     {
         libxml_use_internal_errors(true);
-        if (!$xml = simplexml_load_file($filename)) {
+        if (!$xml = simplexml_load_file($filename, \SimpleXMLElement::class, LIBXML_NONET | LIBXML_NOCDATA)) {
             return null;
         }
         libxml_use_internal_errors(false);

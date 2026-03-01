@@ -48,7 +48,8 @@ EOF;
         $doc = new \DOMDocument();
         $doc->formatOutput = true;
         $doc->preserveWhiteSpace = false;
-        $doc->load($filename);
+        $doc->substituteEntities = false;
+        $doc->load($filename, LIBXML_NONET | LIBXML_NOCDATA);
 
         $xpath = new \DOMXPath($doc);
 
