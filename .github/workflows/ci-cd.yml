@@ -34,6 +34,39 @@ jobs:
       - run: composer install --prefer-dist --no-progress
       - run: find src lib -name "*.php" -print0 | xargs -0 -n1 php -l 2>/dev/null || true
 
+  security:
+    name: Security Scan
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ env.PHP_VERSION }}
+          tools: composer:v2
+      - name: Composer audit
+        run: |
+          if [ -f composer.json ]; then
+            composer install --prefer-dist --no-progress
+            composer audit --format=plain || true
+          fi
+      - name: Secrets pattern scan
+        run: |
+          echo "Scanning for potential secrets..."
+          PATTERNS='(password|secret|api_key|private_key|token)\s*[=:]\s*["\x27][^\s]{8,}'
+          FOUND=$(grep -rniE "$PATTERNS" --include="*.php" --include="*.env" --include="*.json" \
+            --exclude-dir=vendor --exclude-dir=node_modules --exclude-dir=.git \
+            --exclude="*.md" --exclude="CLAUDE.md" . 2>/dev/null | \
+            grep -v 'sfConfig::get' | grep -v 'getParameter' | grep -v '// ' | \
+            grep -v 'EXAMPLE' | grep -v 'placeholder' || true)
+          if [ -n "$FOUND" ]; then
+            echo "::warning::Potential secrets found in source files:"
+            echo "$FOUND"
+          else
+            echo "No potential secrets detected."
+          fi
+      - name: PHP syntax check
+        run: find src lib -name "*.php" -print0 | xargs -0 -n1 php -l 2>/dev/null || true
+
   build-packages:
     name: Build Packages
     runs-on: ubuntu-22.04

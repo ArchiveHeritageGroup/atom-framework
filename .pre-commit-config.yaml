@@ -1,0 +1,21 @@
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.5.0
+    hooks:
+      - id: detect-private-key
+      - id: check-added-large-files
+        args: ['--maxkb=1024']
+      - id: no-commit-to-branch
+        args: ['--branch=main', '--branch=master']
+      - id: check-merge-conflict
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+
+  - repo: local
+    hooks:
+      - id: php-lint
+        name: PHP Lint
+        entry: bash -c 'for f in "$@"; do php -l "$f" 2>/dev/null || exit 1; done' --
+        language: system
+        files: '\.php$'
+        types: [file]
