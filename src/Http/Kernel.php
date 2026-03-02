@@ -15,6 +15,7 @@ use AtomFramework\Http\Middleware\IpWhitelistMiddleware;
 use AtomFramework\Http\Middleware\LimitResultsMiddleware;
 use AtomFramework\Http\Middleware\LoadSettingsMiddleware;
 use AtomFramework\Http\Middleware\MetaMiddleware;
+use AtomFramework\Http\Middleware\RequestIdMiddleware;
 use AtomFramework\Http\Middleware\SecurityHeadersMiddleware;
 use AtomFramework\Http\Middleware\SessionMiddleware;
 use AtomFramework\Http\Middleware\TransactionMiddleware;
@@ -60,13 +61,14 @@ class Kernel
 
     /** @var string[] Middleware stack in execution order */
     private array $middleware = [
-        SecurityHeadersMiddleware::class, // 1. Security headers (HSTS, X-Frame, etc.)
-        SessionMiddleware::class,         // 2. Start PHP session (shared with Symfony)
-        AuthMiddleware::class,            // 3. Validate auth, handle timeout, session fixation
-        LoadSettingsMiddleware::class,    // 4. Load app settings
-        CspMiddleware::class,            // 5. CSP nonce
-        MetaMiddleware::class,           // 6. Meta info
-        LimitResultsMiddleware::class,   // 7. Result limits
+        RequestIdMiddleware::class,       // 1. Assign/propagate request correlation ID
+        SecurityHeadersMiddleware::class, // 2. Security headers (HSTS, X-Frame, etc.)
+        SessionMiddleware::class,         // 3. Start PHP session (shared with Symfony)
+        AuthMiddleware::class,            // 4. Validate auth, handle timeout, session fixation
+        LoadSettingsMiddleware::class,    // 5. Load app settings
+        CspMiddleware::class,            // 6. CSP nonce
+        MetaMiddleware::class,           // 7. Meta info
+        LimitResultsMiddleware::class,   // 8. Result limits
     ];
 
     public function __construct(?string $rootDir = null)
