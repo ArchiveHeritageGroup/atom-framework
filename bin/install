@@ -323,6 +323,33 @@ else
     echo "  ⚠ QubitAcl patch not found"
 fi
 
+# Apply base AtoM app patches (templates + actions)
+PATCH_APPS="${FRAMEWORK_PATH}/patches/apps"
+if [ -d "${PATCH_APPS}" ]; then
+    # Modern carousel template (replaces old ImageFlow coverflow)
+    if [ -f "${PATCH_APPS}/qubit/modules/digitalobject/templates/_imageflow.php" ]; then
+        cp -f "${PATCH_APPS}/qubit/modules/digitalobject/templates/_imageflow.php" \
+              "${ATOM_ROOT}/apps/qubit/modules/digitalobject/templates/_imageflow.php"
+        echo "  ✓ Applied imageflow carousel patch (Slick/B5)"
+    fi
+
+    # Login security (brute-force lockout)
+    if [ -f "${PATCH_APPS}/qubit/modules/user/actions/loginAction.class.php" ]; then
+        cp -f "${PATCH_APPS}/qubit/modules/user/actions/loginAction.class.php" \
+              "${ATOM_ROOT}/apps/qubit/modules/user/actions/loginAction.class.php"
+        echo "  ✓ Applied login security patch (lockout)"
+    fi
+
+    # Password policy (reuse prevention + history)
+    if [ -f "${PATCH_APPS}/qubit/modules/user/actions/passwordEditAction.class.php" ]; then
+        cp -f "${PATCH_APPS}/qubit/modules/user/actions/passwordEditAction.class.php" \
+              "${ATOM_ROOT}/apps/qubit/modules/user/actions/passwordEditAction.class.php"
+        echo "  ✓ Applied password policy patch (reuse prevention)"
+    fi
+else
+    echo "  ⚠ No app patches found"
+fi
+
 # =============================================================================
 # Step 12: Copy dist assets (icons)
 # =============================================================================
