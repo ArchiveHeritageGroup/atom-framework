@@ -75,6 +75,19 @@ fi
 echo -e "${GREEN}✓ Database tables created${NC}"
 
 # =============================================================================
+# Step 1b: Schema upgrades (safe ALTERs for existing deployments)
+# =============================================================================
+UPGRADE_SQL="${FRAMEWORK_PATH}/database/schema_upgrades.sql"
+if [ -f "$UPGRADE_SQL" ]; then
+    echo -e "  ${YELLOW}→${NC} Running schema upgrades..."
+    if mysql_cmd_file "$UPGRADE_SQL"; then
+        echo -e "  ${GREEN}✓${NC} Schema upgrades applied"
+    else
+        echo -e "  ${YELLOW}⚠${NC} Schema upgrades had warnings (may be expected)"
+    fi
+fi
+
+# =============================================================================
 # Step 2: Create plugin symlinks
 # =============================================================================
 echo ""
