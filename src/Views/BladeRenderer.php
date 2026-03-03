@@ -35,10 +35,21 @@ class BladeRenderer
         // Load helper functions
         require_once __DIR__ . '/blade_helpers.php';
 
-        // Load shims for Symfony helper functions (get_partial, url_for, etc.)
-        // that may not be available in Blade's compiled PHP scope.
-        // All shim functions use function_exists() guards — safe to load always.
-        require_once __DIR__ . '/blade_shims.php';
+        // Load standalone shims ONLY in Heratio standalone or CLI mode.
+        // Symfony's helpers (HelperHelper.php etc.) lack function_exists()
+        // guards, so loading blade_shims.php first causes redeclaration errors.
+        if (defined('HERATIO_STANDALONE') || defined('ATOM_CLI_MODE')) {
+            require_once __DIR__ . '/blade_shims.php';
+        } else {
+            // In Symfony mode, ensure Partial helper is loaded for Blade scope
+            if (class_exists('sfApplicationConfiguration', false)) {
+                try {
+                    \sfApplicationConfiguration::getActive()->loadHelpers(['Partial', 'Url', 'Tag', 'Asset']);
+                } catch (\Throwable $e) {
+                    // Helpers may already be loaded — ignore
+                }
+            }
+        }
 
         // Setup cache path
         $rootDir = class_exists('\sfConfig', false)
