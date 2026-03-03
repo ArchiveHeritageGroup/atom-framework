@@ -44,7 +44,7 @@ class BladeRenderer
             // In Symfony mode, ensure Partial helper is loaded for Blade scope
             if (class_exists('sfApplicationConfiguration', false)) {
                 try {
-                    \sfApplicationConfiguration::getActive()->loadHelpers(['Partial', 'Url', 'Tag', 'Asset']);
+                    \sfApplicationConfiguration::getActive()->loadHelpers(['Partial', 'Url', 'Tag', 'Asset', 'Number', 'Date', 'Escaping']);
                 } catch (\Throwable $e) {
                     // Helpers may already be loaded — ignore
                 }
