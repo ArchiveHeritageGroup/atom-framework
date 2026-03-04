@@ -19,6 +19,12 @@ $compatDir = __DIR__;
 require_once $compatDir . '/QubitModelTrait.php';
 
 // Load all compatibility classes (order matters — dependencies first)
+// Load Propel compatibility stubs (Criteria, BasePeer, QubitPager)
+require_once $compatDir . '/Criteria.php';
+require_once $compatDir . '/PropelColumnConstants.php';
+require_once $compatDir . '/BasePeer.php';
+require_once $compatDir . '/QubitPager.php';
+
 $files = [
     'Qubit.php',
     'QubitSetting.php',
