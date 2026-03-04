@@ -64,6 +64,22 @@ $files = [
     'QubitContactInformation.php',
     'QubitStaticPage.php',
     'QubitRightsHolder.php',
+    // Phase 2 stubs — column constants + lightweight methods for standalone mode
+    'QubitAuditObject.php',
+    'QubitAuditLog.php',
+    'QubitStatus.php',
+    'QubitAclPermission.php',
+    'QubitGrantedRight.php',
+    'QubitJob.php',
+    'QubitFindingAid.php',
+    'QubitFindingAidGenerator.php',
+    'QubitFeedback.php',
+    'QubitRequestToPublish.php',
+    'QubitRequestToPublishI18n.php',
+    'QubitBookoutObject.php',
+    'QubitSearch.php',
+    'QubitCultureFallback.php',
+    'QubitDescription.php',
 ];
 
 foreach ($files as $file) {
