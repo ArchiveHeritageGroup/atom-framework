@@ -58,6 +58,22 @@ if (!function_exists('csp_nonce_attr')) {
     }
 }
 
+if (!function_exists('ahg_config')) {
+    /**
+     * Get an AtoM configuration value via ConfigService.
+     *
+     * Bridge function for Blade templates — replaces direct sfConfig::get() calls.
+     * ConfigService tries app_ prefixed key first, then raw key.
+     *
+     * @param string $key     Config key (without app_ prefix, e.g. 'ui_label_repository')
+     * @param mixed  $default Default value if key not found
+     */
+    function ahg_config(string $key, $default = '')
+    {
+        return \AtomFramework\Services\ConfigService::get($key, $default);
+    }
+}
+
 if (!function_exists('atom_flash')) {
     /**
      * Get a flash message from the Symfony user session.
