@@ -172,7 +172,7 @@ trait QubitModelTrait
      * @param object $row  stdClass from DB query
      * @return static
      */
-    protected static function hydrate(object $row): static
+    public static function hydrate(object $row): static
     {
         $instance = new static();
 

@@ -15,6 +15,20 @@ if (!class_exists('QubitDigitalObject', false)) {
         protected static string $tableName = 'digital_object';
         protected static string $i18nTableName = '';
 
+        // Propel column constants
+        public const ID = 'digital_object.id';
+        public const OBJECT_ID = 'digital_object.object_id';
+        public const PARENT_ID = 'digital_object.parent_id';
+        public const USAGE_ID = 'digital_object.usage_id';
+        public const MEDIA_TYPE_ID = 'digital_object.media_type_id';
+        public const MIME_TYPE = 'digital_object.mime_type';
+        public const BYTE_SIZE = 'digital_object.byte_size';
+        public const CHECKSUM = 'digital_object.checksum';
+        public const CHECKSUM_TYPE = 'digital_object.checksum_type';
+        public const PATH = 'digital_object.path';
+        public const NAME = 'digital_object.name';
+        public const SEQUENCE = 'digital_object.sequence';
+
         // Constants
         public const GENERIC_ICON_DIR = 'generic-icons';
         public const THUMB_MIME_TYPE = 'image/jpeg';

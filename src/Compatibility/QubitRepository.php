@@ -17,6 +17,13 @@ if (!class_exists('QubitRepository', false)) {
 
         public const ROOT_ID = 6;
 
+        // Propel column constants
+        public const ID = 'repository.id';
+        public const IDENTIFIER = 'repository.identifier';
+        public const DESC_STATUS_ID = 'repository.desc_status_id';
+        public const DESC_DETAIL_ID = 'repository.desc_detail_id';
+        public const SOURCE_CULTURE = 'repository.source_culture';
+
         public static function getRoot()
         {
             return self::getById(self::ROOT_ID);

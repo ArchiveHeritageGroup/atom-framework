@@ -17,6 +17,16 @@ if (!class_exists('QubitActor', false)) {
 
         public const ROOT_ID = 3;
 
+        // Propel column constants
+        public const ID = 'actor.id';
+        public const CORPORATE_BODY_IDENTIFIERS = 'actor.corporate_body_identifiers';
+        public const ENTITY_TYPE_ID = 'actor.entity_type_id';
+        public const DESCRIPTION_STATUS_ID = 'actor.description_status_id';
+        public const DESCRIPTION_DETAIL_ID = 'actor.description_detail_id';
+        public const DESCRIPTION_IDENTIFIER = 'actor.description_identifier';
+        public const PARENT_ID = 'actor.parent_id';
+        public const SOURCE_CULTURE = 'actor.source_culture';
+
         public static function getRoot()
         {
             return self::getById(self::ROOT_ID);

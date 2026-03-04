@@ -14,5 +14,8 @@ if (!class_exists('QubitRightsHolder', false)) {
 
         protected static string $tableName = 'rights_holder';
         protected static string $i18nTableName = '';
+
+        // Propel column constants
+        public const ID = 'rights_holder.id';
     }
 }

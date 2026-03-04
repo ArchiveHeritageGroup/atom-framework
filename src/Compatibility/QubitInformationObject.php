@@ -17,6 +17,23 @@ if (!class_exists('QubitInformationObject', false)) {
 
         public const ROOT_ID = 1;
 
+        // Propel column constants
+        public const ID = 'information_object.id';
+        public const IDENTIFIER = 'information_object.identifier';
+        public const OAI_LOCAL_IDENTIFIER = 'information_object.oai_local_identifier';
+        public const LEVEL_OF_DESCRIPTION_ID = 'information_object.level_of_description_id';
+        public const COLLECTION_TYPE_ID = 'information_object.collection_type_id';
+        public const REPOSITORY_ID = 'information_object.repository_id';
+        public const PARENT_ID = 'information_object.parent_id';
+        public const DESCRIPTION_STATUS_ID = 'information_object.description_status_id';
+        public const DESCRIPTION_DETAIL_ID = 'information_object.description_detail_id';
+        public const DESCRIPTION_IDENTIFIER = 'information_object.description_identifier';
+        public const SOURCE_STANDARD = 'information_object.source_standard';
+        public const DISPLAY_STANDARD_ID = 'information_object.display_standard_id';
+        public const LFT = 'information_object.lft';
+        public const RGT = 'information_object.rgt';
+        public const SOURCE_CULTURE = 'information_object.source_culture';
+
         public static function getRoot()
         {
             return self::getById(self::ROOT_ID);

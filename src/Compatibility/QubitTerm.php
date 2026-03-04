@@ -18,6 +18,16 @@ if (!class_exists('QubitTerm', false)) {
         protected static string $tableName = 'term';
         protected static string $i18nTableName = 'term_i18n';
 
+        // Propel column constants
+        public const TABLE_NAME = 'term';
+        public const COL_ID = 'term.id';
+        public const TAXONOMY_ID_COL = 'term.taxonomy_id';
+        public const CODE = 'term.code';
+        public const PARENT_ID_COL = 'term.parent_id';
+        public const LFT = 'term.lft';
+        public const RGT = 'term.rgt';
+        public const SOURCE_CULTURE = 'term.source_culture';
+
         // ROOT term id
         public const ROOT_ID = 110;
 

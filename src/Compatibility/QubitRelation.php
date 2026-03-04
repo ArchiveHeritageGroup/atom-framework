@@ -14,6 +14,15 @@ if (!class_exists('QubitRelation', false)) {
         protected static string $tableName = 'relation';
         protected static string $i18nTableName = '';
 
+        // Propel column constants
+        public const ID = 'relation.id';
+        public const SUBJECT_ID = 'relation.subject_id';
+        public const OBJECT_ID = 'relation.object_id';
+        public const TYPE_ID = 'relation.type_id';
+        public const START_DATE = 'relation.start_date';
+        public const END_DATE = 'relation.end_date';
+        public const SOURCE_CULTURE = 'relation.source_culture';
+
         /**
          * Get relations by subject or object ID, optionally filtered by type.
          *
