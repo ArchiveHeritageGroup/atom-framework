@@ -1,0 +1,42 @@
+#!/usr/bin/env php
+<?php
+
+/**
+ * Heratio CLI — Standalone replacement for `php symfony`.
+ *
+ * Runs plugin tasks (ai:*, preservation:*, doi:*, ingest:*, etc.)
+ * without base AtoM / Symfony 1.x installed.
+ *
+ * Usage:
+ *   php bin/heratio-cli <namespace:task> [--option=value] [arguments]
+ *   php bin/heratio-cli list                    # Show all tasks
+ *   php bin/heratio-cli cc                      # Clear cache
+ *   php bin/heratio-cli ai:ner-extract --slug=X
+ *   php bin/heratio-cli ingest:commit --job-id=123
+ */
+
+// Determine root directory
+$rootDir = getenv('ATOM_ROOT') ?: dirname(__DIR__, 2);
+if (!defined('SF_ROOT_DIR')) { define('SF_ROOT_DIR', $rootDir); }
+if (!defined('ATOM_FRAMEWORK_PATH')) { define('ATOM_FRAMEWORK_PATH', dirname(__DIR__)); }
+
+// Composer autoload
+$autoloadPaths = [
+    dirname(__DIR__) . '/vendor/autoload.php',
+    $rootDir . '/vendor/autoload.php',
+];
+
+foreach ($autoloadPaths as $autoloadPath) {
+    if (file_exists($autoloadPath)) {
+        require_once $autoloadPath;
+        break;
+    }
+}
+
+// Load TaskRunner
+require_once dirname(__DIR__) . '/src/Compatibility/Task/TaskRunner.php';
+
+$runner = new \AtomFramework\Compatibility\Task\TaskRunner($rootDir);
+$exitCode = $runner->run($argv);
+
+exit($exitCode);

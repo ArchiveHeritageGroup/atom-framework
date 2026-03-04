@@ -217,6 +217,13 @@ class AclService
             \sfContext::getInstance()->getController()->forward('admin', 'secure');
             throw new \sfStopException();
         }
+
+        // Fallback: hard redirect if sfContext not available
+        if (!headers_sent()) {
+            $loginUrl = defined('HERATIO_STANDALONE') ? '/auth/login' : '/index.php/user/login';
+            header('Location: ' . $loginUrl, true, 302);
+        }
+        exit;
     }
 
     public static function forwardToSecureAction(): void
@@ -230,6 +237,13 @@ class AclService
             \sfContext::getInstance()->getController()->forward('user', 'login');
             throw new \sfStopException();
         }
+
+        // Fallback: hard redirect if sfContext not available
+        if (!headers_sent()) {
+            $loginUrl = defined('HERATIO_STANDALONE') ? '/auth/login' : '/index.php/user/login';
+            header('Location: ' . $loginUrl, true, 302);
+        }
+        exit;
     }
 
     /**

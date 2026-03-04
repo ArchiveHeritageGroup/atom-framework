@@ -9,8 +9,8 @@ if (defined('ATOM_FRAMEWORK_LOADED')) {
     return;
 }
 define('ATOM_FRAMEWORK_LOADED', true);
-define('ATOM_FRAMEWORK_PATH', __DIR__);
-define('ATOM_ROOT_PATH', dirname(__DIR__));
+if (!defined('ATOM_FRAMEWORK_PATH')) { define('ATOM_FRAMEWORK_PATH', __DIR__); }
+if (!defined('ATOM_ROOT_PATH')) { define('ATOM_ROOT_PATH', dirname(__DIR__)); }
 
 $loader = require __DIR__ . '/vendor/autoload.php';
 $loader->addPsr4('AtomFramework\\', __DIR__ . '/src/');

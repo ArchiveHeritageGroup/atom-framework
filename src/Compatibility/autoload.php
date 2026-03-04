@@ -18,6 +18,11 @@ $compatDir = __DIR__;
 // Load the trait first — stubs depend on it
 require_once $compatDir . '/QubitModelTrait.php';
 
+// Alias namespaced trait to global scope for stubs that use `use QubitModelTrait`
+if (!trait_exists('QubitModelTrait', false) && trait_exists(\AtomFramework\Compatibility\QubitModelTrait::class, false)) {
+    class_alias(\AtomFramework\Compatibility\QubitModelTrait::class, 'QubitModelTrait');
+}
+
 // Load Propel shim FIRST — QubitPdo and model stubs depend on it
 if (!class_exists('Propel', false)) {
     require_once $compatDir . '/Propel.php';
@@ -87,4 +92,10 @@ foreach ($files as $file) {
     if (file_exists($path)) {
         require_once $path;
     }
+}
+
+// Load task system stubs (sfBaseTask, arBaseTask, sfCommandOption, etc.)
+$taskAutoload = $compatDir . '/Task/task_autoload.php';
+if (file_exists($taskAutoload)) {
+    require_once $taskAutoload;
 }

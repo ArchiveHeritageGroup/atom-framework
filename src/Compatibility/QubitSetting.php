@@ -140,6 +140,32 @@ if (!class_exists('QubitSetting', false)) {
         }
 
         /**
+         * Get all settings as sfConfig-compatible array.
+         * Called by arBaseTask::execute() via sfConfig::add(QubitSetting::getSettingsArray()).
+         */
+        public static function getSettingsArray(): array
+        {
+            $result = [];
+            try {
+                $settings = \Illuminate\Database\Capsule\Manager::table('setting as s')
+                    ->join('setting_i18n as si', function ($j) {
+                        $j->on('s.id', '=', 'si.id')->where('si.culture', '=', 'en');
+                    })
+                    ->whereNotNull('s.name')
+                    ->where('s.name', '!=', '')
+                    ->select('s.name', 'si.value')
+                    ->get();
+
+                foreach ($settings as $row) {
+                    $result['app_' . $row->name] = $row->value;
+                }
+            } catch (\Throwable $e) {
+                // DB not available
+            }
+            return $result;
+        }
+
+        /**
          * Create from object.
          */
         private static function fromObject(object $obj): self
