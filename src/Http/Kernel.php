@@ -492,6 +492,16 @@ class Kernel
     {
         $compatDir = dirname(__DIR__) . '/Compatibility';
 
+        // Load Propel shim — provides Propel::getConnection() via Laravel Capsule
+        if (!class_exists('Propel', false)) {
+            require_once $compatDir . '/Propel.php';
+        }
+
+        // Load QubitPdo shim — lightweight SQL wrapper used by CLI commands and plugins
+        if (!class_exists('QubitPdo', false)) {
+            require_once $compatDir . '/QubitPdo.php';
+        }
+
         // Load sfEvent stub (type hint in 73+ plugin Configuration methods)
         if (!class_exists('sfEvent', false)) {
             require_once $compatDir . '/sfEvent.php';

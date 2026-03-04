@@ -18,6 +18,16 @@ $compatDir = __DIR__;
 // Load the trait first — stubs depend on it
 require_once $compatDir . '/QubitModelTrait.php';
 
+// Load Propel shim FIRST — QubitPdo and model stubs depend on it
+if (!class_exists('Propel', false)) {
+    require_once $compatDir . '/Propel.php';
+}
+
+// Load QubitPdo — lightweight SQL wrapper used by CLI commands and plugins
+if (!class_exists('QubitPdo', false)) {
+    require_once $compatDir . '/QubitPdo.php';
+}
+
 // Load all compatibility classes (order matters — dependencies first)
 // Load Propel compatibility stubs (Criteria, BasePeer, QubitPager)
 require_once $compatDir . '/Criteria.php';
