@@ -250,7 +250,10 @@ if (!function_exists('format_date')) {
 
 // ── Helper Loading ───────────────────────────────────────────────────
 
-if (!function_exists('use_helper')) {
+// Only define use_helper in standalone mode. When Symfony is running,
+// its HelperHelper.php defines use_helper without a function_exists guard,
+// causing "Cannot redeclare" if we define it here first.
+if (!class_exists('sfProjectConfiguration', false) && !function_exists('use_helper')) {
     function use_helper(...$helpers)
     {
         // Most helpers are already shimmed above. No-op.

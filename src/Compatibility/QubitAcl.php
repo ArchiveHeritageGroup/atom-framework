@@ -6,41 +6,41 @@
  * @deprecated Use AtomExtensions\Services\AclService directly
  */
 
-use AtomExtensions\Services\AclService;
-
-class QubitAcl
-{
-    public const GRANT = AclService::GRANT;
-    public const DENY = AclService::DENY;
-    public const INHERIT = AclService::INHERIT;
-
-    public static function check(?object $resource, $action, ?object $user = null): bool
+if (!class_exists('QubitAcl', false)) {
+    class QubitAcl
     {
-        return AclService::check($resource, $action, $user);
-    }
+        public const GRANT = \AtomExtensions\Services\AclService::GRANT;
+        public const DENY = \AtomExtensions\Services\AclService::DENY;
+        public const INHERIT = \AtomExtensions\Services\AclService::INHERIT;
 
-    public static function getRepositoryAccess(string $action): array
-    {
-        return AclService::getRepositoryAccess($action);
-    }
+        public static function check(?object $resource, $action, ?object $user = null): bool
+        {
+            return \AtomExtensions\Services\AclService::check($resource, $action, $user);
+        }
 
-    public static function forwardUnauthorized(bool $return = false)
-    {
-        return AclService::forwardUnauthorized($return);
-    }
+        public static function getRepositoryAccess(string $action): array
+        {
+            return \AtomExtensions\Services\AclService::getRepositoryAccess($action);
+        }
 
-    public static function forwardToSecureAction(): void
-    {
-        AclService::forwardUnauthorized();
-    }
+        public static function forwardUnauthorized(bool $return = false)
+        {
+            return \AtomExtensions\Services\AclService::forwardUnauthorized($return);
+        }
 
-    public static function forwardToLoginAction(): void
-    {
-        AclService::forwardToLoginAction();
-    }
+        public static function forwardToSecureAction(): void
+        {
+            \AtomExtensions\Services\AclService::forwardUnauthorized();
+        }
 
-    public static function addFilterDraftsCriteria($query)
-    {
-        return AclService::addFilterDraftsCriteria($query);
+        public static function forwardToLoginAction(): void
+        {
+            \AtomExtensions\Services\AclService::forwardToLoginAction();
+        }
+
+        public static function addFilterDraftsCriteria($query)
+        {
+            return \AtomExtensions\Services\AclService::addFilterDraftsCriteria($query);
+        }
     }
 }

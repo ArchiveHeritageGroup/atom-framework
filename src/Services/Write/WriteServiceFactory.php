@@ -61,6 +61,7 @@ class WriteServiceFactory
     private static ?JobWriteServiceInterface $jobInstance = null;
     private static ?InformationObjectWriteServiceInterface $ioInstance = null;
     private static ?RightsHolderWriteServiceInterface $rightsHolderInstance = null;
+    private static ?DonorWriteServiceInterface $donorInstance = null;
 
     /**
      * Get the Settings write service.
@@ -230,6 +231,18 @@ class WriteServiceFactory
         return self::$rightsHolderInstance;
     }
 
+    /**
+     * Get the Donor write service.
+     */
+    public static function donor(): DonorWriteServiceInterface
+    {
+        if (null === self::$donorInstance) {
+            self::$donorInstance = new StandaloneDonorWriteService();
+        }
+
+        return self::$donorInstance;
+    }
+
     // --- Testing / Override ---
 
     /**
@@ -305,6 +318,11 @@ class WriteServiceFactory
         self::$rightsHolderInstance = $service;
     }
 
+    public static function setDonor(DonorWriteServiceInterface $service): void
+    {
+        self::$donorInstance = $service;
+    }
+
     /**
      * Reset all cached instances.
      */
@@ -324,5 +342,6 @@ class WriteServiceFactory
         self::$jobInstance = null;
         self::$ioInstance = null;
         self::$rightsHolderInstance = null;
+        self::$donorInstance = null;
     }
 }
