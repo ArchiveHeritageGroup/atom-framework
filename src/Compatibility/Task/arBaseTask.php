@@ -26,7 +26,7 @@ if (!class_exists('arBaseTask', false)) {
          * Original arBaseTask::execute() creates sfContext and loads settings.
          * Our shim boots Laravel DB + sfConfig instead.
          */
-        protected function execute($arguments = [], $options = [])
+        public function execute($arguments = [], $options = [])
         {
             $this->bootDatabase();
             $this->bootConfiguration();

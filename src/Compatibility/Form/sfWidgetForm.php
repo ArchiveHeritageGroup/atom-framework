@@ -557,3 +557,34 @@ if (!class_exists('sfWidgetFormI18nChoiceLanguage', false)) {
         }
     }
 }
+
+// ── QubitWidgetFormInputMany ─────────────────────────────────────────
+
+if (!class_exists('QubitWidgetFormInputMany', false)) {
+    class QubitWidgetFormInputMany extends sfWidgetForm
+    {
+        protected function configure($options = [], $attributes = [])
+        {
+            $this->addOption('add_label', 'Add');
+            $this->addOption('remove_label', 'Remove');
+        }
+
+        public function render($name, $value = null, $attributes = [], $errors = [])
+        {
+            $values = is_array($value) ? $value : [$value];
+            $html = '<div class="widget-form-input-many">';
+
+            foreach ($values as $i => $v) {
+                $html .= sprintf(
+                    '<div class="input-many-row"><input type="text" name="%s[]" value="%s" /></div>',
+                    htmlspecialchars($name, ENT_QUOTES, 'UTF-8'),
+                    htmlspecialchars((string) $v, ENT_QUOTES, 'UTF-8')
+                );
+            }
+
+            $html .= '</div>';
+
+            return $html;
+        }
+    }
+}

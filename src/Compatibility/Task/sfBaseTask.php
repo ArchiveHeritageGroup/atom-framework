@@ -105,7 +105,7 @@ if (!class_exists('sfBaseTask', false)) {
         /**
          * Override in task subclasses.
          */
-        abstract protected function execute($arguments = [], $options = []);
+        abstract public function execute($arguments = [], $options = []);
 
         /**
          * Run the task with parsed arguments and options.
