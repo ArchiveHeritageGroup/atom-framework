@@ -15,6 +15,32 @@
 
 $compatDir = __DIR__;
 
+// ── Phase 6A: Action/Component Stack ─────────────────────────────────
+// Load the Symfony 1.x action/component class hierarchy FIRST.
+// These must be loaded before any plugin action/component classes.
+$actionAutoload = $compatDir . '/Action/action_autoload.php';
+if (file_exists($actionAutoload)) {
+    require_once $actionAutoload;
+}
+
+// ── Phase 6C: sf* Utility Stubs ──────────────────────────────────────
+$utilDir = $compatDir . '/Util';
+$utilFiles = [
+    'sfInflector.php',
+    'sfToolkit.php',
+    'sfCultureInfo.php',
+    'sfDateFormat.php',
+    'sfFilter.php',
+    'sfFilterChain.php',
+    'sfRoute.php',
+];
+foreach ($utilFiles as $utilFile) {
+    $utilPath = $utilDir . '/' . $utilFile;
+    if (file_exists($utilPath)) {
+        require_once $utilPath;
+    }
+}
+
 // Load the trait first — stubs depend on it
 require_once $compatDir . '/QubitModelTrait.php';
 
@@ -85,6 +111,17 @@ $files = [
     'QubitSearch.php',
     'QubitCultureFallback.php',
     'QubitDescription.php',
+    // Phase 6B stubs — additional entity models for standalone mode
+    'QubitNote.php',
+    'QubitProperty.php',
+    'QubitRights.php',
+    'QubitFunctionObject.php',
+    'QubitDeaccession.php',
+    'QubitClipboardSave.php',
+    'QubitClipboardSaveItem.php',
+    'QubitSearchPager.php',
+    'QubitFlatfileExport.php',
+    'QubitLftSyncer.php',
 ];
 
 foreach ($files as $file) {

@@ -659,3 +659,268 @@ if (!class_exists('sfValidatorI18nChoiceLanguage', false)) {
         }
     }
 }
+
+// ── Qubit Validators ─────────────────────────────────────────────────
+
+// QubitValidatorCountable — validates countable values (arrays, Countable)
+if (!class_exists('QubitValidatorCountable', false)) {
+    class QubitValidatorCountable extends sfValidatorBase
+    {
+        protected function configure($options = [], $messages = [])
+        {
+            $this->addOption('min', null);
+            $this->addOption('max', null);
+            $this->addMessage('min', 'Must have at least %min% items.');
+            $this->addMessage('max', 'Must have at most %max% items.');
+        }
+
+        protected function doClean($value)
+        {
+            $value = parent::doClean($value);
+
+            if (null === $value) {
+                return $value;
+            }
+
+            if (!is_array($value) && !($value instanceof \Countable)) {
+                throw new sfValidatorError($this, 'invalid');
+            }
+
+            $count = count($value);
+
+            if (null !== $this->getOption('min') && $count < $this->getOption('min')) {
+                throw new sfValidatorError($this, 'min', ['%min%' => $this->getOption('min')]);
+            }
+
+            if (null !== $this->getOption('max') && $count > $this->getOption('max')) {
+                throw new sfValidatorError($this, 'max', ['%max%' => $this->getOption('max')]);
+            }
+
+            return $value;
+        }
+    }
+}
+
+// QubitValidatorDates — validates date range (start ≤ end)
+if (!class_exists('QubitValidatorDates', false)) {
+    class QubitValidatorDates extends sfValidatorBase
+    {
+        protected function configure($options = [], $messages = [])
+        {
+            $this->addOption('start_date_field', 'startDate');
+            $this->addOption('end_date_field', 'endDate');
+            $this->addMessage('invalid_range', 'Start date must be before end date.');
+        }
+
+        protected function doClean($value)
+        {
+            if (!is_array($value)) {
+                return $value;
+            }
+
+            $startField = $this->getOption('start_date_field');
+            $endField = $this->getOption('end_date_field');
+
+            $start = $value[$startField] ?? null;
+            $end = $value[$endField] ?? null;
+
+            if ($start && $end) {
+                $startTs = strtotime($start);
+                $endTs = strtotime($end);
+
+                if (false !== $startTs && false !== $endTs && $startTs > $endTs) {
+                    throw new sfValidatorError($this, 'invalid_range');
+                }
+            }
+
+            return $value;
+        }
+    }
+}
+
+// QubitValidatorForbiddenValues — rejects specific values
+if (!class_exists('QubitValidatorForbiddenValues', false)) {
+    class QubitValidatorForbiddenValues extends sfValidatorBase
+    {
+        protected function configure($options = [], $messages = [])
+        {
+            $this->addRequiredOption('forbidden_values');
+            $this->addOption('forbidden_values', []);
+            $this->addMessage('forbidden', 'This value is not allowed.');
+        }
+
+        protected function doClean($value)
+        {
+            $value = parent::doClean($value);
+
+            if (null === $value) {
+                return $value;
+            }
+
+            if (in_array($value, (array) $this->getOption('forbidden_values'), true)) {
+                throw new sfValidatorError($this, 'forbidden');
+            }
+
+            return $value;
+        }
+    }
+}
+
+// QubitValidatorMenuName — validates menu names
+if (!class_exists('QubitValidatorMenuName', false)) {
+    class QubitValidatorMenuName extends sfValidatorBase
+    {
+        protected function doClean($value)
+        {
+            $value = parent::doClean($value);
+
+            if (null === $value) {
+                return $value;
+            }
+
+            $value = trim((string) $value);
+
+            // Menu names must be non-empty
+            if ('' === $value) {
+                throw new sfValidatorError($this, 'required');
+            }
+
+            return $value;
+        }
+    }
+}
+
+// QubitValidatorMimeType — validates MIME types against allowed list
+if (!class_exists('QubitValidatorMimeType', false)) {
+    class QubitValidatorMimeType extends sfValidatorBase
+    {
+        protected function configure($options = [], $messages = [])
+        {
+            $this->addOption('mime_types', []);
+            $this->addMessage('mime_types', 'Invalid mime type (%mime_type%).');
+        }
+
+        protected function doClean($value)
+        {
+            $value = parent::doClean($value);
+
+            if (null === $value) {
+                return $value;
+            }
+
+            $allowed = $this->getOption('mime_types');
+            if (!empty($allowed) && !in_array($value, (array) $allowed, true)) {
+                throw new sfValidatorError($this, 'mime_types', ['%mime_type%' => $value]);
+            }
+
+            return $value;
+        }
+    }
+}
+
+// QubitValidatorPassword — validates password complexity
+if (!class_exists('QubitValidatorPassword', false)) {
+    class QubitValidatorPassword extends sfValidatorBase
+    {
+        protected function configure($options = [], $messages = [])
+        {
+            $this->addOption('min_length', 8);
+            $this->addOption('require_uppercase', true);
+            $this->addOption('require_lowercase', true);
+            $this->addOption('require_number', true);
+            $this->addOption('require_special', false);
+            $this->addMessage('min_length', 'Password must be at least %min_length% characters.');
+            $this->addMessage('complexity', 'Password does not meet complexity requirements.');
+        }
+
+        protected function doClean($value)
+        {
+            $value = parent::doClean($value);
+
+            if (null === $value) {
+                return $value;
+            }
+
+            $value = (string) $value;
+            $len = mb_strlen($value, 'UTF-8');
+            $minLen = $this->getOption('min_length');
+
+            if ($len < $minLen) {
+                throw new sfValidatorError($this, 'min_length', ['%min_length%' => $minLen]);
+            }
+
+            if ($this->getOption('require_uppercase') && !preg_match('/[A-Z]/', $value)) {
+                throw new sfValidatorError($this, 'complexity');
+            }
+
+            if ($this->getOption('require_lowercase') && !preg_match('/[a-z]/', $value)) {
+                throw new sfValidatorError($this, 'complexity');
+            }
+
+            if ($this->getOption('require_number') && !preg_match('/[0-9]/', $value)) {
+                throw new sfValidatorError($this, 'complexity');
+            }
+
+            if ($this->getOption('require_special') && !preg_match('/[^a-zA-Z0-9]/', $value)) {
+                throw new sfValidatorError($this, 'complexity');
+            }
+
+            return $value;
+        }
+    }
+}
+
+// QubitValidatorUrl — validates URLs using filter_var
+if (!class_exists('QubitValidatorUrl', false)) {
+    class QubitValidatorUrl extends sfValidatorBase
+    {
+        protected function doClean($value)
+        {
+            $value = parent::doClean($value);
+
+            if (null === $value) {
+                return $value;
+            }
+
+            $value = trim((string) $value);
+
+            if ('' !== $value && false === filter_var($value, FILTER_VALIDATE_URL)) {
+                throw new sfValidatorError($this, 'invalid');
+            }
+
+            return $value;
+        }
+    }
+}
+
+// ── Qubit Widget Stubs ───────────────────────────────────────────────
+
+// QubitWidgetFormInputMany — multi-input widget (renders multiple text inputs)
+if (!class_exists('QubitWidgetFormInputMany', false)) {
+    class QubitWidgetFormInputMany extends sfWidgetForm
+    {
+        protected function configure($options = [], $attributes = [])
+        {
+            $this->addOption('add_label', 'Add');
+            $this->addOption('remove_label', 'Remove');
+        }
+
+        public function render($name, $value = null, $attributes = [], $errors = [])
+        {
+            $values = is_array($value) ? $value : [$value];
+            $html = '<div class="widget-form-input-many">';
+
+            foreach ($values as $i => $v) {
+                $html .= sprintf(
+                    '<div class="input-many-row"><input type="text" name="%s[]" value="%s" /></div>',
+                    htmlspecialchars($name, ENT_QUOTES, 'UTF-8'),
+                    htmlspecialchars((string) $v, ENT_QUOTES, 'UTF-8')
+                );
+            }
+
+            $html .= '</div>';
+
+            return $html;
+        }
+    }
+}

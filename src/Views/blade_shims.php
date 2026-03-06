@@ -843,3 +843,461 @@ if (!class_exists('sfForm', false)) {
         public function __isset(string $name): bool { return true; }
     }
 }
+
+// ── Phase 6F: Missing QubitHelper.php Functions ──────────────────────
+
+if (!function_exists('render_b5_field')) {
+    function render_b5_field($field, $translation = null, $options = [])
+    {
+        $inputClass = 'form-control';
+        $labelClass = 'form-label';
+        $isFormCheck = false;
+
+        $name = is_object($field) && method_exists($field, 'getName') ? $field->getName() : '';
+        $widget = is_object($field) && method_exists($field, 'getWidget') ? $field->getWidget() : null;
+
+        if ($widget && method_exists($widget, 'getOption')) {
+            if (in_array($widget->getOption('type'), ['checkbox', 'radio'])) {
+                $isFormCheck = true;
+                $inputClass = 'form-check-input';
+                $labelClass = 'form-check-label';
+            } elseif ('color' == $widget->getOption('type')) {
+                $inputClass .= ' form-control-color';
+            }
+        }
+
+        if ($widget && ($widget instanceof sfWidgetFormSelect || $widget instanceof sfWidgetFormI18nChoiceLanguage || $widget instanceof sfWidgetFormI18nChoiceCountry)) {
+            $inputClass = 'form-select';
+        }
+
+        if (empty($options['class'])) {
+            $options['class'] = $inputClass;
+        } else {
+            $options['class'] .= ' ' . $inputClass;
+        }
+
+        if (is_object($field) && method_exists($field, 'hasError') && $field->hasError()) {
+            $options['class'] .= ' is-invalid';
+        }
+
+        $extraInputs = '';
+        if (isset($options['extraInputs'])) {
+            $extraInputs = $options['extraInputs'];
+            unset($options['extraInputs']);
+        }
+
+        if (isset($options['onlyInputs']) && $options['onlyInputs']) {
+            unset($options['onlyInputs']);
+            $rendered = is_object($field) && method_exists($field, 'render') ? $field->render($options) : '';
+            $error = is_object($field) && method_exists($field, 'renderError') ? $field->renderError() : '';
+
+            return $translation . $rendered . $extraInputs . $error;
+        }
+
+        $label = is_object($field) && method_exists($field, 'renderLabel') ? $field->renderLabel(null, ['class' => $labelClass]) : '';
+        $help = is_object($field) && method_exists($field, 'renderHelp') ? $field->renderHelp() : '';
+        $rendered = is_object($field) && method_exists($field, 'render') ? $field->render($options) : '';
+        $error = is_object($field) && method_exists($field, 'renderError') ? $field->renderError() : '';
+
+        if ($isFormCheck) {
+            return '<div class="form-check mb-3">' . $rendered . $label . $error . $help . '</div>';
+        }
+
+        return '<div class="mb-3">' . $label . $translation . $rendered . $extraInputs . $error . $help . '</div>';
+    }
+}
+
+if (!function_exists('render_b5_show_field_css_classes')) {
+    function render_b5_show_field_css_classes($options = [])
+    {
+        return 'row g-0';
+    }
+}
+
+if (!function_exists('render_b5_show_subfield_css_classes')) {
+    function render_b5_show_subfield_css_classes($options = [])
+    {
+        return 'd-flex flex-wrap';
+    }
+}
+
+if (!function_exists('render_b5_show')) {
+    function render_b5_show($label, $value, $options = [])
+    {
+        $tag = 'div';
+        $cssClasses = 'field text-break';
+        if (isset($options['fieldClass'])) {
+            $cssClasses .= ' ' . $options['fieldClass'];
+        }
+        if (!isset($options['isSubField'])) {
+            $cssClasses .= ' ' . render_b5_show_field_css_classes($options);
+        } else {
+            $cssClasses .= ' ' . render_b5_show_subfield_css_classes($options);
+        }
+
+        $labelContainer = render_b5_show_label($label, $options);
+        $valueContainer = render_b5_show_value($value, $options);
+
+        return render_b5_show_container($tag, $labelContainer . $valueContainer, $cssClasses, $options);
+    }
+}
+
+if (!function_exists('render_b5_show_container')) {
+    function render_b5_show_container($tag, $content, $cssClasses = '', $options = [])
+    {
+        $cssClass = $cssClasses ? ' class="' . $cssClasses . '"' : '';
+
+        return "<{$tag}{$cssClass}>{$content}</{$tag}>";
+    }
+}
+
+if (!function_exists('render_b5_show_label_css_classes')) {
+    function render_b5_show_label_css_classes($options = [])
+    {
+        $result = 'h6 lh-base m-0 text-muted';
+        if (!isset($options['isSubField'])) {
+            $result .= ' col-3 border-end text-end p-2';
+        } else {
+            $result .= ' me-2';
+        }
+
+        return $result;
+    }
+}
+
+if (!function_exists('render_b5_show_label')) {
+    function render_b5_show_label($label, $options = [])
+    {
+        $tag = isset($options['isSubField']) ? 'h4' : 'h3';
+        $cssClasses = render_b5_show_label_css_classes($options);
+        if (isset($options['labelClass'])) {
+            $cssClasses .= ' ' . $options['labelClass'];
+        }
+
+        return render_b5_show_container($tag, $label, $cssClasses, $options);
+    }
+}
+
+if (!function_exists('render_b5_show_value_css_classes')) {
+    function render_b5_show_value_css_classes($options = [])
+    {
+        return isset($options['isSubField']) ? '' : 'col-9 p-2';
+    }
+}
+
+if (!function_exists('render_b5_show_value')) {
+    function render_b5_show_value($value, $options = [])
+    {
+        $tag = 'div';
+        $cssClasses = render_b5_show_value_css_classes($options);
+        if (isset($options['valueClass'])) {
+            $cssClasses .= ' ' . $options['valueClass'];
+        }
+
+        $finalValue = $value;
+        if (is_array($value) || (is_object($value) && ($value instanceof \Traversable || $value instanceof \Countable))) {
+            $finalValue = '<ul class="' . render_b5_show_list_css_classes() . '">';
+            foreach ($value as $item) {
+                if (isset($options['renderAsIs'])) {
+                    $finalValue .= '<li>' . $item . '</li>';
+                } else {
+                    $finalValue .= '<li>' . render_value_html($item) . '</li>';
+                }
+            }
+            $finalValue .= '</ul>';
+        }
+
+        return render_b5_show_container($tag, $finalValue, $cssClasses, $options);
+    }
+}
+
+if (!function_exists('render_b5_section_heading')) {
+    function render_b5_section_heading($text, $condition = false, $url = null, $linkOptions = [])
+    {
+        if ($condition) {
+            $linkClasses = 'text-primary text-decoration-none';
+            $linkOptions['class'] = !empty($linkOptions['class'])
+                ? $linkOptions['class'] . ' ' . $linkClasses
+                : $linkClasses;
+            $linkOptions['title'] = $linkOptions['title'] ?? (__('Edit') . ' ' . $text);
+            $content = link_to($text, $url, $linkOptions);
+        } else {
+            $content = render_b5_show_container(
+                'div',
+                $text,
+                'd-flex p-3 border-bottom text-primary'
+            );
+        }
+
+        return render_b5_show_container(
+            'h2',
+            $content,
+            'h5 mb-0 atom-section-header'
+        );
+    }
+}
+
+if (!function_exists('render_b5_show_list_css_classes')) {
+    function render_b5_show_list_css_classes($options = [])
+    {
+        return 'm-0 ms-1 ps-3';
+    }
+}
+
+if (!function_exists('add_paragraphs_and_linebreaks')) {
+    function add_paragraphs_and_linebreaks($value)
+    {
+        // Add paragraphs
+        $value = preg_replace('/(?:\r?\n){2,}/', '</p><p>', $value, -1, $count);
+        if (0 < $count) {
+            $value = "<p>{$value}</p>";
+        }
+
+        // Maintain linebreaks not surrounded by tags
+        return preg_replace('/(?!>)\r?\n(?!<)/', '<br/>', $value);
+    }
+}
+
+if (!function_exists('hr_filesize')) {
+    function hr_filesize($val)
+    {
+        $units = ['B', 'KiB', 'MiB', 'GiB', 'TiB'];
+        for ($i = 0; $i < count($units); ++$i) {
+            if ($val / pow(1024, $i + 1) < 1) {
+                break;
+            }
+        }
+
+        return round($val / pow(1024, $i), 1) . ' ' . $units[$i];
+    }
+}
+
+if (!function_exists('render_treeview_node')) {
+    function render_treeview_node($item, array $classes = [], array $options = [])
+    {
+        if (class_exists('sfConfig', false) && \sfConfig::get('app_b5_theme', false)) {
+            return render_b5_treeview_node($item, $classes, $options);
+        }
+
+        $_classes = [];
+        foreach ($classes as $key => $value) {
+            if ($value) {
+                $_classes[$key] = $key;
+            }
+        }
+
+        $node = '<li';
+        if (0 < count($_classes)) {
+            $node .= ' class="' . implode(' ', $_classes) . '"';
+        }
+
+        if (isset($options['xhr-location'])) {
+            $node .= ' data-xhr-location="' . esc_entities($options['xhr-location']) . '"';
+        }
+
+        $node .= '>';
+
+        if (isset($_classes['expand']) || isset($_classes['ancestor'])) {
+            $node .= '<i></i>&nbsp;';
+        }
+
+        if (isset($_classes['more'])) {
+            $num = isset($options['numSiblingsLeft']) ? abs($options['numSiblingsLeft']) : '';
+            $node .= '<a href="#">' . __('%1% more', ['%1%' => $num]) . '...</a>';
+        } else {
+            $title = render_title($item);
+            $slug = is_object($item) ? ($item->slug ?? '') : '';
+            $node .= '<a href="/' . htmlspecialchars($slug) . '">' . $title . '</a>';
+        }
+
+        $node .= '</li>';
+
+        return $node;
+    }
+}
+
+if (!function_exists('render_b5_treeview_node')) {
+    function render_b5_treeview_node($item, array $classes = [], array $options = [])
+    {
+        $_classes = ['list-group-item'];
+        foreach ($classes as $key => $value) {
+            if ($value) {
+                $_classes[$key] = $key;
+            }
+        }
+
+        $node = '<li';
+        if (0 < count($_classes)) {
+            $node .= ' class="' . implode(' ', $_classes) . '"';
+        }
+
+        if (isset($options['xhr-location'])) {
+            $node .= ' data-xhr-location="' . esc_entities($options['xhr-location']) . '"';
+        }
+
+        $node .= '>';
+
+        if (isset($_classes['expand']) || isset($_classes['ancestor'])) {
+            $node .= '<i class="arrow" aria-hidden="true"></i>';
+        }
+
+        $node .= '<span class="text text-truncate">';
+
+        if (isset($_classes['more'])) {
+            $num = isset($options['numSiblingsLeft']) ? abs($options['numSiblingsLeft']) : '';
+            $node .= '<a href="#">' . __('%1% more', ['%1%' => $num]) . '...</a>';
+        } else {
+            $title = render_title($item);
+            $slug = is_object($item) ? ($item->slug ?? '') : '';
+            $node .= '<a href="/' . htmlspecialchars($slug) . '">' . $title . '</a>';
+        }
+
+        $node .= '</span></li>';
+
+        return $node;
+    }
+}
+
+if (!function_exists('is_using_cli')) {
+    function is_using_cli()
+    {
+        return 'cli' === php_sapi_name();
+    }
+}
+
+if (!function_exists('get_search_creation_details')) {
+    function get_search_creation_details($hit, $culture = null)
+    {
+        if (null === $culture) {
+            $culture = class_exists('sfContext', false) && \sfContext::hasInstance()
+                ? \sfContext::getInstance()->user->getCulture()
+                : 'en';
+        }
+
+        if (is_object($hit) && method_exists($hit, 'getData')) {
+            $hit = $hit->getData();
+        }
+
+        if (!is_array($hit) && !($hit instanceof \ArrayAccess)) {
+            return null;
+        }
+
+        $details = [];
+
+        $creators = $hit['creators'] ?? null;
+        if (null !== $creators && count($creators) > 0) {
+            $details[] = get_search_i18n($creators[0], 'authorizedFormOfName', ['allowEmpty' => false, 'cultureFallback' => true]);
+        }
+
+        if (0 === count($details)) {
+            return null;
+        }
+
+        return implode(', ', $details);
+    }
+}
+
+if (!function_exists('render_autocomplete_string')) {
+    function render_autocomplete_string($hit)
+    {
+        if (is_object($hit) && method_exists($hit, 'getData')) {
+            $hit = $hit->getData();
+        }
+
+        if (!is_array($hit) && !($hit instanceof \ArrayAccess)) {
+            return '';
+        }
+
+        $string = [];
+
+        $levelOfDescriptionAndIdentifier = [];
+
+        if (isset($hit['levelOfDescriptionId']) && class_exists('QubitTerm', false)) {
+            $term = \QubitTerm::getById($hit['levelOfDescriptionId']);
+            if ($term) {
+                $levelOfDescriptionAndIdentifier[] = (string) ($term->name ?? $term->__get('name') ?? '');
+            }
+        }
+
+        if ('1' == (class_exists('sfConfig', false) ? \sfConfig::get('app_inherit_code_informationobject', 1) : 1)
+            && isset($hit['referenceCode']) && !empty($hit['referenceCode'])) {
+            $levelOfDescriptionAndIdentifier[] = $hit['referenceCode'];
+        } elseif (isset($hit['identifier']) && !empty($hit['identifier'])) {
+            $levelOfDescriptionAndIdentifier[] = $hit['identifier'];
+        }
+
+        if (0 < count($levelOfDescriptionAndIdentifier)) {
+            $string[] = implode(' ', $levelOfDescriptionAndIdentifier);
+        }
+
+        $titleAndPublicationStatus = [];
+
+        if (null !== ($title = get_search_i18n($hit, 'title'))) {
+            $titleAndPublicationStatus[] = render_value_inline($title);
+        }
+
+        if (isset($hit['publicationStatusId']) && class_exists('QubitTerm', false)
+            && \QubitTerm::PUBLICATION_STATUS_DRAFT_ID == $hit['publicationStatusId']) {
+            $term = \QubitTerm::getById($hit['publicationStatusId']);
+            if ($term) {
+                $titleAndPublicationStatus[] = '(' . (string) ($term->name ?? '') . ')';
+            }
+        }
+
+        if (0 < count($titleAndPublicationStatus)) {
+            $string[] = implode(' ', $titleAndPublicationStatus);
+        }
+
+        return implode(' - ', $string);
+    }
+}
+
+if (!function_exists('escape_dc')) {
+    function escape_dc($text)
+    {
+        return preg_replace('/\n/', '<lb/>', $text);
+    }
+}
+
+if (!function_exists('render_search_result_date')) {
+    function render_search_result_date($date)
+    {
+        if (is_object($date) && method_exists($date, 'getRawValue')) {
+            $date = $date->getRawValue();
+        }
+
+        if (empty($date)) {
+            return;
+        }
+
+        foreach ((array) $date as $item) {
+            $displayDate = get_search_i18n($item, 'date');
+            $startDate = $item['startDateString'] ?? null;
+            $endDate = $item['endDateString'] ?? null;
+
+            if (empty($displayDate) && empty($startDate) && empty($endDate)) {
+                continue;
+            }
+
+            if (class_exists('Qubit', false) && method_exists('Qubit', 'renderDateStartEnd')) {
+                return \Qubit::renderDateStartEnd($displayDate, $startDate, $endDate);
+            }
+
+            // Fallback: simple date display
+            if (!empty($displayDate)) {
+                return $displayDate;
+            }
+
+            $parts = array_filter([$startDate, $endDate]);
+
+            return implode(' - ', $parts);
+        }
+    }
+}
+
+if (!function_exists('esc_entities')) {
+    function esc_entities($value)
+    {
+        return htmlspecialchars((string) $value, ENT_QUOTES, 'UTF-8');
+    }
+}
