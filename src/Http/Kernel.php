@@ -785,6 +785,11 @@ class Kernel
     {
         $bridge = ActionBridge::class;
 
+        // Homepage — explicit route (registered before catch-all)
+        $this->router->match(['GET'], '/', $bridge . '@dispatch')
+            ->setDefaults(['_module' => 'staticpage', '_action' => 'home', 'slug' => 'home'])
+            ->name('atom.homepage');
+
         // /{module}/{action}/{slug} — entity view within a module
         $this->router->match(['GET', 'POST'], '/{_module}/{_action}/{slug}', $bridge . '@dispatch')
             ->where('_module', '[a-zA-Z][a-zA-Z0-9]*')

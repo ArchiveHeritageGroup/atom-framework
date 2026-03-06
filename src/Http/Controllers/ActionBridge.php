@@ -44,20 +44,42 @@ class ActionBridge
      * Format: 'baseModule' => ['baseAction' => ['targetModule', 'targetAction']]
      */
     private const ACTION_ALIASES = [
-        'actor'          => ['browse' => ['actorManage', 'browse']],
-        'repository'     => ['browse' => ['repositoryManage', 'browse']],
+        // --- Browse aliases (base AtoM module → AHG manage plugin) ---
+        'actor'          => ['browse' => ['actorManage', 'browse'], 'index' => ['_viewer', 'show']],
+        'repository'     => ['browse' => ['repositoryManage', 'browse'], 'index' => ['_viewer', 'show']],
         'taxonomy'       => ['index' => ['termTaxonomy', 'taxonomyIndex'], 'browse' => ['termTaxonomy', 'taxonomyIndex']],
-        'accession'      => ['browse' => ['accessionManage', 'browse']],
-        'donor'          => ['browse' => ['donorManage', 'browse']],
-        'rightsholder'   => ['browse' => ['rightsHolderManage', 'browse']],
-        'physicalobject' => ['browse' => ['storageManage', 'browse']],
-        'function'       => ['browse' => ['functionManage', 'browse']],
+        'accession'      => ['browse' => ['accessionManage', 'browse'], 'index' => ['_viewer', 'show']],
+        'donor'          => ['browse' => ['donorManage', 'browse'], 'index' => ['donorManage', 'view']],
+        'rightsholder'   => ['browse' => ['rightsHolderManage', 'browse'], 'index' => ['rightsHolderManage', 'view']],
+        'physicalobject' => ['browse' => ['storageManage', 'browse'], 'index' => ['_viewer', 'show']],
+        'function'       => ['browse' => ['functionManage', 'browse'], 'index' => ['functionManage', 'view']],
         'user'           => [
             'list' => ['userManage', 'browse'],
             'login' => ['_auth', 'login'],
             'logout' => ['_auth', 'logout'],
         ],
         'settings'       => ['global' => ['ahgSettings', 'index'], 'visibleElements' => ['ahgSettings', 'index']],
+
+        // --- Slug-resolved entity view modules ---
+        // When resolveSlugRoute() maps a slug to sfIsadPlugin/sfIsaarPlugin etc.,
+        // these aliases redirect to standalone-capable viewers.
+        'sfIsadPlugin'   => ['index' => ['_viewer', 'show']],
+        'sfIsaarPlugin'  => ['index' => ['_viewer', 'show']],
+        'sfIsdiahPlugin' => ['index' => ['_viewer', 'show']],
+        'sfIsdfPlugin'   => ['index' => ['functionManage', 'view']],
+        'term'           => ['index' => ['_viewer', 'show']],
+        'staticpage'     => ['index' => ['_viewer', 'show'], 'home' => ['_viewer', 'home']],
+
+        // --- Admin routes ---
+        'admin'          => [
+            'secure' => ['_error', 'unauthorized'],
+            'error404' => ['_error', '404'],
+            'termPermission' => ['ahgSettings', 'index'],
+            'translatePermission' => ['ahgSettings', 'index'],
+        ],
+
+        // --- Import redirect (base AtoM import → AHG ingest wizard) ---
+        'object'         => ['importSelect' => ['_redirect', '/ingest']],
     ];
 
     /**
@@ -138,6 +160,43 @@ class ActionBridge
                 }
             }
 
+            // Special _error marker — render error pages
+            if ('_error' === $aliasModule) {
+                if ('unauthorized' === $aliasAction) {
+                    $content = '<div id="content"><div class="container py-5 text-center">'
+                        . '<h1 class="h2 mb-3"><i class="fas fa-lock me-2"></i>Unauthorized</h1>'
+                        . '<p>You do not have permission to access this page.</p>'
+                        . '<a href="/auth/login" class="btn btn-primary">Log in</a>'
+                        . '</div></div>';
+
+                    return new Response($this->wrapInLayout($content), 403, ['Content-Type' => 'text/html']);
+                }
+                if ('404' === $aliasAction) {
+                    $content = '<div id="content"><div class="container py-5 text-center">'
+                        . '<h1 class="h2 mb-3"><i class="fas fa-search me-2"></i>Page not found</h1>'
+                        . '<p>The page you requested could not be found.</p>'
+                        . '<a href="/" class="btn btn-primary">Go to homepage</a>'
+                        . '</div></div>';
+
+                    return new Response($this->wrapInLayout($content), 404, ['Content-Type' => 'text/html']);
+                }
+            }
+
+            // Special _redirect marker — HTTP redirect
+            if ('_redirect' === $aliasModule) {
+                return new RedirectResponse($aliasAction, 302);
+            }
+
+            // Special _viewer marker — universal entity viewer (standalone mode)
+            if ('_viewer' === $aliasModule) {
+                $viewer = new StandaloneViewerController();
+                if ('home' === $aliasAction) {
+                    return $viewer->home($request);
+                }
+
+                return $viewer->show($request, $module);
+            }
+
             // Regular alias — find the AHG manage plugin action file
             $aliasFile = $this->findActionFile($aliasModule, $aliasAction);
             if (null !== $aliasFile) {
@@ -155,8 +214,15 @@ class ActionBridge
         // base AtoM module/action URLs to AHG manage plugin equivalents.
         // This handles standalone mode where apps/qubit/modules is unavailable.
         if (null === $actionFile && isset(self::ACTION_ALIASES[$module][$action])) {
-            [$aliasModule, $aliasAction] = self::ACTION_ALIASES[$module][$action];
+            $aliasResult = $this->dispatchSpecialAlias(
+                self::ACTION_ALIASES[$module][$action], $request, $module
+            );
+            if ($aliasResult) {
+                return $aliasResult;
+            }
 
+            // Regular alias — find the AHG manage plugin action file
+            [$aliasModule, $aliasAction] = self::ACTION_ALIASES[$module][$action];
             $aliasFile = $this->findActionFile($aliasModule, $aliasAction);
             if (null !== $aliasFile) {
                 $module = $aliasModule;
@@ -172,7 +238,27 @@ class ActionBridge
             if ($resolved) {
                 $module = $resolved['module'];
                 $action = $resolved['action'];
-                $actionFile = $this->findActionFile($module, $action);
+
+                // Check aliases for the resolved module (e.g., sfIsadPlugin → _viewer)
+                if (isset(self::ACTION_ALIASES[$module][$action])) {
+                    $aliasResult = $this->dispatchSpecialAlias(
+                        self::ACTION_ALIASES[$module][$action], $request, $module
+                    );
+                    if ($aliasResult) {
+                        return $aliasResult;
+                    }
+                    [$am, $aa] = self::ACTION_ALIASES[$module][$action];
+                    $af = $this->findActionFile($am, $aa);
+                    if (null !== $af) {
+                        $module = $am;
+                        $action = $aa;
+                        $actionFile = $af;
+                    }
+                }
+
+                if (null === $actionFile) {
+                    $actionFile = $this->findActionFile($module, $action);
+                }
             }
         }
 
@@ -182,7 +268,27 @@ class ActionBridge
             if ($resolved) {
                 $module = $resolved['module'];
                 $action = $resolved['action'];
-                $actionFile = $this->findActionFile($module, $action);
+
+                // Check aliases for the resolved module
+                if (isset(self::ACTION_ALIASES[$module][$action])) {
+                    $aliasResult = $this->dispatchSpecialAlias(
+                        self::ACTION_ALIASES[$module][$action], $request, $module
+                    );
+                    if ($aliasResult) {
+                        return $aliasResult;
+                    }
+                    [$am, $aa] = self::ACTION_ALIASES[$module][$action];
+                    $af = $this->findActionFile($am, $aa);
+                    if (null !== $af) {
+                        $module = $am;
+                        $action = $aa;
+                        $actionFile = $af;
+                    }
+                }
+
+                if (null === $actionFile) {
+                    $actionFile = $this->findActionFile($module, $action);
+                }
             }
         }
 
@@ -197,7 +303,26 @@ class ActionBridge
                 $action = $resolved['action'];
                 $slug = $qSlug;
                 $request->route()->setParameter('slug', $qSlug);
-                $actionFile = $this->findActionFile($module, $action);
+
+                // Check aliases for the resolved module
+                if (isset(self::ACTION_ALIASES[$module][$action])) {
+                    $aliasResult = $this->dispatchSpecialAlias(
+                        self::ACTION_ALIASES[$module][$action], $request, $module
+                    );
+                    if ($aliasResult) {
+                        return $aliasResult;
+                    }
+                    [$am, $aa] = self::ACTION_ALIASES[$module][$action];
+                    $af = $this->findActionFile($am, $aa);
+                    if (null !== $af) {
+                        $module = $am;
+                        $action = $aa;
+                    }
+                }
+
+                if (null === $actionFile) {
+                    $actionFile = $this->findActionFile($module, $action);
+                }
             }
         }
 
@@ -873,6 +998,56 @@ class ActionBridge
      * Used when an action can't be fully executed in standalone mode
      * due to missing Symfony/Propel dependencies.
      */
+    /**
+     * Dispatch special alias markers (_error, _redirect, _viewer).
+     *
+     * Returns a Response for special markers, or null to continue
+     * normal alias resolution via findActionFile().
+     */
+    private function dispatchSpecialAlias(array $alias, Request $request, string $sourceModule): ?\Symfony\Component\HttpFoundation\Response
+    {
+        [$aliasModule, $aliasAction] = $alias;
+
+        // _error — render error page
+        if ('_error' === $aliasModule) {
+            if ('unauthorized' === $aliasAction) {
+                $content = '<div id="content"><div class="container py-5 text-center">'
+                    . '<h1 class="h2 mb-3"><i class="fas fa-lock me-2"></i>Unauthorized</h1>'
+                    . '<p>You do not have permission to access this page.</p>'
+                    . '<a href="/auth/login" class="btn btn-primary">Log in</a>'
+                    . '</div></div>';
+
+                return new Response($this->wrapInLayout($content), 403, ['Content-Type' => 'text/html']);
+            }
+            if ('404' === $aliasAction) {
+                $content = '<div id="content"><div class="container py-5 text-center">'
+                    . '<h1 class="h2 mb-3"><i class="fas fa-search me-2"></i>Page not found</h1>'
+                    . '<p>The page you requested could not be found.</p>'
+                    . '<a href="/" class="btn btn-primary">Go to homepage</a>'
+                    . '</div></div>';
+
+                return new Response($this->wrapInLayout($content), 404, ['Content-Type' => 'text/html']);
+            }
+        }
+
+        // _redirect — HTTP redirect
+        if ('_redirect' === $aliasModule) {
+            return new RedirectResponse($aliasAction, 302);
+        }
+
+        // _viewer — universal entity viewer (standalone mode)
+        if ('_viewer' === $aliasModule) {
+            $viewer = new StandaloneViewerController();
+            if ('home' === $aliasAction) {
+                return $viewer->home($request);
+            }
+
+            return $viewer->show($request, $sourceModule);
+        }
+
+        return null;
+    }
+
     private function renderStandaloneErrorPage(string $module, string $action, Request $request, string $message): Response
     {
         require_once dirname(__DIR__, 2) . '/Views/blade_shims.php';
