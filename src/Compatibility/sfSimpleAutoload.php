@@ -88,7 +88,7 @@ class sfSimpleAutoload
 
         if (isset($this->classes[$class])) {
             try {
-                require $this->classes[$class];
+                require_once $this->classes[$class];
             } catch (\Exception $e) {
                 // Silently continue — non-fatal in standalone mode
             }
@@ -155,9 +155,18 @@ class sfSimpleAutoload
             $this->files[] = $file;
         }
 
-        // Extract class/interface names from the file
+        // Extract class/interface names from the file.
+        // Skip files with a namespace declaration — those classes live in a
+        // PSR-4 namespace and should NOT be mapped as global class names.
+        // This prevents conflicts like a namespaced SecurityClearanceService
+        // in atom-framework being mistakenly mapped as the global class.
         $contents = file_get_contents($file);
         if (false === $contents) {
+            return;
+        }
+
+        // If file declares a namespace, skip global class mapping
+        if (preg_match('~^\s*namespace\s+\S+;~mi', $contents)) {
             return;
         }
 

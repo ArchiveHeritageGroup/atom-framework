@@ -231,6 +231,44 @@ class ActionBridge
             }
         }
 
+        // If action file not found and no alias matched, the _action value
+        // may actually be a slug (e.g., /user/wpre-aeax-rmag where the slug
+        // sits in the _action position). Try slug resolution with the _action
+        // value as the slug. Only for /{module}/{action} routes without an
+        // explicit slug parameter — and only when the action looks like a slug
+        // (contains hyphens or is >12 chars, not a common action keyword).
+        if (null === $actionFile && !$slug && $action
+            && !in_array($action, ['index', 'browse', 'list', 'edit', 'delete', 'create', 'show', 'view', 'add', 'update', 'autocomplete', 'search', 'home', 'login', 'logout', 'register', 'export', 'import'], true)
+        ) {
+            $resolved = $this->resolveSlugRoute($action, 'index');
+            if ($resolved) {
+                $slug = $action;
+                $request->route()->setParameter('slug', $slug);
+                $module = $resolved['module'];
+                $action = $resolved['action'];
+
+                if (isset(self::ACTION_ALIASES[$module][$action])) {
+                    $aliasResult = $this->dispatchSpecialAlias(
+                        self::ACTION_ALIASES[$module][$action], $request, $module
+                    );
+                    if ($aliasResult) {
+                        return $aliasResult;
+                    }
+                    [$am, $aa] = self::ACTION_ALIASES[$module][$action];
+                    $af = $this->findActionFile($am, $aa);
+                    if (null !== $af) {
+                        $module = $am;
+                        $action = $aa;
+                        $actionFile = $af;
+                    }
+                }
+
+                if (null === $actionFile) {
+                    $actionFile = $this->findActionFile($module, $action);
+                }
+            }
+        }
+
         // If module not found and this is a slug route, resolve the slug
         // to determine the correct module (mimics QubitMetadataRoute behavior)
         if (null === $actionFile && $slug) {
@@ -367,6 +405,7 @@ class ActionBridge
                 'QubitDonor'             => 'donor',
                 'QubitPhysicalObject'    => 'physicalobject',
                 'QubitStaticPage'        => 'staticpage',
+                'QubitUser'              => 'sfIsaarPlugin',  // User extends Actor
             ];
 
             $module = $classToModule[$row->class_name] ?? null;
