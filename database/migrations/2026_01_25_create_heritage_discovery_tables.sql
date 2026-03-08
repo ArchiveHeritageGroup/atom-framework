@@ -40,11 +40,11 @@ CREATE TABLE IF NOT EXISTS heritage_learned_term (
 
     term VARCHAR(255) NOT NULL,
     related_term VARCHAR(255) NOT NULL,
-    relationship_type ENUM('synonym', 'broader', 'narrower', 'related', 'spelling') DEFAULT 'related',
+    relationship_type VARCHAR(57) COMMENT 'synonym, broader, narrower, related, spelling' DEFAULT 'related',
     confidence_score DECIMAL(5,4) DEFAULT 0.5,
     usage_count INT DEFAULT 1,
 
-    source ENUM('user_behavior', 'admin', 'taxonomy', 'external') DEFAULT 'user_behavior',
+    source VARCHAR(52) COMMENT 'user_behavior, admin, taxonomy, external' DEFAULT 'user_behavior',
     is_verified TINYINT(1) DEFAULT 0,
     is_enabled TINYINT(1) DEFAULT 1,
 
@@ -67,7 +67,7 @@ CREATE TABLE IF NOT EXISTS heritage_search_suggestion (
     institution_id INT DEFAULT NULL,
 
     suggestion_text VARCHAR(255) NOT NULL,
-    suggestion_type ENUM('query', 'title', 'subject', 'creator', 'place') DEFAULT 'query',
+    suggestion_type VARCHAR(49) COMMENT 'query, title, subject, creator, place' DEFAULT 'query',
 
     search_count INT DEFAULT 1,
     click_count INT DEFAULT 0,
@@ -137,13 +137,13 @@ CREATE TABLE IF NOT EXISTS heritage_entity_cache (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
     object_id INT NOT NULL,
 
-    entity_type ENUM('person', 'organization', 'place', 'date', 'event', 'work') NOT NULL,
+    entity_type VARCHAR(58) COMMENT 'person, organization, place, date, event, work' NOT NULL,
     entity_value VARCHAR(500) NOT NULL,
     normalized_value VARCHAR(500) DEFAULT NULL,
     confidence_score DECIMAL(5,4) DEFAULT 1.0,
 
     source_field VARCHAR(100) DEFAULT NULL,
-    extraction_method ENUM('taxonomy', 'ner', 'pattern', 'manual') DEFAULT 'taxonomy',
+    extraction_method VARCHAR(42) COMMENT 'taxonomy, ner, pattern, manual' DEFAULT 'taxonomy',
 
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 

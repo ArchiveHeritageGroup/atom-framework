@@ -5,6 +5,32 @@
 
 ---
 
+## 🚨 HERATIO STANDALONE MODE — ABSOLUTE QUALITY STANDARD
+
+**NO MVP. NO PARTIAL. NO "BASIC VIEWER". NO SHORTCUTS.**
+
+When Heratio standalone mode (`.heratio_enabled`) is activated, every page, screen, and feature
+MUST be **100% identical** to what Symfony/AtoM delivers. This means:
+
+1. **Full screens** — every page must render completely, with the same layout, sidebar, breadcrumbs, digital object viewers, carousels, facets, and metadata panels as base AtoM + ahgThemeB5Plugin.
+2. **Full functionality** — edit, delete, copy, move, import, export, search, browse, admin, settings — everything must work. No "read-only MVP".
+3. **Full theme** — the Bootstrap 5 theme (ahgThemeB5Plugin) must render identically. No stripped-down HTML wrappers. No inline `<div class="container">` fallbacks.
+4. **Full menus** — all navigation dropdowns (Add, Manage, Import, Admin, AHG Plugins, user profile) must show every item that Symfony shows, based on user permissions and enabled plugins.
+5. **Full digital objects** — images, thumbnails, reference copies, IIIF viewer, media player, 3D viewer — all must render as they do in Symfony mode.
+6. **Full settings** — AHG Settings must show all sections for all enabled plugins, not a subset.
+
+**If a feature cannot be implemented to full parity, do NOT implement a degraded version.**
+Instead, document what is missing and leave that route handled by Symfony (dual-stack fallback).
+
+**The StandaloneViewerController (generic entity viewer) is a TEMPORARY diagnostic tool only.**
+It must NEVER be the production rendering path for any entity type. Production entity views
+must use the same templates (or Blade equivalents) that ahgThemeB5Plugin uses.
+
+**Test criterion:** A user must not be able to tell whether they are on Symfony or Heratio
+by looking at any page. If they can tell, it is not ready.
+
+---
+
 ## 🚫 HARD STOPS - NEVER DO THESE
 
 ### Files You Must NEVER Modify Without Explicit Approval

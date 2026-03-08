@@ -23,7 +23,7 @@ CREATE TABLE IF NOT EXISTS heritage_featured_collection (
     text_color VARCHAR(7) DEFAULT '#ffffff',
 
     -- Link
-    link_type ENUM('collection', 'search', 'repository', 'external') DEFAULT 'search',
+    link_type VARCHAR(52) COMMENT 'collection, search, repository, external' DEFAULT 'search',
     link_reference VARCHAR(500) DEFAULT NULL,
     collection_id INT DEFAULT NULL,
     repository_id INT DEFAULT NULL,
@@ -34,7 +34,7 @@ CREATE TABLE IF NOT EXISTS heritage_featured_collection (
     image_count INT DEFAULT 0,
 
     -- Display
-    display_size ENUM('small', 'medium', 'large', 'featured') DEFAULT 'medium',
+    display_size VARCHAR(42) COMMENT 'small, medium, large, featured' DEFAULT 'medium',
     display_order INT DEFAULT 100,
     show_on_landing TINYINT(1) DEFAULT 1,
     is_featured TINYINT(1) DEFAULT 0,
@@ -73,19 +73,19 @@ CREATE TABLE IF NOT EXISTS heritage_hero_slide (
     image_path VARCHAR(500) NOT NULL,
     image_alt VARCHAR(255) DEFAULT NULL,
     video_url VARCHAR(500) DEFAULT NULL,
-    media_type ENUM('image', 'video') DEFAULT 'image',
+    media_type VARCHAR(24) COMMENT 'image, video' DEFAULT 'image',
 
     -- Visual effects
-    overlay_type ENUM('none', 'gradient', 'solid') DEFAULT 'gradient',
+    overlay_type VARCHAR(33) COMMENT 'none, gradient, solid' DEFAULT 'gradient',
     overlay_color VARCHAR(7) DEFAULT '#000000',
     overlay_opacity DECIMAL(3,2) DEFAULT 0.50,
-    text_position ENUM('left', 'center', 'right', 'bottom-left', 'bottom-right') DEFAULT 'left',
+    text_position VARCHAR(58) COMMENT 'left, center, right, bottom-left, bottom-right' DEFAULT 'left',
     ken_burns TINYINT(1) DEFAULT 1,
 
     -- Call to action
     cta_text VARCHAR(100) DEFAULT NULL,
     cta_url VARCHAR(500) DEFAULT NULL,
-    cta_style ENUM('primary', 'secondary', 'outline', 'light') DEFAULT 'primary',
+    cta_style VARCHAR(46) COMMENT 'primary, secondary, outline, light' DEFAULT 'primary',
 
     -- Attribution
     source_item_id INT DEFAULT NULL,
@@ -131,12 +131,12 @@ CREATE TABLE IF NOT EXISTS heritage_explore_category (
     text_color VARCHAR(7) DEFAULT '#ffffff',
 
     -- Data source
-    source_type ENUM('taxonomy', 'authority', 'field', 'facet', 'custom') NOT NULL,
+    source_type VARCHAR(53) COMMENT 'taxonomy, authority, field, facet, custom' NOT NULL,
     source_reference VARCHAR(255) DEFAULT NULL,
     taxonomy_id INT DEFAULT NULL,
 
     -- Display configuration
-    display_style ENUM('grid', 'list', 'timeline', 'map', 'carousel') DEFAULT 'grid',
+    display_style VARCHAR(47) COMMENT 'grid, list, timeline, map, carousel' DEFAULT 'grid',
     items_per_page INT DEFAULT 24,
     show_counts TINYINT(1) DEFAULT 1,
     show_thumbnails TINYINT(1) DEFAULT 1,

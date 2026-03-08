@@ -17,13 +17,13 @@ CREATE TABLE IF NOT EXISTS `ahg_encrypted_fields` (
 
 CREATE TABLE IF NOT EXISTS `ahg_encryption_audit` (
     `id` BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-    `action` ENUM('encrypt','decrypt','rotate','migrate') NOT NULL,
-    `target_type` ENUM('file','field') NOT NULL,
+    `action` VARCHAR(45) COMMENT 'encrypt, decrypt, rotate, migrate' NOT NULL,
+    `target_type` VARCHAR(23) COMMENT 'file, field' NOT NULL,
     `target_id` VARCHAR(255) DEFAULT NULL,
     `target_table` VARCHAR(100) DEFAULT NULL,
     `target_column` VARCHAR(100) DEFAULT NULL,
     `user_id` INT DEFAULT NULL,
-    `status` ENUM('success','failure') DEFAULT 'success',
+    `status` VARCHAR(28) COMMENT 'success, failure' DEFAULT 'success',
     `error_message` TEXT DEFAULT NULL,
     `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     KEY `idx_action` (`action`),

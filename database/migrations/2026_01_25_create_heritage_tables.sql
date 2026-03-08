@@ -19,7 +19,7 @@ CREATE TABLE IF NOT EXISTS heritage_landing_config (
     -- Hero media
     hero_media JSON DEFAULT NULL,
     hero_rotation_seconds INT DEFAULT 8,
-    hero_effect ENUM('kenburns', 'fade', 'none') DEFAULT 'kenburns',
+    hero_effect VARCHAR(32) COMMENT 'kenburns, fade, none' DEFAULT 'kenburns',
 
     -- Sections enabled
     show_curated_stories TINYINT(1) DEFAULT 1,
@@ -50,7 +50,7 @@ CREATE TABLE IF NOT EXISTS heritage_filter_type (
     code VARCHAR(50) NOT NULL UNIQUE,
     name VARCHAR(100) NOT NULL,
     icon VARCHAR(50) DEFAULT NULL,
-    source_type ENUM('taxonomy', 'authority', 'field', 'custom') NOT NULL,
+    source_type VARCHAR(46) COMMENT 'taxonomy, authority, field, custom' NOT NULL,
     source_reference VARCHAR(255) DEFAULT NULL,
     is_system TINYINT(1) DEFAULT 0,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -136,7 +136,7 @@ CREATE TABLE IF NOT EXISTS heritage_curated_story (
     cover_image VARCHAR(500) DEFAULT NULL,
     story_type VARCHAR(50) DEFAULT 'collection',
 
-    link_type ENUM('collection', 'search', 'external', 'page') DEFAULT 'search',
+    link_type VARCHAR(46) COMMENT 'collection, search, external, page' DEFAULT 'search',
     link_reference VARCHAR(500) DEFAULT NULL,
 
     item_count INT DEFAULT NULL,
