@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<phpdocumentor
+    configVersion="3"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns="https://www.phpdoc.org"
+    xsi:noNamespaceSchemaLocation="https://docs.phpdoc.org/latest/phpdoc.xsd"
+>
+    <title>Heratio Framework API Reference</title>
+
+    <paths>
+        <output>docs/api</output>
+        <cache>docs/.phpdoc/cache</cache>
+    </paths>
+
+    <version number="1.0.0">
+
+        <!-- Combined: atom-framework src + atom-ahg-plugins -->
+        <api>
+            <source dsn=".">
+                <path>src</path>
+                <path>../atom-ahg-plugins</path>
+            </source>
+            <ignore hidden="true">
+                <path>vendor</path>
+                <path>tests</path>
+                <path>node_modules</path>
+            </ignore>
+            <extensions>
+                <extension>php</extension>
+            </extensions>
+            <visibility>public</visibility>
+            <default-package-name>Heratio</default-package-name>
+            <include-source>true</include-source>
+            <encoding>UTF-8</encoding>
+        </api>
+
+    </version>
+
+    <setting name="graphs.enabled" value="true"/>
+    <setting name="plantuml.jar" value="/opt/plantuml/plantuml.jar"/>
+
+</phpdocumentor>

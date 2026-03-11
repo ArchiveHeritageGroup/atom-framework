@@ -43,11 +43,11 @@ class MetadataTemplateRegistry
         'rad' => ['plugin' => 'sfRadPlugin', 'module' => 'sfRadPlugin'],
         'skos' => ['plugin' => 'sfSkosPlugin', 'module' => 'sfSkosPlugin'],
         'dacs' => ['plugin' => 'arDacsPlugin', 'module' => 'arDacsPlugin'],
-        // GLAM/DAM templates - plugin field contains module name for routing compatibility
-        'museum' => ['plugin' => 'museum', 'module' => 'museum'],
-        'library' => ['plugin' => 'library', 'module' => 'library'],
-        'gallery' => ['plugin' => 'gallery', 'module' => 'gallery'],
-        'dam' => ['plugin' => 'dam', 'module' => 'dam'],
+        // GLAM/DAM templates - plugin field matches atom_plugin.name
+        'museum' => ['plugin' => 'ahgMuseumPlugin', 'module' => 'museum'],
+        'library' => ['plugin' => 'ahgLibraryPlugin', 'module' => 'library'],
+        'gallery' => ['plugin' => 'ahgGalleryPlugin', 'module' => 'gallery'],
+        'dam' => ['plugin' => 'ahgDAMPlugin', 'module' => 'dam'],
     ];
 
     /**

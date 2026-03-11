@@ -1,0 +1,576 @@
+#!/usr/bin/env php
+<?php
+/**
+ * Heratio API → Help Articles Generator
+ *
+ * Scans atom-framework/src/ PHP source files, extracts class/method PHPDoc
+ * blocks, and upserts them as help_article rows under "API Reference" category.
+ *
+ * Usage: php bin/docs-to-help [--dry-run] [--purge] [--dir=src/Services]
+ *
+ *   --dry-run   Show what would be inserted without writing to DB
+ *   --purge     Remove all existing "API Reference" articles first
+ *   --dir=PATH  Only process a specific subdirectory (relative to src/)
+ */
+
+// ─── Bootstrap ──────────────────────────────────────────────────────────
+$frameworkPath = dirname(__DIR__);
+$vendorAutoload = $frameworkPath . '/vendor/autoload.php';
+
+if (!file_exists($vendorAutoload)) {
+    fwrite(STDERR, "Error: vendor/autoload.php not found. Run composer install first.\n");
+    exit(1);
+}
+
+require_once $vendorAutoload;
+
+use Illuminate\Database\Capsule\Manager as DB;
+
+// ─── Database connection ────────────────────────────────────────────────
+$capsule = new DB;
+$capsule->addConnection([
+    'driver'    => 'mysql',
+    'host'      => '127.0.0.1',
+    'database'  => 'archive',
+    'username'  => 'root',
+    'password'  => '',
+    'charset'   => 'utf8mb4',
+    'collation' => 'utf8mb4_unicode_ci',
+]);
+$capsule->setAsGlobal();
+$capsule->bootEloquent();
+
+// ─── CLI Arguments ──────────────────────────────────────────────────────
+$dryRun = in_array('--dry-run', $argv);
+$purge  = in_array('--purge', $argv);
+$dirFilter = null;
+
+foreach ($argv as $arg) {
+    if (str_starts_with($arg, '--dir=')) {
+        $dirFilter = substr($arg, 6);
+    }
+}
+
+// Colours
+$green  = "\033[0;32m";
+$yellow = "\033[1;33m";
+$cyan   = "\033[0;36m";
+$red    = "\033[0;31m";
+$nc     = "\033[0m";
+
+echo "{$cyan}════════════════════════════════════════════{$nc}\n";
+echo "{$cyan}  API Reference → Help Articles Generator{$nc}\n";
+echo "{$cyan}════════════════════════════════════════════{$nc}\n\n";
+
+if ($dryRun) {
+    echo "{$yellow}DRY RUN — no database changes will be made{$nc}\n\n";
+}
+
+// ─── Purge existing API Reference articles ──────────────────────────────
+if ($purge && !$dryRun) {
+    $deleted = DB::table('help_article')->where('category', 'API Reference')->delete();
+    DB::table('help_section')->whereNotIn('article_id', function ($q) {
+        $q->select('id')->from('help_article');
+    })->delete();
+    echo "{$yellow}Purged {$deleted} existing API Reference articles{$nc}\n\n";
+}
+
+// ─── Subcategory mapping ────────────────────────────────────────────────
+$subcategoryMap = [
+    'Services'      => 'Services',
+    'Services/Write' => 'Write Services',
+    'Services/Search' => 'Search Services',
+    'Services/Delete' => 'Delete Services',
+    'Services/Access' => 'Access Services',
+    'Services/AI'    => 'AI Services',
+    'Services/Pagination' => 'Pagination',
+    'Repositories'  => 'Repositories',
+    'Helpers'       => 'Helpers',
+    'Commands'      => 'CLI Commands',
+    'Console/Commands' => 'CLI Commands',
+    'Http/Controllers' => 'Controllers',
+    'Http/Middleware'  => 'Middleware',
+    'Middleware'    => 'Middleware',
+    'Extensions'    => 'Extensions',
+    'Extensions/Contracts' => 'Extension Contracts',
+    'Extensions/Handlers' => 'Extension Handlers',
+    'Contracts'     => 'Contracts',
+    'Core'          => 'Core',
+    'Core/Database' => 'Core / Database',
+    'Core/Security' => 'Core / Security',
+    'Constants'     => 'Constants',
+    'Database'      => 'Database',
+    'Exceptions'    => 'Exceptions',
+    'Models'        => 'Models',
+    'Routing'       => 'Routing',
+    'Actions'       => 'Actions',
+    'Bridge'        => 'Bridge',
+    'Bridges'       => 'Bridges',
+    'Forms'         => 'Forms',
+    'Jobs'          => 'Jobs',
+    'Views'         => 'Views',
+    'Reports'       => 'Reports',
+    'Reports/Filters' => 'Report Filters',
+    'Reports/Results' => 'Report Results',
+    'Reports/Services' => 'Report Services',
+    'Heritage'      => 'Heritage',
+    'Heritage/Controllers' => 'Heritage Controllers',
+    'Heritage/Services'    => 'Heritage Services',
+    'Heritage/Repositories' => 'Heritage Repositories',
+];
+
+// ─── Scan source files ──────────────────────────────────────────────────
+$srcPath = $frameworkPath . '/src';
+$scanPath = $dirFilter ? $srcPath . '/' . $dirFilter : $srcPath;
+
+if (!is_dir($scanPath)) {
+    fwrite(STDERR, "Error: Directory not found: {$scanPath}\n");
+    exit(1);
+}
+
+$iterator = new RecursiveIteratorIterator(
+    new RecursiveDirectoryIterator($scanPath, RecursiveDirectoryIterator::SKIP_DOTS)
+);
+
+$articles = [];
+$skipped  = 0;
+
+foreach ($iterator as $file) {
+    if ($file->getExtension() !== 'php') {
+        continue;
+    }
+
+    $filePath = $file->getRealPath();
+    $relativePath = str_replace($srcPath . '/', '', $filePath);
+    $source = file_get_contents($filePath);
+
+    // Extract class info
+    $classInfo = extractClassInfo($source, $relativePath);
+    if (!$classInfo) {
+        $skipped++;
+        continue;
+    }
+
+    // Determine subcategory from directory
+    $dir = dirname($relativePath);
+    $subcategory = $subcategoryMap[$dir] ?? ucfirst(str_replace('/', ' / ', $dir));
+    if ($dir === '.') {
+        $subcategory = 'Core';
+    }
+
+    $articles[] = [
+        'classInfo'   => $classInfo,
+        'subcategory' => $subcategory,
+        'sourceFile'  => 'atom-framework/src/' . $relativePath,
+    ];
+}
+
+echo "Found {$green}" . count($articles) . "{$nc} classes ({$skipped} files skipped)\n\n";
+
+// ─── Sort articles by subcategory then class name ───────────────────────
+usort($articles, function ($a, $b) {
+    $cmp = strcmp($a['subcategory'], $b['subcategory']);
+    return $cmp !== 0 ? $cmp : strcmp($a['classInfo']['name'], $b['classInfo']['name']);
+});
+
+// ─── Generate and upsert help articles ──────────────────────────────────
+$inserted = 0;
+$updated  = 0;
+
+foreach ($articles as $entry) {
+    $info = $entry['classInfo'];
+    $slug = 'api-' . strtolower(preg_replace('/([a-z])([A-Z])/', '$1-$2', $info['name']));
+    $slug = preg_replace('/[^a-z0-9-]/', '-', $slug);
+    $slug = preg_replace('/-+/', '-', trim($slug, '-'));
+
+    $title = $info['name'];
+    $bodyHtml = renderClassHtml($info);
+    $bodyText = strip_tags($bodyHtml);
+    $bodyMarkdown = "# {$title}\n\n" . ($info['docSummary'] ?: 'No description available.');
+    $wordCount = str_word_count($bodyText);
+
+    // Build TOC JSON
+    $toc = [['level' => 2, 'text' => 'Overview', 'anchor' => 'overview']];
+    if (!empty($info['constants'])) {
+        $toc[] = ['level' => 2, 'text' => 'Constants', 'anchor' => 'constants'];
+    }
+    if (!empty($info['properties'])) {
+        $toc[] = ['level' => 2, 'text' => 'Properties', 'anchor' => 'properties'];
+    }
+    if (!empty($info['methods'])) {
+        $toc[] = ['level' => 2, 'text' => 'Methods', 'anchor' => 'methods'];
+        foreach ($info['methods'] as $m) {
+            $toc[] = ['level' => 3, 'text' => $m['name'] . '()', 'anchor' => 'method-' . $m['name']];
+        }
+    }
+
+    $row = [
+        'slug'          => $slug,
+        'title'         => $title,
+        'category'      => 'API Reference',
+        'subcategory'   => $entry['subcategory'],
+        'source_file'   => $entry['sourceFile'],
+        'body_markdown' => $bodyMarkdown,
+        'body_html'     => $bodyHtml,
+        'body_text'     => $bodyText,
+        'toc_json'      => json_encode($toc),
+        'word_count'    => $wordCount,
+        'sort_order'    => 100,
+        'is_published'  => 1,
+        'related_plugin' => null,
+        'tags'          => 'api,reference,' . strtolower($entry['subcategory']),
+    ];
+
+    if ($dryRun) {
+        echo "  {$cyan}[DRY]{$nc} {$entry['subcategory']} / {$title} → {$slug}\n";
+        $inserted++;
+        continue;
+    }
+
+    $existing = DB::table('help_article')->where('slug', $slug)->first();
+    if ($existing) {
+        DB::table('help_article')->where('slug', $slug)->update($row);
+        $updated++;
+    } else {
+        DB::table('help_article')->insert($row);
+        $inserted++;
+    }
+
+    // Upsert help_section rows for methods
+    $articleId = DB::table('help_article')->where('slug', $slug)->value('id');
+    if ($articleId) {
+        DB::table('help_section')->where('article_id', $articleId)->delete();
+        $sortOrder = 0;
+        foreach ($info['methods'] as $m) {
+            DB::table('help_section')->insert([
+                'article_id' => $articleId,
+                'heading'    => $m['name'] . '()',
+                'anchor'     => 'method-' . $m['name'],
+                'level'      => 3,
+                'body_text'  => $m['summary'] . ' ' . $m['signature'],
+                'sort_order' => $sortOrder++,
+            ]);
+        }
+    }
+}
+
+echo "\n{$green}════════════════════════════════════════════{$nc}\n";
+if ($dryRun) {
+    echo "{$yellow}DRY RUN: Would create {$inserted} articles{$nc}\n";
+} else {
+    echo "{$green}Inserted: {$inserted} | Updated: {$updated}{$nc}\n";
+}
+echo "{$green}Category: API Reference{$nc}\n";
+echo "{$green}View at: https://psis.theahg.co.za/index.php/help/category/API%20Reference{$nc}\n";
+echo "{$green}════════════════════════════════════════════{$nc}\n";
+
+// ═══════════════════════════════════════════════════════════════════════════
+// FUNCTIONS
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Extract class information from PHP source code.
+ */
+function extractClassInfo(string $source, string $relativePath): ?array
+{
+    // Extract namespace
+    $namespace = '';
+    if (preg_match('/^\s*namespace\s+([^;]+);/m', $source, $m)) {
+        $namespace = trim($m[1]);
+    }
+
+    // Extract class/interface/trait declaration and its docblock
+    if (!preg_match('/(\/\*\*[\s\S]*?\*\/\s*)?((?:abstract\s+|final\s+)?(?:class|interface|trait)\s+(\w+)(?:\s+extends\s+(\w+))?(?:\s+implements\s+([^\{]+))?)/m', $source, $cm)) {
+        return null;
+    }
+
+    $classDoc = isset($cm[1]) ? parseDocBlock($cm[1]) : ['summary' => '', 'description' => '', 'tags' => []];
+    $className = $cm[3];
+    $extends = isset($cm[4]) ? trim($cm[4]) : null;
+    $implements = isset($cm[5]) ? array_map('trim', explode(',', $cm[5])) : [];
+    $classType = 'class';
+    if (str_contains($cm[2], 'interface ')) $classType = 'interface';
+    if (str_contains($cm[2], 'trait ')) $classType = 'trait';
+    if (str_contains($cm[2], 'abstract ')) $classType = 'abstract class';
+
+    // Extract methods with their docblocks
+    $methods = [];
+    // Match docblock + method signature
+    $pattern = '/(\/\*\*[\s\S]*?\*\/\s*)?\b(public|protected|private)\s+(static\s+)?function\s+(\w+)\s*\(([^)]*)\)(?:\s*:\s*([^\s\{]+))?\s*\{/';
+    preg_match_all($pattern, $source, $matches, PREG_SET_ORDER);
+
+    foreach ($matches as $mm) {
+        $methodDoc = !empty($mm[1]) ? parseDocBlock($mm[1]) : ['summary' => '', 'description' => '', 'tags' => []];
+        $visibility = $mm[2];
+        $isStatic = !empty($mm[3]);
+        $methodName = $mm[4];
+        $params = trim($mm[5]);
+        $returnType = isset($mm[6]) ? trim($mm[6]) : null;
+
+        // Skip magic methods except __construct
+        if (str_starts_with($methodName, '__') && $methodName !== '__construct') {
+            continue;
+        }
+
+        // Build signature
+        $sig = $visibility;
+        if ($isStatic) $sig .= ' static';
+        $sig .= " function {$methodName}({$params})";
+        if ($returnType) $sig .= ": {$returnType}";
+
+        // Extract @param tags
+        $paramDocs = [];
+        foreach ($methodDoc['tags'] as $tag) {
+            if (str_starts_with($tag, '@param')) {
+                $paramDocs[] = trim(substr($tag, 6));
+            }
+        }
+
+        // Extract @return tag
+        $returnDoc = null;
+        foreach ($methodDoc['tags'] as $tag) {
+            if (str_starts_with($tag, '@return')) {
+                $returnDoc = trim(substr($tag, 7));
+                break;
+            }
+        }
+
+        $methods[] = [
+            'name'       => $methodName,
+            'visibility' => $visibility,
+            'static'     => $isStatic,
+            'signature'  => $sig,
+            'params'     => $params,
+            'paramDocs'  => $paramDocs,
+            'returnType' => $returnType,
+            'returnDoc'  => $returnDoc,
+            'summary'    => $methodDoc['summary'],
+            'description' => $methodDoc['description'],
+        ];
+    }
+
+    // Extract constants
+    $constants = [];
+    preg_match_all('/(?:\/\*\*[\s\S]*?\*\/\s*)?(?:public|protected|private)?\s*const\s+(\w+)\s*=\s*([^;]+);/', $source, $constMatches, PREG_SET_ORDER);
+    foreach ($constMatches as $cm2) {
+        $constants[] = ['name' => $cm2[1], 'value' => trim($cm2[2])];
+    }
+
+    // Extract properties
+    $properties = [];
+    preg_match_all('/(\/\*\*[\s\S]*?\*\/\s*)?(public|protected|private)\s+(static\s+)?(?:\??\w+\s+)?\$(\w+)(?:\s*=\s*([^;]+))?;/', $source, $propMatches, PREG_SET_ORDER);
+    foreach ($propMatches as $pm) {
+        $propDoc = !empty($pm[1]) ? parseDocBlock($pm[1]) : ['summary' => '', 'description' => '', 'tags' => []];
+        $properties[] = [
+            'name'       => $pm[4],
+            'visibility' => $pm[2],
+            'static'     => !empty($pm[3]),
+            'default'    => isset($pm[5]) ? trim($pm[5]) : null,
+            'summary'    => $propDoc['summary'],
+        ];
+    }
+
+    return [
+        'name'        => $className,
+        'namespace'   => $namespace,
+        'type'        => $classType,
+        'extends'     => $extends,
+        'implements'  => $implements,
+        'docSummary'  => $classDoc['summary'],
+        'docDescription' => $classDoc['description'],
+        'methods'     => $methods,
+        'constants'   => $constants,
+        'properties'  => $properties,
+        'file'        => $relativePath,
+    ];
+}
+
+/**
+ * Parse a PHPDoc block into summary, description, and tags.
+ */
+function parseDocBlock(string $block): array
+{
+    // Strip comment markers
+    $block = preg_replace('/^\s*\/\*\*\s*/', '', $block);
+    $block = preg_replace('/\s*\*\/\s*$/', '', $block);
+    $lines = preg_split('/\r?\n/', $block);
+    $cleaned = [];
+    foreach ($lines as $line) {
+        $cleaned[] = preg_replace('/^\s*\*\s?/', '', $line);
+    }
+
+    $text = implode("\n", $cleaned);
+
+    // Split at first @tag
+    $parts = preg_split('/\n(?=@)/', $text, 2);
+    $body = trim($parts[0]);
+    $tagSection = isset($parts[1]) ? trim($parts[1]) : '';
+
+    // Split body into summary (first line/sentence) and description
+    $bodyLines = explode("\n", $body);
+    $summary = trim($bodyLines[0]);
+    $description = trim(implode("\n", array_slice($bodyLines, 1)));
+
+    // Parse tags
+    $tags = [];
+    if ($tagSection) {
+        $tags = preg_split('/\n(?=@)/', $tagSection);
+        $tags = array_map('trim', $tags);
+    }
+
+    return [
+        'summary'     => $summary,
+        'description' => $description,
+        'tags'        => $tags,
+    ];
+}
+
+/**
+ * Render class info as HTML for the help article body.
+ */
+function renderClassHtml(array $info): string
+{
+    $html = '';
+    $esc = fn($s) => htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8');
+
+    // ── Overview ────────────────────────────────────────────────────────
+    $html .= '<h2 id="overview">Overview</h2>';
+    $html .= '<div class="card mb-4"><div class="card-body">';
+    $html .= '<table class="table table-sm table-borderless mb-0">';
+    $html .= '<tr><th style="width:140px">Type</th><td><code>' . $esc($info['type']) . '</code></td></tr>';
+    if ($info['namespace']) {
+        $html .= '<tr><th>Namespace</th><td><code>' . $esc($info['namespace']) . '</code></td></tr>';
+    }
+    if ($info['extends']) {
+        $html .= '<tr><th>Extends</th><td><code>' . $esc($info['extends']) . '</code></td></tr>';
+    }
+    if (!empty($info['implements'])) {
+        $html .= '<tr><th>Implements</th><td><code>' . $esc(implode(', ', $info['implements'])) . '</code></td></tr>';
+    }
+    $html .= '<tr><th>Source</th><td><code>' . $esc($info['file']) . '</code></td></tr>';
+    $html .= '</table>';
+    $html .= '</div></div>';
+
+    if ($info['docSummary']) {
+        $html .= '<p class="lead">' . $esc($info['docSummary']) . '</p>';
+    }
+    if ($info['docDescription']) {
+        $html .= '<p>' . nl2br($esc($info['docDescription'])) . '</p>';
+    }
+
+    // ── Constants ───────────────────────────────────────────────────────
+    if (!empty($info['constants'])) {
+        $html .= '<h2 id="constants">Constants</h2>';
+        $html .= '<div class="table-responsive"><table class="table table-sm table-striped">';
+        $html .= '<thead><tr><th>Name</th><th>Value</th></tr></thead><tbody>';
+        foreach ($info['constants'] as $c) {
+            $html .= '<tr><td><code>' . $esc($c['name']) . '</code></td>';
+            $html .= '<td><code>' . $esc($c['value']) . '</code></td></tr>';
+        }
+        $html .= '</tbody></table></div>';
+    }
+
+    // ── Properties ──────────────────────────────────────────────────────
+    if (!empty($info['properties'])) {
+        $html .= '<h2 id="properties">Properties</h2>';
+        $html .= '<div class="table-responsive"><table class="table table-sm table-striped">';
+        $html .= '<thead><tr><th>Property</th><th>Visibility</th><th>Default</th><th>Description</th></tr></thead><tbody>';
+        foreach ($info['properties'] as $p) {
+            $vis = $p['visibility'] . ($p['static'] ? ' static' : '');
+            $html .= '<tr>';
+            $html .= '<td><code>$' . $esc($p['name']) . '</code></td>';
+            $html .= '<td><span class="badge bg-' . visibilityColor($p['visibility']) . '">' . $esc($vis) . '</span></td>';
+            $html .= '<td>' . ($p['default'] ? '<code>' . $esc($p['default']) . '</code>' : '<em>none</em>') . '</td>';
+            $html .= '<td>' . $esc($p['summary']) . '</td>';
+            $html .= '</tr>';
+        }
+        $html .= '</tbody></table></div>';
+    }
+
+    // ── Methods ─────────────────────────────────────────────────────────
+    if (!empty($info['methods'])) {
+        $html .= '<h2 id="methods">Methods</h2>';
+
+        // Quick index
+        $html .= '<div class="card mb-4"><div class="card-body"><strong>Quick Index</strong>';
+        $html .= '<div class="d-flex flex-wrap gap-2 mt-2">';
+        foreach ($info['methods'] as $m) {
+            $badgeClass = visibilityColor($m['visibility']);
+            $html .= '<a href="#method-' . $esc($m['name']) . '" class="badge bg-' . $badgeClass . ' text-decoration-none">';
+            $html .= ($m['static'] ? '::' : '') . $esc($m['name']) . '()';
+            $html .= '</a>';
+        }
+        $html .= '</div></div></div>';
+
+        // Method details
+        foreach ($info['methods'] as $m) {
+            $html .= '<div class="card mb-3" id="method-' . $esc($m['name']) . '">';
+            $html .= '<div class="card-header d-flex justify-content-between align-items-center">';
+            $html .= '<h5 class="mb-0"><code>' . $esc($m['name']) . '()</code></h5>';
+            $vis = $m['visibility'] . ($m['static'] ? ' static' : '');
+            $html .= '<span class="badge bg-' . visibilityColor($m['visibility']) . '">' . $esc($vis) . '</span>';
+            $html .= '</div>';
+            $html .= '<div class="card-body">';
+
+            // Signature
+            $html .= '<pre class="bg-light p-3 rounded"><code>' . $esc($m['signature']) . '</code></pre>';
+
+            // Summary
+            if ($m['summary']) {
+                $html .= '<p>' . $esc($m['summary']) . '</p>';
+            }
+            if ($m['description']) {
+                $html .= '<p class="text-muted">' . nl2br($esc($m['description'])) . '</p>';
+            }
+
+            // Parameters
+            if (!empty($m['paramDocs'])) {
+                $html .= '<h6>Parameters</h6>';
+                $html .= '<div class="table-responsive"><table class="table table-sm">';
+                $html .= '<thead><tr><th>Type</th><th>Name</th><th>Description</th></tr></thead><tbody>';
+                foreach ($m['paramDocs'] as $pd) {
+                    // Parse "@param Type $name Description"
+                    if (preg_match('/^(\S+)\s+(\$\w+)\s*(.*)/s', $pd, $pm)) {
+                        $html .= '<tr><td><code>' . $esc($pm[1]) . '</code></td>';
+                        $html .= '<td><code>' . $esc($pm[2]) . '</code></td>';
+                        $html .= '<td>' . $esc($pm[3]) . '</td></tr>';
+                    } else {
+                        $html .= '<tr><td colspan="3">' . $esc($pd) . '</td></tr>';
+                    }
+                }
+                $html .= '</tbody></table></div>';
+            }
+
+            // Return
+            if ($m['returnDoc']) {
+                $html .= '<h6>Returns</h6>';
+                $html .= '<p><code>' . $esc($m['returnDoc']) . '</code></p>';
+            } elseif ($m['returnType']) {
+                $html .= '<h6>Returns</h6>';
+                $html .= '<p><code>' . $esc($m['returnType']) . '</code></p>';
+            }
+
+            $html .= '</div></div>';
+        }
+    }
+
+    // ── No content ──────────────────────────────────────────────────────
+    if (empty($info['methods']) && empty($info['constants']) && empty($info['properties'])) {
+        $html .= '<div class="alert alert-info">This ' . $esc($info['type']) . ' has no documented public members.</div>';
+    }
+
+    return $html;
+}
+
+/**
+ * Bootstrap badge colour for visibility.
+ */
+function visibilityColor(string $visibility): string
+{
+    return match ($visibility) {
+        'public'    => 'success',
+        'protected' => 'warning',
+        'private'   => 'danger',
+        default     => 'secondary',
+    };
+}

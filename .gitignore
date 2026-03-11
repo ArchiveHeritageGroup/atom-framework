@@ -28,3 +28,7 @@
 # OS files
 .DS_Store
 Thumbs.db
+
+# phpDocumentor generated output
+docs/api/
+docs/.phpdoc/
