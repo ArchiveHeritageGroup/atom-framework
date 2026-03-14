@@ -27,7 +27,6 @@ class Model3DService
         'gltf' => 'model/gltf+json',
         'obj' => 'model/obj',
         'stl' => 'model/stl',
-        'fbx' => 'application/octet-stream',
         'ply' => 'application/x-ply',
         'usdz' => 'model/vnd.usdz+zip',
     ];

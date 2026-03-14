@@ -16,7 +16,7 @@ class ThreeDAutoConfigService
     /**
      * 3D file extensions
      */
-    protected static array $extensions = ['glb', 'gltf', 'obj', 'fbx', 'stl', 'ply', 'usdz'];
+    protected static array $extensions = ['glb', 'gltf', 'obj', 'stl', 'ply', 'usdz'];
     
     /**
      * Format mapping
@@ -25,7 +25,6 @@ class ThreeDAutoConfigService
         'glb' => 'glb',
         'gltf' => 'gltf',
         'obj' => 'obj',
-        'fbx' => 'fbx',
         'stl' => 'stl',
         'ply' => 'ply',
         'usdz' => 'usdz'
