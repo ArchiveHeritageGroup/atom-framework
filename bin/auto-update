@@ -1,0 +1,98 @@
+#!/bin/bash
+# auto-update — Pull latest code from GitHub for framework + plugins
+#
+# Usage:
+#   bash bin/auto-update              # Pull both repos, clear cache
+#   bash bin/auto-update --dry-run    # Show what would be pulled
+#
+# Cron (daily at 01:00):
+#   0 1 * * * cd /usr/share/nginx/archive/atom-framework && bash bin/auto-update >> /var/log/atom/auto-update.log 2>&1
+#
+# Webhook (GitHub push → auto-deploy):
+#   Configure GitHub webhook to POST to /api/v1/webhook/deploy
+#   with secret matching WEBHOOK_SECRET in .env
+
+set -euo pipefail
+
+ATOM_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+FRAMEWORK_PATH="${ATOM_ROOT}/atom-framework"
+PLUGINS_PATH="${ATOM_ROOT}/atom-ahg-plugins"
+LOG_PREFIX="[$(date '+%Y-%m-%d %H:%M:%S')]"
+DRY_RUN=false
+
+if [[ "${1:-}" == "--dry-run" ]]; then
+    DRY_RUN=true
+    echo "${LOG_PREFIX} DRY RUN — no changes will be made"
+fi
+
+echo "${LOG_PREFIX} Starting auto-update..."
+
+# Pull framework
+if [ -d "${FRAMEWORK_PATH}/.git" ]; then
+    echo "${LOG_PREFIX} Updating atom-framework..."
+    cd "${FRAMEWORK_PATH}"
+    if $DRY_RUN; then
+        git fetch origin main 2>&1
+        LOCAL=$(git rev-parse HEAD)
+        REMOTE=$(git rev-parse origin/main)
+        if [ "$LOCAL" != "$REMOTE" ]; then
+            echo "${LOG_PREFIX}   Framework has updates (local: ${LOCAL:0:8}, remote: ${REMOTE:0:8})"
+            git log --oneline HEAD..origin/main
+        else
+            echo "${LOG_PREFIX}   Framework is up to date"
+        fi
+    else
+        BEFORE=$(git rev-parse HEAD)
+        git fetch origin main 2>&1
+        git reset --hard origin/main 2>&1
+        AFTER=$(git rev-parse HEAD)
+        if [ "$BEFORE" != "$AFTER" ]; then
+            echo "${LOG_PREFIX}   Framework updated: ${BEFORE:0:8} → ${AFTER:0:8}"
+            CHANGED=true
+        else
+            echo "${LOG_PREFIX}   Framework already up to date"
+        fi
+    fi
+else
+    echo "${LOG_PREFIX}   atom-framework is not a git repo — skipping"
+fi
+
+# Pull plugins
+if [ -d "${PLUGINS_PATH}/.git" ]; then
+    echo "${LOG_PREFIX} Updating atom-ahg-plugins..."
+    cd "${PLUGINS_PATH}"
+    if $DRY_RUN; then
+        git fetch origin main 2>&1
+        LOCAL=$(git rev-parse HEAD)
+        REMOTE=$(git rev-parse origin/main)
+        if [ "$LOCAL" != "$REMOTE" ]; then
+            echo "${LOG_PREFIX}   Plugins have updates (local: ${LOCAL:0:8}, remote: ${REMOTE:0:8})"
+            git log --oneline HEAD..origin/main
+        else
+            echo "${LOG_PREFIX}   Plugins are up to date"
+        fi
+    else
+        BEFORE=$(git rev-parse HEAD)
+        git fetch origin main 2>&1
+        git reset --hard origin/main 2>&1
+        AFTER=$(git rev-parse HEAD)
+        if [ "$BEFORE" != "$AFTER" ]; then
+            echo "${LOG_PREFIX}   Plugins updated: ${BEFORE:0:8} → ${AFTER:0:8}"
+            CHANGED=true
+        else
+            echo "${LOG_PREFIX}   Plugins already up to date"
+        fi
+    fi
+else
+    echo "${LOG_PREFIX}   atom-ahg-plugins is not a git repo — skipping"
+fi
+
+# Clear cache if anything changed
+if [ "${CHANGED:-false}" = true ] && ! $DRY_RUN; then
+    echo "${LOG_PREFIX} Clearing cache..."
+    rm -rf "${ATOM_ROOT}/cache/"*
+    cd "${ATOM_ROOT}" && php symfony cc 2>/dev/null || true
+    echo "${LOG_PREFIX} Cache cleared"
+fi
+
+echo "${LOG_PREFIX} Auto-update complete."
