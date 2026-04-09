@@ -181,7 +181,7 @@ class PhysicalObjectExtendedRepository
             })
             ->leftJoin('slug as s', 's.object_id', '=', 'io.id')
             ->where('r.subject_id', $physicalObjectId)
-            ->where('r.type_id', 153) // QubitTerm::HAS_PHYSICAL_OBJECT_ID
+            ->where('r.type_id', \QubitTerm::HAS_PHYSICAL_OBJECT_ID)
             ->select([
                 'io.id',
                 'ioi.title',

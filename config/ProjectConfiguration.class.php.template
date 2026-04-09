@@ -146,7 +146,7 @@ class ProjectConfiguration extends sfProjectConfiguration
             $prefix = sprintf('atom:%s:', md5($rootDir));
             $loader = new QubitApcUniversalClassLoader($prefix);
         } else {
-            $loader = new UniversalClassLoader();
+            $loader = new \Symfony\Component\ClassLoader\UniversalClassLoader();
         }
 
         $loader->registerNamespaces([
