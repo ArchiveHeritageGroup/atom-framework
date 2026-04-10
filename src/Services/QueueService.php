@@ -74,10 +74,14 @@ class QueueService
         string $queue = 'default',
         int $priority = 5,
         int $delaySeconds = 0,
-        int $maxAttempts = 3,
+        int $maxAttempts = 0,
         ?int $userId = null,
         ?string $rateLimitGroup = null
     ): int {
+        // If caller didn't specify max_attempts (0 = use default), read from settings
+        if ($maxAttempts <= 0) {
+            $maxAttempts = $this->getDefaultRetryAttempts();
+        }
         $now = date('Y-m-d H:i:s');
         $availableAt = $delaySeconds > 0
             ? date('Y-m-d H:i:s', time() + $delaySeconds)
@@ -581,6 +585,9 @@ class QueueService
             $this->logEvent($jobId, $job->batch_id, 'failed', "Job permanently failed after {$attemptCount} attempts", [
                 'error' => mb_substr($errorMessage, 0, 500),
             ]);
+
+            // Send failure notification if enabled
+            $this->notifyFailure($job, $errorMessage);
 
             // If part of a chain, cancel subsequent chain jobs
             if ($job->chain_id) {
@@ -1287,5 +1294,63 @@ class QueueService
             'export' => 'Export',
             'sync' => 'Synchronization',
         ];
+    }
+
+    /**
+     * Get default retry attempts from AHG Settings.
+     */
+    private function getDefaultRetryAttempts(): int
+    {
+        try {
+            $val = DB::table('ahg_settings')
+                ->where('setting_key', 'jobs_retry_attempts')
+                ->value('setting_value');
+            if (is_numeric($val) && (int) $val > 0) {
+                return (int) $val;
+            }
+        } catch (\Exception $e) {
+            // Table may not exist
+        }
+
+        return 3; // fallback default
+    }
+
+    /**
+     * Send failure notification email if enabled in AHG Settings.
+     */
+    private function notifyFailure(object $job, string $errorMessage): void
+    {
+        try {
+            $notifyEnabled = DB::table('ahg_settings')
+                ->where('setting_key', 'jobs_notify_on_failure')
+                ->value('setting_value');
+
+            if ($notifyEnabled !== 'true' && $notifyEnabled !== '1') {
+                return;
+            }
+
+            $email = DB::table('ahg_settings')
+                ->where('setting_key', 'jobs_notify_email')
+                ->value('setting_value');
+
+            if (empty($email) || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+                return;
+            }
+
+            $subject = '[AtoM Heratio] Queue job failed: ' . $job->job_type;
+            $body = sprintf(
+                "Job #%d (%s) failed permanently after %d attempts.\n\nQueue: %s\nError: %s\nTime: %s\n",
+                $job->id,
+                $job->job_type,
+                $job->attempt_count,
+                $job->queue,
+                mb_substr($errorMessage, 0, 1000),
+                date('Y-m-d H:i:s')
+            );
+
+            @mail($email, $subject, $body, "From: noreply@" . (gethostname() ?: 'localhost'));
+        } catch (\Exception $e) {
+            // Silent — notification is best-effort
+        }
     }
 }

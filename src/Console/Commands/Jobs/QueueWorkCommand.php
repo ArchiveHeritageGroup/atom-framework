@@ -57,12 +57,29 @@ EOF;
     {
         DatabaseBootstrap::initializeFromAtom();
 
+        // Check if queue processing is enabled via AHG Settings
+        try {
+            $enabled = \Illuminate\Database\Capsule\Manager::table('ahg_settings')
+                ->where('setting_key', 'jobs_enabled')
+                ->value('setting_value');
+            if ($enabled === 'false' || $enabled === '0') {
+                $this->error('Queue processing is disabled in AHG Settings (jobs_enabled = false). Exiting.');
+
+                return 1;
+            }
+        } catch (\Exception $e) {
+            // Settings table may not exist — proceed with defaults
+        }
+
+        // Load defaults from AHG Settings, allow CLI flags to override
+        $settingsDefaults = $this->loadJobSettings();
+
         $queues = $this->option('queue') ?: 'default';
         $once = $this->hasOption('once');
         $sleep = max(1, (int) ($this->option('sleep') ?: 3));
-        $maxJobs = (int) ($this->option('max-jobs') ?: 0);
+        $maxJobs = (int) ($this->option('max-jobs') ?: ($settingsDefaults['jobs_max_concurrent'] ?? 0));
         $maxMemory = (int) ($this->option('max-memory') ?: 256);
-        $timeout = (int) ($this->option('timeout') ?: 300);
+        $timeout = (int) ($this->option('timeout') ?: ($settingsDefaults['jobs_timeout'] ?? 300));
 
         $workerId = gethostname() . ':' . getmypid();
         $queueService = new QueueService();
@@ -188,6 +205,26 @@ EOF;
                 $e->getTraceAsString()
             );
             $this->error("  Failed after {$processingTime}ms: " . mb_substr($e->getMessage(), 0, 200));
+        }
+    }
+
+    /**
+     * Load job settings from ahg_settings table.
+     */
+    private function loadJobSettings(): array
+    {
+        try {
+            $rows = \Illuminate\Database\Capsule\Manager::table('ahg_settings')
+                ->whereIn('setting_key', ['jobs_timeout', 'jobs_max_concurrent', 'jobs_retry_attempts', 'jobs_cleanup_days'])
+                ->get();
+            $settings = [];
+            foreach ($rows as $row) {
+                $settings[$row->setting_key] = $row->setting_value;
+            }
+
+            return $settings;
+        } catch (\Exception $e) {
+            return [];
         }
     }
 

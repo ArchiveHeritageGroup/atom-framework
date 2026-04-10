@@ -34,7 +34,20 @@ EOF;
     {
         DatabaseBootstrap::initializeFromAtom();
 
-        $days = max(1, (int) ($this->option('days') ?: 30));
+        // Default from AHG Settings, CLI flag overrides
+        $settingsDays = 30;
+        try {
+            $val = \Illuminate\Database\Capsule\Manager::table('ahg_settings')
+                ->where('setting_key', 'jobs_cleanup_days')
+                ->value('setting_value');
+            if (is_numeric($val) && (int) $val > 0) {
+                $settingsDays = (int) $val;
+            }
+        } catch (\Exception $e) {
+            // Table may not exist
+        }
+
+        $days = max(1, (int) ($this->option('days') ?: $settingsDays));
         $queueService = new QueueService();
 
         $this->line("Cleaning up queue data older than {$days} days...");
