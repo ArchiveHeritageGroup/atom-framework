@@ -14,6 +14,8 @@ class RicSyncService implements RicSyncContract
     protected string $fusekiPassword;
     protected string $baseUri = 'https://archives.theahg.co.za/ric/';
     protected array $config = [];
+    protected int $batchSize = 100;
+    protected int $orphanRetentionDays = 30;
 
     public function __construct()
     {
@@ -36,6 +38,8 @@ class RicSyncService implements RicSyncContract
         $this->fusekiEndpoint = $this->config['fuseki_endpoint'] ?? 'http://localhost:3030/ric';
         $this->fusekiUsername = $this->config['fuseki_username'] ?? 'admin';
         $this->fusekiPassword = $this->config['fuseki_password'] ?? '';
+        $this->batchSize = (int) ($this->config['fuseki_batch_size'] ?? 100);
+        $this->orphanRetentionDays = (int) ($this->config['fuseki_orphan_retention_days'] ?? 30);
     }
 
     // =========================================================================
@@ -362,9 +366,24 @@ class RicSyncService implements RicSyncContract
 
     public function cleanupOrphanedTriples(bool $dryRun = false): array
     {
-        $stats = ['orphans_found' => 0, 'triples_removed' => 0, 'dry_run' => $dryRun];
+        $stats = ['orphans_found' => 0, 'triples_removed' => 0, 'dry_run' => $dryRun, 'retention_days' => $this->orphanRetentionDays];
 
         $orphans = $this->findOrphanedTriples();
+
+        // Only clean orphans detected more than retention_days ago
+        $cutoff = date('Y-m-d H:i:s', strtotime("-{$this->orphanRetentionDays} days"));
+        $orphans = array_filter($orphans, function ($o) use ($cutoff) {
+            try {
+                $tracked = DB::table('ric_orphan_tracking')
+                    ->where('ric_uri', $o['ric_uri'])
+                    ->value('detected_at');
+                return $tracked && $tracked <= $cutoff;
+            } catch (\Exception $e) {
+                return false;
+            }
+        });
+        $orphans = array_values($orphans);
+
         $stats['orphans_found'] = count($orphans);
 
         if (!$dryRun && !empty($orphans)) {
@@ -439,9 +458,25 @@ class RicSyncService implements RicSyncContract
             ->where('entity_type', $entityType)
             ->where('entity_id', $entityId)
             ->orderBy('created_at', 'desc')
-            ->limit(50)
+            ->limit($this->batchSize)
             ->get()
             ->toArray();
+    }
+
+    /**
+     * Get the configured integrity check schedule (daily/weekly/monthly/disabled).
+     */
+    public function getIntegritySchedule(): string
+    {
+        return $this->config['fuseki_integrity_schedule'] ?? 'weekly';
+    }
+
+    /**
+     * Check if integrity checks are enabled based on schedule setting.
+     */
+    public function isIntegrityCheckEnabled(): bool
+    {
+        return $this->getIntegritySchedule() !== 'disabled';
     }
 
     public function getSyncStats(?string $since = null): array
