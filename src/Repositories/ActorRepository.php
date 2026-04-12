@@ -141,7 +141,6 @@ class ActorRepository extends Repository
             ->get())
             ->map(fn ($item) => (array) $item);
     }
-}
 
     /**
      * Get contact information for an actor.
