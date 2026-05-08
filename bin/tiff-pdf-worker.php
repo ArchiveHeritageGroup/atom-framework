@@ -8,7 +8,11 @@
 
 // Bootstrap the framework
 require_once dirname(__DIR__) . '/bootstrap.php';
-require_once dirname(__DIR__) . '/src/Jobs/TiffPdfMergeJob.php';
+// Job class moved to atom-ahg-plugins/ahgPreservationPlugin/lib/Jobs/ in the
+// "Move feature code to plugins" refactor (commit 4f4f416). Worker include
+// path was not updated at the time, leaving the systemd service in a 5-second
+// crash-loop until 2026-05-08 (~56k journal entries / 12h).
+require_once dirname(dirname(__DIR__)) . '/atom-ahg-plugins/ahgPreservationPlugin/lib/Jobs/TiffPdfMergeJob.php';
 
 use Illuminate\Database\Capsule\Manager as DB;
 use AtomFramework\Jobs\TiffPdfMergeJob;
