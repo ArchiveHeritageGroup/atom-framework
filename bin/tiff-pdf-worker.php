@@ -23,9 +23,14 @@ $pollInterval = 5; // seconds
 
 while (true) {
     try {
-        // Find pending jobs that need processing
+        // Find pending jobs that need processing.
+        // Repository inserts as 'pending' (column DEFAULT); 'queued' is reserved
+        // for an explicit dispatch step that does not currently exist anywhere
+        // in the codebase. Including both keeps backward-compat if the queued
+        // transition is added later. (Bug surfaced 2026-05-08 - all 6 pending
+        // rows since 2026-03-01 had been ignored by the worker.)
         $pendingJob = DB::table('tiff_pdf_merge_job')
-            ->where('status', 'queued')
+            ->whereIn('status', ['pending', 'queued'])
             ->orderBy('created_at', 'asc')
             ->first();
 
