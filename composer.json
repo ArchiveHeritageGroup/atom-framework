@@ -15,7 +15,8 @@
         "monolog/monolog": "^3.10",
         "phpoffice/phpword": "^1.1",
         "dompdf/dompdf": "^2.0",
-        "phpmailer/phpmailer": "^7.0"
+        "phpmailer/phpmailer": "^7.0",
+        "firebase/php-jwt": "^6.10"
     },
     "autoload": {
         "psr-4": {
