@@ -216,7 +216,49 @@ class AhgMetadataRoute extends QubitMetadataRoute
             }
         }
 
+        // Reject ?sf_format=<x> when the resolved module has no indexSuccess.<x>.php
+        // template. Otherwise Symfony's view layer 500s with "template does not
+        // exist" — typically triggered by bots crawling legacy double-encoded
+        // ?sf_format=xml URLs against modules (e.g. sfIsadPlugin) that ship no
+        // XML template.
+        if (!self::moduleSupportsRequestedFormat($parameters)) {
+            return false;
+        }
+
         return $parameters;
+    }
+
+    /**
+     * Return false when ?sf_format=<x> is set but the resolved module's index
+     * action has no matching indexSuccess.<x>.php template.
+     */
+    protected static function moduleSupportsRequestedFormat(array $parameters): bool
+    {
+        $format = $_GET['sf_format'] ?? null;
+        if (null === $format || '' === $format || 'html' === $format) {
+            return true;
+        }
+
+        $module = $parameters['module'] ?? null;
+        $action = $parameters['action'] ?? 'index';
+        if (!$module) {
+            return true;
+        }
+
+        $template = $action . 'Success.' . $format . '.php';
+        $rootDir = sfConfig::get('sf_root_dir', '');
+        if (!$rootDir) {
+            return true;
+        }
+
+        foreach (['plugins', 'atom-ahg-plugins'] as $pluginsDir) {
+            $candidates = glob($rootDir . '/' . $pluginsDir . '/*/modules/' . $module . '/templates/' . $template);
+            if (!empty($candidates)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     public function matchesParameters($params, $context = [])
