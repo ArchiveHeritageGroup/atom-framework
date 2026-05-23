@@ -359,8 +359,35 @@ if [ -d "${PATCH_APPS}" ]; then
               "${ATOM_ROOT}/apps/qubit/modules/user/actions/passwordEditAction.class.php"
         echo "  ✓ Applied password policy patch (reuse prevention)"
     fi
+
+    # heratio#145 - Strongroom space allocation: physical-object show page
+    # gets a "Strongroom" row that links to the assigned strongroom. Fails
+    # soft when the ahg_strongroom tables are absent.
+    if [ -f "${PATCH_APPS}/qubit/modules/physicalobject/templates/indexSuccess.php" ]; then
+        cp -f "${PATCH_APPS}/qubit/modules/physicalobject/templates/indexSuccess.php" \
+              "${ATOM_ROOT}/apps/qubit/modules/physicalobject/templates/indexSuccess.php"
+        echo "  ✓ Applied physicalobject show patch (strongroom row, #145)"
+    fi
+
+    # heratio#145 - Strongroom space allocation: physical-object edit page
+    # gets a read-only Strongroom block + Manage link to /strongroom/<slug>.
+    if [ -f "${PATCH_APPS}/qubit/modules/physicalobject/templates/editSuccess.php" ]; then
+        cp -f "${PATCH_APPS}/qubit/modules/physicalobject/templates/editSuccess.php" \
+              "${ATOM_ROOT}/apps/qubit/modules/physicalobject/templates/editSuccess.php"
+        echo "  ✓ Applied physicalobject edit patch (strongroom block, #145)"
+    fi
 else
     echo "  ⚠ No app patches found"
+fi
+
+# heratio#145 - Strongroom space allocation: holdings-report CSV gains
+# 'physicalObjectStrongroom' + 'physicalObjectStrongroomSizeUsed' columns.
+# Lives outside ${PATCH_APPS} because it's lib/, not apps/.
+PATCH_LIB="${FRAMEWORK_PATH}/patches/lib"
+if [ -f "${PATCH_LIB}/QubitPhysicalObjectCsvHoldingsReport.class.php" ]; then
+    cp -f "${PATCH_LIB}/QubitPhysicalObjectCsvHoldingsReport.class.php" \
+          "${ATOM_ROOT}/lib/QubitPhysicalObjectCsvHoldingsReport.class.php"
+    echo "  ✓ Applied holdings report patch (Strongroom CSV columns, #145)"
 fi
 
 # =============================================================================
