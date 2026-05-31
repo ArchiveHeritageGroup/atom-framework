@@ -1,98 +1,246 @@
 #!/bin/bash
-# auto-update — Pull latest code from GitHub for framework + plugins
+# auto-update — Pull latest code from GitHub for framework + plugins, safely.
+#
+# Safety model (issue #72):
+#   - flock guard: never two runs at once
+#   - dirty working tree => ABORT that repo + warn (never destroys local edits)
+#   - capture pre-update SHA; if post-update validation fails => git reset back
+#   - writes a state file the admin UI reads (last run, result, SHAs)
+#   - optional email notification on change/failure
 #
 # Usage:
-#   bash bin/auto-update              # Pull both repos, clear cache
-#   bash bin/auto-update --dry-run    # Show what would be pulled
+#   bash bin/auto-update                 # pull both repos, clear cache, validate
+#   bash bin/auto-update --check         # dry-run: report available updates only
+#   bash bin/auto-update --dry-run       # alias of --check
+#   bash bin/auto-update --cron          # cron mode: obey AUTO_UPDATE_ENABLED toggle
+#   sudo bash bin/auto-update --install-cron     # install /etc/cron.d entry (root)
+#   sudo bash bin/auto-update --uninstall-cron   # remove the cron entry (root)
 #
-# Cron (daily at 01:00):
-#   0 1 * * * cd /usr/share/nginx/archive/atom-framework && bash bin/auto-update >> /var/log/atom/auto-update.log 2>&1
+# Config (optional) sourced from: <atom_root>/log/auto-update.conf
+#   AUTO_UPDATE_ENABLED=1
+#   AUTO_UPDATE_FREQUENCY=daily          # daily|weekly (used by --install-cron)
+#   AUTO_UPDATE_NOTIFY_EMAIL=ops@example.org
 #
-# Webhook (GitHub push → auto-deploy):
-#   Configure GitHub webhook to POST to /api/v1/webhook/deploy
-#   with secret matching WEBHOOK_SECRET in .env
+# Webhook (GitHub push -> auto-deploy):
+#   Configure GitHub webhook to POST to /api/v1/webhook/deploy with the .env secret.
 
-set -euo pipefail
+set -uo pipefail
 
 ATOM_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 FRAMEWORK_PATH="${ATOM_ROOT}/atom-framework"
 PLUGINS_PATH="${ATOM_ROOT}/atom-ahg-plugins"
-LOG_PREFIX="[$(date '+%Y-%m-%d %H:%M:%S')]"
+LOG_DIR="${ATOM_ROOT}/log"
+LOG_FILE="${LOG_DIR}/auto-update.log"
+CONF_FILE="${LOG_DIR}/auto-update.conf"
+STATE_FILE="${LOG_DIR}/auto-update.state"
+LOCK_FILE="${LOG_DIR}/auto-update.lock"
+CRON_FILE="/etc/cron.d/atom-auto-update"
+
+mkdir -p "${LOG_DIR}" 2>/dev/null || true
+
+# Load optional config
+AUTO_UPDATE_ENABLED="${AUTO_UPDATE_ENABLED:-1}"
+AUTO_UPDATE_FREQUENCY="${AUTO_UPDATE_FREQUENCY:-daily}"
+AUTO_UPDATE_NOTIFY_EMAIL="${AUTO_UPDATE_NOTIFY_EMAIL:-}"
+# shellcheck disable=SC1090
+[ -f "${CONF_FILE}" ] && source "${CONF_FILE}"
+
+MODE="run"
+case "${1:-}" in
+    --check|--dry-run) MODE="check" ;;
+    --cron)            MODE="cron" ;;
+    --install-cron)    MODE="install-cron" ;;
+    --uninstall-cron)  MODE="uninstall-cron" ;;
+    "")                MODE="run" ;;
+    *) echo "Unknown option: $1" >&2; exit 2 ;;
+esac
+
+ts() { date '+%Y-%m-%d %H:%M:%S'; }
+log() { echo "[$(ts)] $*" | tee -a "${LOG_FILE}"; }
+
+# ---- Cron install / uninstall (root only) -------------------------------
+if [ "${MODE}" = "install-cron" ]; then
+    if [ "$(id -u)" -ne 0 ]; then
+        echo "ERROR: --install-cron must run as root (writes ${CRON_FILE})." >&2
+        exit 1
+    fi
+    if [ "${AUTO_UPDATE_FREQUENCY}" = "weekly" ]; then
+        SCHEDULE="0 2 * * 0"   # Sundays 02:00
+    else
+        SCHEDULE="0 2 * * *"   # daily 02:00
+    fi
+    cat > "${CRON_FILE}" <<EOF
+# AtoM Heratio auto-update (managed by bin/auto-update --install-cron)
+# Frequency: ${AUTO_UPDATE_FREQUENCY}
+${SCHEDULE} root cd ${FRAMEWORK_PATH} && bash bin/auto-update --cron >> ${LOG_FILE} 2>&1
+EOF
+    chmod 644 "${CRON_FILE}"
+    echo "Installed ${CRON_FILE} (${AUTO_UPDATE_FREQUENCY}, ${SCHEDULE})."
+    exit 0
+fi
+
+if [ "${MODE}" = "uninstall-cron" ]; then
+    if [ "$(id -u)" -ne 0 ]; then
+        echo "ERROR: --uninstall-cron must run as root (removes ${CRON_FILE})." >&2
+        exit 1
+    fi
+    rm -f "${CRON_FILE}" && echo "Removed ${CRON_FILE}." || echo "No cron file to remove."
+    exit 0
+fi
+
+# ---- Cron-mode enable toggle --------------------------------------------
+if [ "${MODE}" = "cron" ] && [ "${AUTO_UPDATE_ENABLED}" != "1" ]; then
+    log "Auto-update is disabled (AUTO_UPDATE_ENABLED != 1) — cron run skipped."
+    exit 0
+fi
+
 DRY_RUN=false
+[ "${MODE}" = "check" ] && DRY_RUN=true
 
-if [[ "${1:-}" == "--dry-run" ]]; then
-    DRY_RUN=true
-    echo "${LOG_PREFIX} DRY RUN — no changes will be made"
+# ---- Concurrency guard ---------------------------------------------------
+exec 9>"${LOCK_FILE}"
+if ! flock -n 9; then
+    log "Another auto-update run is in progress — exiting."
+    exit 0
 fi
 
-echo "${LOG_PREFIX} Starting auto-update..."
+# ---- State helpers -------------------------------------------------------
+FW_BEFORE=""; FW_AFTER=""; PL_BEFORE=""; PL_AFTER=""
+CHANGED=false
+WARNINGS=""
+RESULT="ok"
 
-# Pull framework
-if [ -d "${FRAMEWORK_PATH}/.git" ]; then
-    echo "${LOG_PREFIX} Updating atom-framework..."
-    cd "${FRAMEWORK_PATH}"
+write_state() {
+    cat > "${STATE_FILE}" <<EOF
+LAST_RUN=$(ts)
+MODE=${MODE}
+RESULT=${1}
+MESSAGE=${2}
+FRAMEWORK_BEFORE=${FW_BEFORE}
+FRAMEWORK_AFTER=${FW_AFTER}
+PLUGINS_BEFORE=${PL_BEFORE}
+PLUGINS_AFTER=${PL_AFTER}
+EOF
+}
+
+notify() {
+    local subject="$1" body="$2"
+    if [ -n "${AUTO_UPDATE_NOTIFY_EMAIL}" ] && command -v mail >/dev/null 2>&1; then
+        printf '%s\n' "${body}" | mail -s "[AtoM auto-update] ${subject}" "${AUTO_UPDATE_NOTIFY_EMAIL}" 2>/dev/null || true
+    fi
+}
+
+# repo_is_dirty <path> ; returns 0 if dirty
+repo_is_dirty() {
+    [ -n "$(cd "$1" && git status --porcelain 2>/dev/null)" ]
+}
+
+log "Starting auto-update (mode=${MODE})..."
+
+# ---- Per-repo update -----------------------------------------------------
+# Sets globals REPO_BEFORE / REPO_AFTER (no stdout capture — log() writes to
+# stdout, so the function must not also echo its return value).
+REPO_BEFORE=""; REPO_AFTER=""
+update_repo() {
+    local label="$1" path="$2"
+    REPO_BEFORE=""; REPO_AFTER=""
+
+    if [ ! -d "${path}/.git" ]; then
+        log "  ${label}: not a git repo — skipping"
+        return 0
+    fi
+    cd "${path}"
+    REPO_BEFORE=$(git rev-parse HEAD 2>/dev/null)
+    REPO_AFTER="${REPO_BEFORE}"
+
     if $DRY_RUN; then
-        git fetch origin main 2>&1
-        LOCAL=$(git rev-parse HEAD)
-        REMOTE=$(git rev-parse origin/main)
-        if [ "$LOCAL" != "$REMOTE" ]; then
-            echo "${LOG_PREFIX}   Framework has updates (local: ${LOCAL:0:8}, remote: ${REMOTE:0:8})"
-            git log --oneline HEAD..origin/main
+        git fetch origin main >/dev/null 2>&1
+        local remote; remote=$(git rev-parse origin/main 2>/dev/null)
+        if [ "${REPO_BEFORE}" != "${remote}" ]; then
+            log "  ${label}: updates available (${REPO_BEFORE:0:8} -> ${remote:0:8})"
+            (git log --oneline HEAD..origin/main | sed 's/^/      /') | tee -a "${LOG_FILE}"
         else
-            echo "${LOG_PREFIX}   Framework is up to date"
+            log "  ${label}: up to date"
         fi
+        return 0
+    fi
+
+    if repo_is_dirty "${path}"; then
+        log "  ${label}: WORKING TREE DIRTY — aborting pull to protect local edits"
+        WARNINGS="${WARNINGS}${label} skipped (uncommitted local changes); "
+        return 0
+    fi
+
+    git fetch origin main >/dev/null 2>&1
+    git reset --hard origin/main >/dev/null 2>&1
+    REPO_AFTER=$(git rev-parse HEAD 2>/dev/null)
+    if [ "${REPO_BEFORE}" != "${REPO_AFTER}" ]; then
+        log "  ${label}: updated ${REPO_BEFORE:0:8} -> ${REPO_AFTER:0:8}"
+        CHANGED=true
     else
-        BEFORE=$(git rev-parse HEAD)
-        git fetch origin main 2>&1
-        git reset --hard origin/main 2>&1
-        AFTER=$(git rev-parse HEAD)
-        if [ "$BEFORE" != "$AFTER" ]; then
-            echo "${LOG_PREFIX}   Framework updated: ${BEFORE:0:8} → ${AFTER:0:8}"
-            CHANGED=true
-        else
-            echo "${LOG_PREFIX}   Framework already up to date"
+        log "  ${label}: already up to date"
+    fi
+}
+
+log "Updating atom-framework..."
+update_repo "framework" "${FRAMEWORK_PATH}"
+FW_BEFORE="${REPO_BEFORE}"; FW_AFTER="${REPO_AFTER}"
+
+log "Updating atom-ahg-plugins..."
+update_repo "plugins" "${PLUGINS_PATH}"
+PL_BEFORE="${REPO_BEFORE}"; PL_AFTER="${REPO_AFTER}"
+
+if $DRY_RUN; then
+    log "Dry run complete."
+    write_state "ok" "dry-run${WARNINGS:+; }${WARNINGS}"
+    exit 0
+fi
+
+# ---- Cache clear + validation + rollback --------------------------------
+if [ "${CHANGED}" = true ]; then
+    log "Clearing cache..."
+    rm -rf "${ATOM_ROOT}/cache/"* 2>/dev/null || true
+    (cd "${ATOM_ROOT}" && php symfony cc >/dev/null 2>&1) || true
+
+    log "Validating application bootstrap..."
+    if (cd "${ATOM_ROOT}" && php symfony cc >/dev/null 2>&1); then
+        log "Validation passed."
+    else
+        RESULT="rolled-back"
+        log "VALIDATION FAILED — rolling back."
+        if [ -n "${FW_BEFORE}" ] && [ -n "${FW_AFTER}" ] && [ "${FW_BEFORE}" != "${FW_AFTER}" ]; then
+            (cd "${FRAMEWORK_PATH}" && git reset --hard "${FW_BEFORE}" >/dev/null 2>&1)
+            log "  framework rolled back to ${FW_BEFORE:0:8}"
+            FW_AFTER="${FW_BEFORE}"
         fi
+        if [ -n "${PL_BEFORE}" ] && [ -n "${PL_AFTER}" ] && [ "${PL_BEFORE}" != "${PL_AFTER}" ]; then
+            (cd "${PLUGINS_PATH}" && git reset --hard "${PL_BEFORE}" >/dev/null 2>&1)
+            log "  plugins rolled back to ${PL_BEFORE:0:8}"
+            PL_AFTER="${PL_BEFORE}"
+        fi
+        rm -rf "${ATOM_ROOT}/cache/"* 2>/dev/null || true
+        (cd "${ATOM_ROOT}" && php symfony cc >/dev/null 2>&1) || true
+        write_state "rolled-back" "validation failed after pull; reverted"
+        notify "ROLLBACK on $(hostname)" "Auto-update pulled new code but post-update validation failed. Repos were reset to their previous commits. See ${LOG_FILE}."
+        log "Auto-update finished with ROLLBACK."
+        exit 1
     fi
 else
-    echo "${LOG_PREFIX}   atom-framework is not a git repo — skipping"
+    log "No changes — cache untouched."
 fi
 
-# Pull plugins
-if [ -d "${PLUGINS_PATH}/.git" ]; then
-    echo "${LOG_PREFIX} Updating atom-ahg-plugins..."
-    cd "${PLUGINS_PATH}"
-    if $DRY_RUN; then
-        git fetch origin main 2>&1
-        LOCAL=$(git rev-parse HEAD)
-        REMOTE=$(git rev-parse origin/main)
-        if [ "$LOCAL" != "$REMOTE" ]; then
-            echo "${LOG_PREFIX}   Plugins have updates (local: ${LOCAL:0:8}, remote: ${REMOTE:0:8})"
-            git log --oneline HEAD..origin/main
-        else
-            echo "${LOG_PREFIX}   Plugins are up to date"
-        fi
-    else
-        BEFORE=$(git rev-parse HEAD)
-        git fetch origin main 2>&1
-        git reset --hard origin/main 2>&1
-        AFTER=$(git rev-parse HEAD)
-        if [ "$BEFORE" != "$AFTER" ]; then
-            echo "${LOG_PREFIX}   Plugins updated: ${BEFORE:0:8} → ${AFTER:0:8}"
-            CHANGED=true
-        else
-            echo "${LOG_PREFIX}   Plugins already up to date"
-        fi
-    fi
-else
-    echo "${LOG_PREFIX}   atom-ahg-plugins is not a git repo — skipping"
+# ---- Final state + notify ------------------------------------------------
+if [ -n "${WARNINGS}" ]; then
+    RESULT="warning"
+fi
+write_state "${RESULT}" "${WARNINGS:-clean}"
+
+if [ "${CHANGED}" = true ]; then
+    notify "Updated on $(hostname)" "Auto-update applied new code. framework: ${FW_BEFORE:0:8}->${FW_AFTER:0:8}, plugins: ${PL_BEFORE:0:8}->${PL_AFTER:0:8}. ${WARNINGS}"
+fi
+if [ -n "${WARNINGS}" ]; then
+    notify "Warning on $(hostname)" "Auto-update completed with warnings: ${WARNINGS}"
 fi
 
-# Clear cache if anything changed
-if [ "${CHANGED:-false}" = true ] && ! $DRY_RUN; then
-    echo "${LOG_PREFIX} Clearing cache..."
-    rm -rf "${ATOM_ROOT}/cache/"*
-    cd "${ATOM_ROOT}" && php symfony cc 2>/dev/null || true
-    echo "${LOG_PREFIX} Cache cleared"
-fi
-
-echo "${LOG_PREFIX} Auto-update complete."
+log "Auto-update complete (result=${RESULT})."
+exit 0
