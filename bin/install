@@ -390,6 +390,15 @@ if [ -f "${PATCH_LIB}/QubitPhysicalObjectCsvHoldingsReport.class.php" ]; then
     echo "  ✓ Applied holdings report patch (Strongroom CSV columns, #145)"
 fi
 
+# ahgLdapUser — opt-in safe-by-default LDAP user class (#29).
+# Enables `user.class: ahgLdapUser` in factories.yml; behaves as myUser until
+# LDAP is turned on in Admin > AHG Settings > LDAP authentication.
+if [ -f "${PATCH_LIB}/ahgLdapUser.class.php" ]; then
+    cp -f "${PATCH_LIB}/ahgLdapUser.class.php" \
+          "${ATOM_ROOT}/lib/ahgLdapUser.class.php"
+    echo "  ✓ Applied ahgLdapUser patch (opt-in LDAP user class, #29)"
+fi
+
 # =============================================================================
 # Step 12: Copy dist assets (icons)
 # =============================================================================
