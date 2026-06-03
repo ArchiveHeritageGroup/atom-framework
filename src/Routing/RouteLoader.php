@@ -57,29 +57,32 @@ class RouteLoader
     public function register(\sfRouting $routing): void
     {
         foreach ($this->routes as $route) {
-            $options = [];
+            // sf_method must live in the route REQUIREMENTS (not defaults) for
+            // sfRoute to actually filter by HTTP method — otherwise same-path
+            // get()+post() routes collide and the first-prepended one wins for
+            // every verb. any() routes leave methods empty → match any verb.
+            $requirements = $route['requirements'];
             if (!empty($route['methods'])) {
-                $options['sf_method'] = $route['methods'];
+                $requirements['sf_method'] = $route['methods'];
             }
 
             $routeDefaults = array_merge(
                 ['module' => $this->module, 'action' => $route['action']],
-                $options,
                 $route['defaults']
             );
 
-            $routing->prependRoute($route['name'], new \sfRoute(
+            $routing->prependRoute($route['name'], new \sfRequestRoute(
                 $route['url'],
                 $routeDefaults,
-                $route['requirements']
+                $requirements
             ));
 
             // Also register trailing-slash variant so /path/ matches /path
             if (!str_ends_with($route['url'], '/')) {
-                $routing->prependRoute($route['name'] . '_ts', new \sfRoute(
+                $routing->prependRoute($route['name'] . '_ts', new \sfRequestRoute(
                     $route['url'] . '/',
                     $routeDefaults,
-                    $route['requirements']
+                    $requirements
                 ));
             }
         }

@@ -43,6 +43,34 @@ class AhgApiController extends AhgController
         }
     }
 
+    /**
+     * Symfony (index.php) dispatches actions as execute{Action}(); the apiv2
+     * actions instead define HTTP-verb methods (GET/POST/PUT/PATCH/DELETE) for
+     * the standalone stack. Bridge Symfony's execute{Action} call to the verb
+     * method so the same actions serve both stacks. (Without this every apiv2
+     * action 500s under Symfony with "undefined method execute…".) Any other
+     * missing-method call falls through to the default behaviour, which raises.
+     */
+    public function __call($name, $arguments)
+    {
+        if (strncmp($name, 'execute', 7) === 0) {
+            $request = $arguments[0] ?? (method_exists($this, 'getRequest') ? $this->getRequest() : null);
+            $this->boot();
+            $verb = strtoupper(
+                ($request && method_exists($request, 'getMethod'))
+                    ? $request->getMethod()
+                    : ($_SERVER['REQUEST_METHOD'] ?? 'GET')
+            );
+            if (method_exists($this, $verb)) {
+                return $this->{$verb}($request);
+            }
+
+            return $this->error(405, 'method_not_allowed', 'HTTP ' . $verb . ' not supported on this endpoint');
+        }
+
+        return parent::__call($name, $arguments);
+    }
+
     protected function loadBootstrap(): void
     {
         if ($this->bootstrapped) {
