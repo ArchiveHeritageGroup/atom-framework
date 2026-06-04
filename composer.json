@@ -16,7 +16,8 @@
         "phpoffice/phpword": "^1.1",
         "dompdf/dompdf": "^2.0",
         "phpmailer/phpmailer": "^7.0",
-        "firebase/php-jwt": "^6.10"
+        "firebase/php-jwt": "^6.10",
+        "web-auth/webauthn-lib": "^5.3"
     },
     "autoload": {
         "psr-4": {
