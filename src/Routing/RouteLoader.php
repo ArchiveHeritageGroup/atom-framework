@@ -71,7 +71,14 @@ class RouteLoader
                 $route['defaults']
             );
 
-            $routing->prependRoute($route['name'], new \sfRequestRoute(
+            // Method-restricted routes (get()/post()) use sfRequestRoute so the
+            // sf_method requirement is enforced. any() routes MUST use the plain
+            // sfRoute: sfRequestRoute defaults sf_method to GET/HEAD when none is
+            // set, which would silently make every any() route reject POST (e.g.
+            // breaking form-save POSTs to RouteLoader-registered plugin routes).
+            $routeClass = !empty($route['methods']) ? \sfRequestRoute::class : \sfRoute::class;
+
+            $routing->prependRoute($route['name'], new $routeClass(
                 $route['url'],
                 $routeDefaults,
                 $requirements
@@ -79,7 +86,7 @@ class RouteLoader
 
             // Also register trailing-slash variant so /path/ matches /path
             if (!str_ends_with($route['url'], '/')) {
-                $routing->prependRoute($route['name'] . '_ts', new \sfRequestRoute(
+                $routing->prependRoute($route['name'] . '_ts', new $routeClass(
                     $route['url'] . '/',
                     $routeDefaults,
                     $requirements
