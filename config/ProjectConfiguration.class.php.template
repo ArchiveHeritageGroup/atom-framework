@@ -31,9 +31,57 @@ if (file_exists(__DIR__.'/../atom-framework/src/Routing/AddActionRoute.class.php
 
 class ProjectConfiguration extends sfProjectConfiguration
 {
+    // Heratio's theme plugin. When the admin-selected active theme is anything
+    // else, AtoM boots base mode (vanilla AtoM) with the selected theme.
+    const HERATIO_THEME = 'ahgThemeB5Plugin';
+
     public function setup()
     {
         $this->namespacesClassLoader();
+
+        $rootDir = sfConfig::get('sf_root_dir');
+
+        // ── Heratio ON/OFF switch ─────────────────────────────────────────────
+        // Boot a vanilla base-AtoM profile (skipping all AHG plugins + the
+        // atom-framework) when EITHER:
+        //   (a) a `.heratio_disabled` flag file exists (hard override / safe mode), or
+        //   (b) the admin selected a non-Heratio active theme
+        //       (ahg_settings 'ahg_active_theme', via Admin > AHG Settings > General).
+        // Fail-safe: any error in detection → full Heratio.
+        $baseTheme = null;
+        if (file_exists($rootDir.'/.heratio_disabled')) {
+            $baseTheme = 'arDominionB5Plugin';
+        } else {
+            $selected = $this->getActiveThemeSetting($rootDir);
+            if (null !== $selected && '' !== $selected && self::HERATIO_THEME !== $selected) {
+                $baseTheme = $selected;
+            }
+        }
+
+        if (null !== $baseTheme) {
+            $basePlugins = [
+                'qbAclPlugin', 'qtAccessionPlugin', 'sfDrupalPlugin', 'sfHistoryPlugin',
+                'arOpenSearchPlugin', 'arElasticSearchPlugin', // whichever is present
+                'sfPropelPlugin', 'sfThumbnailPlugin', 'sfTranslatePlugin', 'sfWebBrowserPlugin',
+                $baseTheme,
+                'sfIsadPlugin', 'sfIsaarPlugin', 'sfEadPlugin', 'sfDcPlugin', 'sfModsPlugin',
+                'sfRadPlugin', 'sfSkosPlugin', 'sfEacPlugin', 'sfIsdfPlugin', 'sfIsdiahPlugin',
+            ];
+            // Some base plugins (sfPropelPlugin, …) ship in symfony's vendored plugin
+            // dir, not project plugins/ — check both, and skip any not installed.
+            $basePlugins = array_values(array_filter($basePlugins, function ($p) use ($rootDir) {
+                return is_dir($rootDir.'/plugins/'.$p)
+                    || is_dir($rootDir.'/vendor/symfony/lib/plugins/'.$p);
+            }));
+            $this->enablePlugins($basePlugins);
+            $this->dispatcher->connect(
+                'debug.web.load_panels',
+                ['arWebDebugPanel', 'listenToLoadDebugWebPanelEvent']
+            );
+
+            return;
+        }
+        // ─────────────────────────────────────────────────────────────────────
 
         // Core plugins required for AtoM to function
         // Additional plugins are loaded from database via atom_plugin table
@@ -75,46 +123,80 @@ class ProjectConfiguration extends sfProjectConfiguration
     }
 
     /**
+     * Read the admin-selected active theme from ahg_settings (group 'general',
+     * key 'ahg_active_theme'). Returns the theme plugin name, or null on any
+     * error / when unset → caller treats as Heratio.
+     */
+    private function getActiveThemeSetting(string $rootDir): ?string
+    {
+        try {
+            $pdo = $this->getAhgPdo($rootDir);
+            if (null === $pdo) {
+                return null;
+            }
+            $stmt = $pdo->prepare(
+                "SELECT setting_value FROM ahg_settings"
+                ." WHERE setting_key = 'ahg_active_theme' AND setting_group = 'general' LIMIT 1"
+            );
+            $stmt->execute();
+            $value = $stmt->fetchColumn();
+
+            return false === $value ? null : (string) $value;
+        } catch (\Throwable $e) {
+            return null;
+        }
+    }
+
+    /**
+     * Build a PDO connection from config/config.php propel params, or null on
+     * any failure.
+     */
+    private function getAhgPdo(string $rootDir): ?PDO
+    {
+        $configPath = $rootDir.'/config/config.php';
+        if (!file_exists($configPath)) {
+            return null;
+        }
+        $config = require $configPath;
+        if (!isset($config['all']['propel']['param'])) {
+            return null;
+        }
+        $params = $config['all']['propel']['param'];
+        $dsn = $params['dsn'] ?? '';
+        $dsnParts = [];
+        if (!empty($dsn)) {
+            $dsnWithoutDriver = preg_replace('/^[a-z]+:/', '', $dsn);
+            foreach (explode(';', $dsnWithoutDriver) as $part) {
+                $part = trim($part);
+                if (strpos($part, '=') !== false) {
+                    list($key, $value) = explode('=', $part, 2);
+                    $dsnParts[trim($key)] = trim($value);
+                }
+            }
+        }
+
+        return new PDO(
+            sprintf('mysql:host=%s;port=%d;dbname=%s;charset=utf8mb4',
+                $dsnParts['host'] ?? 'localhost',
+                $dsnParts['port'] ?? 3306,
+                $dsnParts['dbname'] ?? 'atom'
+            ),
+            $params['username'] ?? 'root',
+            $params['password'] ?? '',
+            [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
+        );
+    }
+
+    /**
      * Load enabled plugins from database, with fallback to core plugins.
      */
     private function loadPluginsFromDatabase(array $corePlugins): array
     {
         try {
-            $configPath = sfConfig::get('sf_root_dir') . '/config/config.php';
-            if (!file_exists($configPath)) {
+            $pdo = $this->getAhgPdo(sfConfig::get('sf_root_dir'));
+            if (null === $pdo) {
                 return $corePlugins;
             }
-
-            $config = require $configPath;
-            if (!isset($config['all']['propel']['param'])) {
-                return $corePlugins;
-            }
-
-            $params = $config['all']['propel']['param'];
-            $dsn = $params['dsn'] ?? '';
-            $dsnParts = [];
-
-            if (!empty($dsn)) {
-                $dsnWithoutDriver = preg_replace('/^[a-z]+:/', '', $dsn);
-                foreach (explode(';', $dsnWithoutDriver) as $part) {
-                    $part = trim($part);
-                    if (strpos($part, '=') !== false) {
-                        list($key, $value) = explode('=', $part, 2);
-                        $dsnParts[trim($key)] = trim($value);
-                    }
-                }
-            }
-
-            $pdo = new PDO(
-                sprintf('mysql:host=%s;port=%d;dbname=%s;charset=utf8mb4',
-                    $dsnParts['host'] ?? 'localhost',
-                    $dsnParts['port'] ?? 3306,
-                    $dsnParts['dbname'] ?? 'atom'
-                ),
-                $params['username'] ?? 'root',
-                $params['password'] ?? '',
-                [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
-            );
 
             $stmt = $pdo->prepare('SELECT name FROM atom_plugin WHERE is_enabled = 1 ORDER BY load_order ASC');
             $stmt->execute();

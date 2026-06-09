@@ -1,0 +1,129 @@
+#!/usr/bin/env php
+<?php
+
+/*
+ * heratio-theme — toggle between the Heratio theme and vanilla base AtoM, from
+ * ANY mode.
+ *
+ * It talks to the database directly (no Symfony/plugin bootstrap), so it works
+ * even when the site is already in base-AtoM mode — where AHG CLI tasks and the
+ * AHG Settings UI are not available. This closes the "can't get back to Heratio
+ * once switched" gap.
+ *
+ * Usage:
+ *   php atom-framework/bin/heratio-theme                 # show the current active theme
+ *   php atom-framework/bin/heratio-theme heratio         # AHG Heratio (ahgThemeB5Plugin)
+ *   php atom-framework/bin/heratio-theme base            # base AtoM (arDominionB5Plugin)
+ *   php atom-framework/bin/heratio-theme <themePlugin>   # any installed theme plugin
+ *
+ * After running, reload the site. If opcache is holding the compiled config,
+ * also run:  sudo systemctl restart php8.3-fpm
+ */
+
+$root = dirname(__DIR__, 1);
+// atom-framework/bin -> project root is two up
+if (!is_dir($root.'/plugins')) {
+    $root = dirname(__DIR__, 2);
+}
+
+$aliases = [
+    'heratio' => 'ahgThemeB5Plugin',
+    'ahg'     => 'ahgThemeB5Plugin',
+    'base'    => 'arDominionB5Plugin',
+    'atom'    => 'arDominionB5Plugin',
+    'dominion' => 'arDominionB5Plugin',
+];
+
+function db(string $root): PDO
+{
+    $configPath = $root.'/config/config.php';
+    if (!file_exists($configPath)) {
+        fwrite(STDERR, "Cannot find config/config.php\n");
+        exit(1);
+    }
+    $config = require $configPath;
+    $params = $config['all']['propel']['param'] ?? null;
+    if (!$params) {
+        fwrite(STDERR, "No propel params in config/config.php\n");
+        exit(1);
+    }
+    $parts = [];
+    foreach (explode(';', preg_replace('/^[a-z]+:/', '', $params['dsn'] ?? '')) as $p) {
+        if (false !== strpos($p, '=')) {
+            [$k, $v] = explode('=', trim($p), 2);
+            $parts[trim($k)] = trim($v);
+        }
+    }
+
+    return new PDO(
+        sprintf('mysql:host=%s;port=%d;dbname=%s;charset=utf8mb4',
+            $parts['host'] ?? 'localhost', $parts['port'] ?? 3306, $parts['dbname'] ?? 'atom'),
+        $params['username'] ?? 'root', $params['password'] ?? '',
+        [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
+    );
+}
+
+function clearCache(string $root): bool
+{
+    $dir = $root.'/cache/qubit/prod';
+    if (!is_dir($dir)) {
+        return true;
+    }
+    $ok = true;
+    try {
+        $it = new RecursiveIteratorIterator(
+            new RecursiveDirectoryIterator($dir, FilesystemIterator::SKIP_DOTS),
+            RecursiveIteratorIterator::CHILD_FIRST
+        );
+        foreach ($it as $f) {
+            if ($f->isDir()) {
+                @rmdir($f->getPathname()) || $ok = false;
+            } else {
+                @unlink($f->getPathname()) || $ok = false;
+            }
+        }
+    } catch (\Throwable $e) {
+        $ok = false;
+    }
+
+    return $ok;
+}
+
+$pdo = db($root);
+
+// No arg: report current state.
+$current = $pdo->query("SELECT setting_value FROM ahg_settings WHERE setting_key='ahg_active_theme' AND setting_group='general' LIMIT 1")->fetchColumn();
+$current = (false === $current || '' === $current) ? 'ahgThemeB5Plugin' : $current;
+$flag = file_exists($root.'/.heratio_disabled');
+
+$arg = $argv[1] ?? '';
+if ('' === $arg) {
+    $mode = ($flag || 'ahgThemeB5Plugin' !== $current) ? 'BASE AtoM' : 'Heratio';
+    echo "Active theme : {$current}\n";
+    echo "Mode         : {$mode}".($flag ? "  (.heratio_disabled flag present — overrides setting)" : '')."\n";
+    echo "Set with     : php atom-framework/bin/heratio-theme [heratio|base|<themePlugin>]\n";
+    exit(0);
+}
+
+$theme = $aliases[strtolower($arg)] ?? $arg;
+if (!is_dir($root.'/plugins/'.$theme)) {
+    fwrite(STDERR, "Theme plugin not installed: {$theme}\n");
+    fwrite(STDERR, "Available: heratio (ahgThemeB5Plugin), base (arDominionB5Plugin)\n");
+    exit(1);
+}
+
+$pdo->prepare(
+    "INSERT INTO ahg_settings (setting_key, setting_value, setting_type, setting_group, created_at, updated_at)"
+    ." VALUES ('ahg_active_theme', ?, 'string', 'general', NOW(), NOW())"
+    ." ON DUPLICATE KEY UPDATE setting_value = VALUES(setting_value), updated_at = NOW()"
+)->execute([$theme]);
+
+$cacheOk = clearCache($root);
+
+$mode = ('ahgThemeB5Plugin' === $theme) ? 'Heratio' : 'base AtoM';
+echo "Active theme set to: {$theme}  ({$mode} mode)\n";
+echo $cacheOk ? "Config cache cleared.\n" : "WARNING: cache not fully cleared — run: php symfony cc\n";
+if ($flag) {
+    echo "NOTE: a .heratio_disabled flag file is present and overrides this setting (forces base mode). Remove it to honour the theme setting.\n";
+}
+echo "Reload the site. If unchanged, also run: sudo systemctl restart php8.3-fpm\n";

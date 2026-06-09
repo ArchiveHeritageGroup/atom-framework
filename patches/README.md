@@ -24,3 +24,11 @@ Integrates LoginSecurityService for brute-force protection:
 Integrates PasswordPolicyService for password security:
 - Prevents reuse of recent passwords (last 5 by default)
 - Records password changes in history for expiry tracking
+
+## apps/qubit/modules/menu/templates/_userMenu*.php
+Base-AtoM user-menu templates. Heratio's install removes them (it renders the
+user menu via ahgThemeB5Plugin's _userMenu.mod_standard.php override). They are
+required for the base-AtoM fallback mode (`ahg_active_theme` != ahgThemeB5Plugin,
+or `.heratio_disabled` flag) — without them the base-mode layout fatals on a
+missing _userMenu.php. The Heratio theme override still wins in Heratio mode, so
+restoring them is safe for both modes.
