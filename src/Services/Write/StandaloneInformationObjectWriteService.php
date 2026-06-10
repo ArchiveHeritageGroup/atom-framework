@@ -18,11 +18,12 @@ class StandaloneInformationObjectWriteService implements InformationObjectWriteS
     use EntityWriteTrait;
 
     private const I18N_FIELDS = [
-        'title', 'alternate_title', 'scope_and_content', 'arrangement',
-        'archival_history', 'acquisition', 'appraisal', 'accruals',
-        'physical_characteristics', 'finding_aids', 'access_conditions',
-        'reproduction_conditions', 'location_of_originals', 'location_of_copies',
-        'related_units_of_description', 'rules', 'sources', 'revision_history',
+        'title', 'alternate_title', 'edition', 'extent_and_medium',
+        'scope_and_content', 'arrangement', 'archival_history', 'acquisition',
+        'appraisal', 'accruals', 'physical_characteristics', 'finding_aids',
+        'access_conditions', 'reproduction_conditions', 'location_of_originals',
+        'location_of_copies', 'related_units_of_description',
+        'institution_responsible_identifier', 'rules', 'sources', 'revision_history',
     ];
 
     public function newInformationObject(): object
