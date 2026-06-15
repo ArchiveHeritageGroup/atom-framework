@@ -44,13 +44,13 @@ class ResetPasswordCommand extends BaseCommand
             return 1;
         }
 
-        // Generate new salt and hash
-        $salt = bin2hex(random_bytes(32));
-        $passwordHash = sha1($salt . $password);
+        // Argon2id over plaintext, empty salt (migration 2026-06-15; fixes prior
+        // raw-sha1 storage that AuthService could not verify).
+        $ph = \AtomFramework\Core\Security\PasswordService::hash($password);
 
         $updates = [
-            'password_hash' => $passwordHash,
-            'salt' => $salt,
+            'password_hash' => $ph['password_hash'],
+            'salt' => $ph['salt'],
         ];
 
         // Optionally activate the account

@@ -214,15 +214,9 @@ class UserService
      */
     public static function updatePassword(int $userId, string $newPassword): bool
     {
-        $salt = bin2hex(random_bytes(16));
-        $sha1Hash = sha1($salt . $newPassword);
-        $hash = password_hash($sha1Hash, PASSWORD_DEFAULT);
-
+        // Argon2id over plaintext, empty salt (migration 2026-06-15).
         return DB::table('user')
             ->where('id', $userId)
-            ->update([
-                'salt' => $salt,
-                'password_hash' => $hash,
-            ]) > 0;
+            ->update(PasswordService::hash($newPassword)) > 0;
     }
 }
