@@ -52,7 +52,7 @@ EOF;
         }
 
         // Array of plugins
-        $plugins = array_values(unserialize($setting->getValue(['sourceCulture' => true])) ?: []);
+        $plugins = array_values(unserialize($setting->getValue(['sourceCulture' => true]), ['allowed_classes' => false]) ?: []); // plugin-name list; no objects (security audit 2026-06-15)
 
         if (in_array($action, ['add', 'delete']) && empty($pluginName)) {
             throw new \RuntimeException('Missing plugin name.');

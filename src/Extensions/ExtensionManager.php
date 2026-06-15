@@ -883,7 +883,7 @@ class ExtensionManager implements ExtensionManagerContract
             if (!$row || empty($row->value)) {
                 return;
             }
-            $plugins = @unserialize($row->value);
+            $plugins = @unserialize($row->value, ['allowed_classes' => false]); // plugin-name list; no objects (security audit 2026-06-15)
             if (!is_array($plugins)) {
                 return;
             }

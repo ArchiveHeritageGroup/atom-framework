@@ -444,7 +444,7 @@ trait QubitModelTrait
                 ->value('property_i18n.value');
 
             if ($row) {
-                $unserialized = @unserialize($row);
+                $unserialized = @unserialize($row, ['allowed_classes' => false]); // property values are arrays/scalars only (security audit 2026-06-15)
                 return is_array($unserialized) ? $unserialized : [];
             }
         } catch (\Throwable $e) {

@@ -101,7 +101,7 @@ class AhgMetadataRoute extends QubitMetadataRoute
             $sql = "SELECT value FROM setting_i18n WHERE id = (SELECT id FROM setting WHERE name = 'plugins' LIMIT 1)";
             $result = QubitPdo::fetchColumn($sql);
             if ($result) {
-                $plugins = @unserialize($result);
+                $plugins = @unserialize($result, ['allowed_classes' => false]); // plugin-name list; no objects (security audit 2026-06-15)
                 if (is_array($plugins)) {
                     return in_array('ahgThemeB5Plugin', $plugins);
                 }
