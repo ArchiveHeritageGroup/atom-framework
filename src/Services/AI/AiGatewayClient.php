@@ -253,6 +253,60 @@ class AiGatewayClient
     }
 
     // =========================================================================
+    // Worker routes (translation) — gateway /ai/v1/* with the same X-API-Key
+    // =========================================================================
+
+    /**
+     * Translate text via the gateway's worker route (POST /ai/v1/translate).
+     *
+     * @return array<string,mixed>|null Decoded response (worker shape:
+     *   {success, translated, error}), or null on failure / no key.
+     */
+    public function translate(string $text, string $sourceLang, string $targetLang, ?int $maxLength = null): ?array
+    {
+        if (trim($text) === '' || !$this->isConfigured()) {
+            return null;
+        }
+
+        $payload = ['text' => $text, 'source' => $sourceLang, 'target' => $targetLang];
+        if ($maxLength !== null) {
+            $payload['max_length'] = $maxLength;
+        }
+
+        return $this->postJson('/translate', json_encode($payload), $this->timeout);
+    }
+
+    /**
+     * List supported translation languages (GET /ai/v1/translate/languages).
+     *
+     * @return array<string,mixed>|null Decoded response, or null on failure / no key.
+     */
+    public function translateLanguages(): ?array
+    {
+        if (!$this->isConfigured()) {
+            return null;
+        }
+
+        try {
+            $res = HttpClientService::get(
+                $this->baseUrl . '/translate/languages',
+                $this->authHeaders(),
+                ['timeout' => 10, 'connectTimeout' => 5]
+            );
+        } catch (\Throwable $e) {
+            return null;
+        }
+
+        if (($res['status'] ?? 0) !== 200 || empty($res['body'])) {
+            return null;
+        }
+
+        $data = json_decode($res['body'], true);
+
+        return is_array($data) ? $data : null;
+    }
+
+    // =========================================================================
     // Internals
     // =========================================================================
 
