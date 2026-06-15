@@ -14,7 +14,8 @@ use Illuminate\Database\Capsule\Manager as DB;
  *
  * Three document types supported:
  *   1. EAD finding aids — parsed from information_object + related tables
- *   2. Uploaded PDFs — text extracted via OCR service at 192.168.0.115:5006
+ *   2. Uploaded PDFs — text extracted via the AHG AI gateway OCR route
+ *      (https://ai.theahg.co.za/ai/v1/htr/legacy/ocr/extract, keyed)
  *   3. RiC-O metadata — queried from Fuseki via SPARQL
  *
  * @author The Archive and Heritage Group
@@ -23,8 +24,11 @@ class PageIndexService
 {
     private OllamaPageIndexClient $llmClient;
 
-    /** OCR endpoint for PDF text extraction */
+    /** OCR endpoint for PDF text extraction (AHG AI gateway, legacy-HTR passthrough) */
     private string $ocrEndpoint;
+
+    /** Gateway API key for the keyed OCR route */
+    private string $ocrApiKey = '';
 
     /** Fuseki SPARQL endpoint for RiC-O queries */
     private string $fusekiEndpoint;
@@ -39,7 +43,21 @@ class PageIndexService
 
     private function loadConfig(): void
     {
-        $this->ocrEndpoint = 'http://192.168.0.115:5006';
+        // Route OCR through the AHG AI gateway (keyed) instead of the direct
+        // :5006 node. The gateway exposes the legacy HTR/OCR service under
+        // /ai/v1/htr/legacy/* → callOcrService appends /ocr/extract (2026-06-15).
+        $this->ocrEndpoint = 'https://ai.theahg.co.za/ai/v1/htr/legacy';
+
+        // Gateway key (X-API-Key), preferring the 'gateway' feature then 'general'.
+        try {
+            $this->ocrApiKey = (string) (
+                DB::table('ahg_ai_settings')->where('feature', 'gateway')->where('setting_key', 'api_key')->value('setting_value')
+                ?? DB::table('ahg_ai_settings')->where('feature', 'general')->where('setting_key', 'api_key')->value('setting_value')
+                ?? ''
+            );
+        } catch (\Throwable $e) {
+            $this->ocrApiKey = '';
+        }
 
         // Load Fuseki config from ahg_settings (same as RicSyncService)
         $this->fusekiEndpoint = 'http://192.168.0.112:3030/ric';
@@ -655,6 +673,7 @@ class PageIndexService
             CURLOPT_POSTFIELDS => [
                 'file' => new \CURLFile($filePath, 'application/pdf', basename($filePath)),
             ],
+            CURLOPT_HTTPHEADER => $this->ocrApiKey !== '' ? ['X-API-Key: ' . $this->ocrApiKey] : [],
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_TIMEOUT => 120,
             CURLOPT_CONNECTTIMEOUT => 10,
