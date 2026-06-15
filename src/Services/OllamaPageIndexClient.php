@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace AtomFramework\Services;
 
+use AtomFramework\Services\AI\AiGatewayClient;
 use Illuminate\Database\Capsule\Manager as DB;
 
 /**
@@ -13,26 +14,37 @@ use Illuminate\Database\Capsule\Manager as DB;
  *   1. Tree construction — analyse document structure, return JSON tree
  *   2. Retrieval reasoning — given tree + query, return ranked node_ids
  *
- * Uses Ollama chat endpoint at http://192.168.0.112:11434/api/chat
- * Model: llama3.1:8b (configurable)
+ * Routes all LLM calls through the AHG AI gateway (AiGatewayClient — keyed +
+ * SSRF-guarded; https://ai.theahg.co.za/ai/v1/ollama/api/chat), never a direct
+ * node port. Model: llama3.1:8b (configurable)
  *
  * @author The Archive and Heritage Group
  */
 class OllamaPageIndexClient
 {
-    private string $endpoint;
     private string $model;
     private int $timeout;
     private float $temperature;
     private int $maxRetries;
+    /** Lazily-built gateway client (keyed + SSRF-guarded). */
+    private ?AiGatewayClient $gw = null;
 
     public function __construct(array $config = [])
     {
-        $this->endpoint = rtrim($config['endpoint'] ?? 'http://192.168.0.112:11434', '/');
         $this->model = $config['model'] ?? 'llama3.1:8b';
         $this->timeout = (int) ($config['timeout'] ?? 300);
         $this->temperature = (float) ($config['temperature'] ?? 0.3);
         $this->maxRetries = (int) ($config['max_retries'] ?? 2);
+    }
+
+    /** The AHG AI gateway client — all Ollama calls route through it (2026-06-15). */
+    private function gateway(): AiGatewayClient
+    {
+        if ($this->gw === null) {
+            $this->gw = AiGatewayClient::fromSettings();
+        }
+
+        return $this->gw;
     }
 
     /**
@@ -170,41 +182,22 @@ class OllamaPageIndexClient
      */
     public function isAvailable(): bool
     {
-        $response = $this->request('GET', '/api/tags', null, 5);
-
-        return $response !== null && isset($response['models']);
+        return $this->gateway()->isAvailable();
     }
 
     /**
-     * Get health info including available models.
+     * Get health info. Model-list introspection (/api/tags) isn't exposed through
+     * the gateway, so health is now a gateway liveness probe.
      */
     public function getHealth(): array
     {
-        $response = $this->request('GET', '/api/tags', null, 5);
-
-        if (!$response) {
-            return [
-                'status' => 'error',
-                'endpoint' => $this->endpoint,
-                'model' => $this->model,
-                'error' => 'Cannot connect to Ollama at ' . $this->endpoint,
-            ];
-        }
-
-        $models = [];
-        foreach ($response['models'] ?? [] as $m) {
-            $models[] = $m['name'] ?? 'unknown';
-        }
-
-        $hasModel = in_array($this->model, $models, true);
+        $ok = $this->gateway()->isAvailable();
 
         return [
-            'status' => $hasModel ? 'ok' : 'model_missing',
-            'endpoint' => $this->endpoint,
+            'status' => $ok ? 'ok' : 'error',
+            'endpoint' => 'ai.theahg.co.za gateway',
             'model' => $this->model,
-            'available_models' => $models,
-            'model_loaded' => $hasModel,
-            'error' => $hasModel ? null : "Model {$this->model} not found. Available: " . implode(', ', $models),
+            'error' => $ok ? null : 'Cannot reach the AI gateway',
         ];
     }
 
@@ -344,30 +337,28 @@ PROMPT;
     {
         $startTime = microtime(true);
 
-        $payload = [
+        $messages = [
+            ['role' => 'system', 'content' => $systemPrompt],
+            ['role' => 'user', 'content' => $userPrompt],
+        ];
+        $gwOptions = [
             'model' => $options['model'] ?? $this->model,
-            'messages' => [
-                ['role' => 'system', 'content' => $systemPrompt],
-                ['role' => 'user', 'content' => $userPrompt],
-            ],
-            'stream' => false,
-            'options' => [
-                'num_predict' => $options['num_predict'] ?? 2000,
-                'temperature' => $options['temperature'] ?? $this->temperature,
-            ],
+            'max_tokens' => $options['num_predict'] ?? 2000, // AiGatewayClient maps → num_predict
+            'temperature' => $options['temperature'] ?? $this->temperature,
+            'timeout' => $this->timeout,
         ];
 
-        $response = null;
+        $result = null;
         $lastError = null;
 
         for ($attempt = 0; $attempt <= $this->maxRetries; $attempt++) {
-            $response = $this->request('POST', '/api/chat', $payload);
+            $result = $this->gateway()->chat($messages, $gwOptions);
 
-            if ($response !== null && !isset($response['error'])) {
+            if (!empty($result['success'])) {
                 break;
             }
 
-            $lastError = $response['error'] ?? 'No response from Ollama';
+            $lastError = $result['error'] ?? 'No response from AI gateway';
 
             if ($attempt < $this->maxRetries) {
                 usleep(500000 * ($attempt + 1)); // 0.5s, 1s backoff
@@ -376,71 +367,29 @@ PROMPT;
 
         $generationTimeMs = (int) ((microtime(true) - $startTime) * 1000);
 
-        if (!$response || isset($response['error'])) {
+        if (empty($result['success'])) {
             return [
                 'success' => false,
                 'text' => null,
                 'model' => $this->model,
                 'tokens_used' => 0,
                 'generation_time_ms' => $generationTimeMs,
-                'error' => $lastError ?? 'Failed to get response from Ollama',
+                'error' => $lastError ?? 'Failed to get response from AI gateway',
             ];
         }
 
-        $text = $response['message']['content'] ?? '';
-        $tokensUsed = ($response['prompt_eval_count'] ?? 0) + ($response['eval_count'] ?? 0);
+        // Token counts come from the raw Ollama response carried in ['raw'].
+        $raw = $result['raw'] ?? [];
+        $tokensUsed = ($raw['prompt_eval_count'] ?? 0) + ($raw['eval_count'] ?? 0);
 
         return [
             'success' => true,
-            'text' => trim($text),
-            'model' => $response['model'] ?? $this->model,
+            'text' => trim((string) $result['text']),
+            'model' => $result['model'] ?? $this->model,
             'tokens_used' => $tokensUsed,
             'generation_time_ms' => $generationTimeMs,
             'error' => null,
         ];
-    }
-
-    /**
-     * Make HTTP request to Ollama API.
-     */
-    private function request(string $method, string $endpoint, ?array $data = null, ?int $timeout = null): ?array
-    {
-        $ch = curl_init();
-        $url = $this->endpoint . $endpoint;
-
-        $options = [
-            CURLOPT_URL => $url,
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_TIMEOUT => $timeout ?? $this->timeout,
-            CURLOPT_CONNECTTIMEOUT => 10,
-            CURLOPT_HTTPHEADER => ['Content-Type: application/json'],
-        ];
-
-        if ($method === 'POST' && $data !== null) {
-            $options[CURLOPT_POST] = true;
-            $options[CURLOPT_POSTFIELDS] = json_encode($data);
-        }
-
-        curl_setopt_array($ch, $options);
-
-        $response = curl_exec($ch);
-        $error = curl_error($ch);
-        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        curl_close($ch);
-
-        if ($error) {
-            error_log("[PageIndex] Ollama API error ({$endpoint}): {$error}");
-
-            return null;
-        }
-
-        if ($httpCode >= 400) {
-            error_log("[PageIndex] Ollama API HTTP {$httpCode} ({$endpoint}): {$response}");
-
-            return ['error' => "HTTP {$httpCode}: " . ($response ?: 'Unknown error')];
-        }
-
-        return json_decode($response, true);
     }
 
     // =========================================================================
