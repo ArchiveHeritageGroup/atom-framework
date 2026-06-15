@@ -4,6 +4,7 @@ namespace AtomFramework\Services;
 
 use AtomExtensions\Helpers\CultureHelper;
 use AtomFramework\Core\Security\LoginSecurityService;
+use AtomFramework\Core\Security\PasswordService;
 use Illuminate\Database\Capsule\Manager as DB;
 
 /**
@@ -64,10 +65,10 @@ class AuthService
             return null;
         }
 
-        // Dual-layer verification: SHA1(salt + password) -> password_verify
-        $sha1Hash = sha1($user->salt . $password);
-
-        if (!password_verify($sha1Hash, $user->password_hash)) {
+        // Verify supporting BOTH schemes (new Argon2id-over-plaintext when salt
+        // is empty; legacy Argon2i-over-sha1(salt.plaintext) otherwise).
+        // See PasswordService — password-hashing migration 2026-06-15.
+        if (!PasswordService::verify($password, (string) $user->password_hash, $user->salt ?? '')) {
             LoginSecurityService::recordAttempt($emailOrUsername, $ip, false);
 
             return null;
@@ -75,6 +76,19 @@ class AuthService
 
         // Success — clear any previous failures
         LoginSecurityService::recordAttempt($emailOrUsername, $ip, true);
+
+        // Transparent verify-on-login upgrade: rehash a legacy/old-cost credential
+        // to the current scheme. Best-effort — the user is already authenticated.
+        if (PasswordService::needsUpgrade((string) $user->password_hash, $user->salt ?? '')) {
+            try {
+                $new = PasswordService::hash($password);
+                DB::table('user')->where('id', $user->id)->update($new);
+                $user->password_hash = $new['password_hash'];
+                $user->salt = $new['salt'];
+            } catch (\Throwable $e) {
+                // non-fatal: retried on next login
+            }
+        }
 
         return $user;
     }

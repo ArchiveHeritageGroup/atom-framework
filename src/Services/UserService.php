@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace AtomExtensions\Services;
 
 use AtomExtensions\Helpers\CultureHelper;
-
+use AtomFramework\Core\Security\PasswordService;
 use Illuminate\Database\Capsule\Manager as DB;
 use Illuminate\Support\Collection;
 
@@ -192,10 +192,18 @@ class UserService
             return null;
         }
 
-        // Dual-layer verification: SHA1(salt + password) -> password_verify against Argon2i
-        $hash = sha1($user->salt . $password);
-        if (!password_verify($hash, $user->password_hash)) {
+        // Verify supporting BOTH schemes; transparent rehash on success.
+        // See PasswordService — password-hashing migration 2026-06-15.
+        if (!PasswordService::verify($password, (string) $user->password_hash, $user->salt ?? '')) {
             return null;
+        }
+
+        if (PasswordService::needsUpgrade((string) $user->password_hash, $user->salt ?? '')) {
+            try {
+                DB::table('user')->where('id', $user->id)->update(PasswordService::hash($password));
+            } catch (\Throwable $e) {
+                // non-fatal: retried on next login
+            }
         }
 
         return $user;
