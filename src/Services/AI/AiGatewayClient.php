@@ -252,6 +252,60 @@ class AiGatewayClient
         return $this->chat($messages, $options);
     }
 
+    /**
+     * Vision generation via the gateway's Ollama passthrough — POST
+     * /ai/v1/ollama/api/generate with base64 image(s). Native Ollama "generate"
+     * shape; returns the same contract as chat().
+     *
+     * @param string[] $base64Images raw base64 (no "data:" prefix)
+     * @param array     $options       temperature, seed, num_predict (→ max_tokens), timeout
+     * @return array{success:bool, text:string, model:string, error:?string, raw:?array}
+     */
+    public function visionGenerate(string $prompt, array $base64Images, ?string $model = null, array $options = []): array
+    {
+        if (!$this->isConfigured()) {
+            return $this->chatError('AI gateway API key not configured');
+        }
+
+        $ollamaOptions = [];
+        if (isset($options['temperature'])) {
+            $ollamaOptions['temperature'] = (float) $options['temperature'];
+        }
+        if (isset($options['seed'])) {
+            $ollamaOptions['seed'] = (int) $options['seed'];
+        }
+        if (isset($options['num_predict'])) {
+            $ollamaOptions['num_predict'] = (int) $options['num_predict'];
+        }
+
+        $body = [
+            'model' => $model ?: $this->chatModel,
+            'prompt' => $prompt,
+            'images' => array_values($base64Images),
+            'stream' => false,
+        ];
+        if ($ollamaOptions !== []) {
+            $body['options'] = $ollamaOptions;
+        }
+
+        $timeout = (int) ($options['timeout'] ?? $this->timeout);
+        $data = $this->postJson('/ollama/api/generate', json_encode($body), $timeout);
+        if ($data === null) {
+            return $this->chatError('AI gateway request failed or returned invalid JSON');
+        }
+
+        // Ollama /api/generate → {"response":"...","model":"..."}.
+        $text = $data['response'] ?? '';
+
+        return [
+            'success' => $text !== '',
+            'text' => (string) $text,
+            'model' => (string) ($data['model'] ?? $body['model']),
+            'error' => $text === '' ? 'Empty response from model' : null,
+            'raw' => $data,
+        ];
+    }
+
     // =========================================================================
     // Worker routes (translation) — gateway /ai/v1/* with the same X-API-Key
     // =========================================================================
