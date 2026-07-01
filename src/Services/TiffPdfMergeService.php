@@ -127,6 +127,22 @@ class TiffPdfMergeService
     }
 
     /**
+     * Public entry point used by the background TiffPdfMergeJob: convert an
+     * already-gathered set of files to a single PDF at $outputPath, honouring the
+     * job's pdf_standard (PDF/A vs standard PDF). Mirrors the dispatch inside
+     * processJob(). The job previously called a non-existent mergeFilesToPdf()
+     * method, so every merge crashed with "Call to undefined method".
+     */
+    public function mergeFilesToPdf($files, string $outputPath, object $job): array
+    {
+        if (strpos((string) ($job->pdf_standard ?? ''), 'pdfa') === 0) {
+            return $this->convertToPdfA($files, $outputPath, $job);
+        }
+
+        return $this->convertToPdf($files, $outputPath, $job);
+    }
+
+    /**
      * Process a merge job
      */
     public function processJob(int $jobId): array
