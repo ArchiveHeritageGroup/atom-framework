@@ -23,14 +23,14 @@ $pollInterval = 5; // seconds
 
 while (true) {
     try {
-        // Find pending jobs that need processing.
-        // Repository inserts as 'pending' (column DEFAULT); 'queued' is reserved
-        // for an explicit dispatch step that does not currently exist anywhere
-        // in the codebase. Including both keeps backward-compat if the queued
-        // transition is added later. (Bug surfaced 2026-05-08 - all 6 pending
-        // rows since 2026-03-01 had been ignored by the worker.)
+        // Only process jobs the user has explicitly dispatched via "Create PDF":
+        // tiffpdfmerge/executeProcess sets status='queued' AFTER files are uploaded.
+        // New jobs are inserted as 'pending' (draft — still assembling files) and
+        // must NOT be picked up yet, or the worker races the upload and fails every
+        // job with "No files to process". (The old 'pending' poll predated the
+        // queued-dispatch step, which now exists.)
         $pendingJob = DB::table('tiff_pdf_merge_job')
-            ->whereIn('status', ['pending', 'queued'])
+            ->where('status', 'queued')
             ->orderBy('created_at', 'asc')
             ->first();
 
