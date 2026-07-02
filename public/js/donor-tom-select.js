@@ -52,6 +52,12 @@
       maxOptions: 50,
       preload: false,
       create: false,
+      // Render the results dropdown on <body> instead of inside the control.
+      // The donor select lives in a Bootstrap `modal-dialog-scrollable`, whose
+      // modal-body has overflow-y:auto and CLIPPED the absolute-positioned
+      // dropdown — only a sliver showed under the toolbar and the option text
+      // was hidden.
+      dropdownParent: 'body',
       placeholder: el.getAttribute('data-placeholder') || '',
       load: function (query, callback) {
         if (!query.length) {
