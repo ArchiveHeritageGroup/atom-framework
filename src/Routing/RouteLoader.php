@@ -76,7 +76,11 @@ class RouteLoader
             // sfRoute: sfRequestRoute defaults sf_method to GET/HEAD when none is
             // set, which would silently make every any() route reject POST (e.g.
             // breaking form-save POSTs to RouteLoader-registered plugin routes).
-            $routeClass = !empty($route['methods']) ? \sfRequestRoute::class : \sfRoute::class;
+            // SafeRequestRoute (not the base sfRequestRoute) so method routes can be
+            // safely probed during URL generation from a model object — the base
+            // class's isset($params['sf_method']) throws on Qubit objects and 500s
+            // pages like /accession/add that generate URLs from an unsaved resource.
+            $routeClass = !empty($route['methods']) ? \SafeRequestRoute::class : \sfRoute::class;
 
             $routing->prependRoute($route['name'], new $routeClass(
                 $route['url'],
