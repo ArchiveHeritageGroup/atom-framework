@@ -28,6 +28,12 @@ if (file_exists(__DIR__.'/../atom-framework/src/Routing/AhgMetadataRoute.class.p
 if (file_exists(__DIR__.'/../atom-framework/src/Routing/AddActionRoute.class.php')) {
     require_once __DIR__.'/../atom-framework/src/Routing/AddActionRoute.class.php';
 }
+// Load SafeRequestRoute: method-aware routes safe to probe during URL generation
+// from a model object (base sfRequestRoute throws on Qubit objects). Used by the
+// RouteLoader for get()/post() routes.
+if (file_exists(__DIR__.'/../atom-framework/src/Routing/SafeRequestRoute.class.php')) {
+    require_once __DIR__.'/../atom-framework/src/Routing/SafeRequestRoute.class.php';
+}
 
 class ProjectConfiguration extends sfProjectConfiguration
 {
