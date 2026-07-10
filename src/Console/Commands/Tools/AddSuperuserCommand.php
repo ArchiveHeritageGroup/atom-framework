@@ -78,9 +78,13 @@ class AddSuperuserCommand extends BaseCommand
                 'serial_number' => 0,
             ]);
 
-            // Step 2: Insert into actor table (user extends actor)
+            // Step 2: Insert into actor table (user extends actor).
+            // source_culture is NOT NULL with no default — must be set explicitly
+            // or the insert fails under MySQL strict mode (STRICT_TRANS_TABLES).
+            $culture = \AtomExtensions\Helpers\CultureHelper::getCulture();
             DB::table('actor')->insert([
                 'id' => $objectId,
+                'source_culture' => $culture,
                 'entity_type_id' => null,
                 'description_status_id' => null,
                 'description_detail_id' => null,
@@ -92,7 +96,7 @@ class AddSuperuserCommand extends BaseCommand
             // Step 3: Insert into actor_i18n for the display name
             DB::table('actor_i18n')->insert([
                 'id' => $objectId,
-                'culture' => \AtomExtensions\Helpers\CultureHelper::getCulture(),
+                'culture' => $culture,
                 'authorized_form_of_name' => $username,
             ]);
 
