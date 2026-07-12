@@ -166,10 +166,13 @@ class CsrfService
      */
     public static function getEnforcementMode(): string
     {
-        // Try AhgSettingsService if available
-        if (class_exists(AhgSettingsService::class)) {
+        // Try AhgSettingsService if available. NB: it lives in the
+        // AtomExtensions\Services namespace, not this one - reference it fully
+        // qualified so class_exists() actually resolves (otherwise this always
+        // fell through to the 'enforce' default and the setting was ignored).
+        if (class_exists(\AtomExtensions\Services\AhgSettingsService::class)) {
             try {
-                $mode = AhgSettingsService::get('csrf_enforcement', 'enforce');
+                $mode = \AtomExtensions\Services\AhgSettingsService::get('csrf_enforcement', 'enforce');
                 if (in_array($mode, ['log', 'enforce', 'off'], true)) {
                     return $mode;
                 }
@@ -206,14 +209,36 @@ class CsrfService
         if ($token === null || !self::validateToken($token)) {
             $requestUri = $_SERVER['REQUEST_URI'] ?? 'unknown';
             $requestMethod = $_SERVER['REQUEST_METHOD'] ?? 'unknown';
+            $reason = $token === null ? 'missing' : 'invalid';
 
             error_log(sprintf(
                 'CSRF violation: %s %s (token %s, mode: %s)',
                 $requestMethod,
                 $requestUri,
-                $token === null ? 'missing' : 'invalid',
+                $reason,
                 $mode
             ));
+
+            // Also record to ahg_error_log so violations are harvestable from the
+            // admin error-log UI during the log-mode observation window (the PSIS
+            // php-fpm pool discards raw error_log() output). Must never throw.
+            try {
+                \Illuminate\Database\Capsule\Manager::table('ahg_error_log')->insert([
+                    'level' => 'warning',
+                    'status_code' => 'enforce' === $mode ? 403 : null,
+                    'message' => sprintf('CSRF token %s (mode: %s)', $reason, $mode),
+                    'file' => 'CsrfService::enforce',
+                    'exception_class' => 'CsrfViolation',
+                    'url' => mb_substr((string) $requestUri, 0, 2000),
+                    'http_method' => mb_substr((string) $requestMethod, 0, 10),
+                    'client_ip' => mb_substr((string) ($_SERVER['REMOTE_ADDR'] ?? ''), 0, 45),
+                    'user_agent' => mb_substr((string) ($_SERVER['HTTP_USER_AGENT'] ?? ''), 0, 500),
+                    'hostname' => mb_substr((string) ($_SERVER['HTTP_HOST'] ?? gethostname()), 0, 255),
+                    'created_at' => date('Y-m-d H:i:s'),
+                ]);
+            } catch (\Throwable $e) {
+                // logging must never break request handling
+            }
 
             if ($mode === 'enforce') {
                 return false;

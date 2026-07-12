@@ -63,6 +63,16 @@ if (!class_exists(__NAMESPACE__ . '\\AhgControllerBase', false)) {
                 }
 
                 $this->boot();
+
+                // SECURITY (M12): enforce framework CSRF on the Symfony request
+                // path too. Previously only the standalone dispatch() path called
+                // enforceCsrf(), so mutating AhgController actions served through
+                // index.php had no CSRF protection. Behaviour is governed by the
+                // `csrf_enforcement` AHG setting (off | log | enforce); rollout
+                // begins in `log` mode (validate + log violations, never block).
+                if (method_exists($this, 'enforceCsrf')) {
+                    $this->enforceCsrf();
+                }
             }
         }
     } else {
