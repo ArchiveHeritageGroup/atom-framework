@@ -54,8 +54,9 @@ class StandaloneUserWriteService implements UserWriteServiceInterface
             ];
 
             if (!empty($data['password'])) {
-                $userRow['password_hash'] = sha1($data['password']);
-                $userRow['salt'] = null;
+                $ph = \AtomFramework\Core\Security\PasswordService::hash((string) $data['password']); // SECURITY: was raw unsalted sha1
+                $userRow['password_hash'] = $ph['password_hash'];
+                $userRow['salt'] = $ph['salt'];
             } elseif (!empty($data['passwordHash'])) {
                 $userRow['password_hash'] = $data['passwordHash'];
             }
