@@ -359,9 +359,9 @@ class DerivativeWatermarkService
             return null;
         }
 
-        // Generate unique filename
+        // Generate unique filename (unpredictable — avoid symlink/collision races)
         $ext = ($mimeType === 'image/gif') ? 'gif' : 'png';
-        $filename = 'watermark_' . uniqid() . '.' . $ext;
+        $filename = 'watermark_' . bin2hex(random_bytes(16)) . '.' . $ext;
         $customPath = self::getCustomWatermarkPath();
         $destPath = $customPath . $filename;
 
