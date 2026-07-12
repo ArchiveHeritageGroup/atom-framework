@@ -1,0 +1,71 @@
+<?php
+
+/*
+ * This file is part of the Access to Memory (AtoM) software.
+ *
+ * Access to Memory (AtoM) is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * Access to Memory (AtoM) is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with Access to Memory (AtoM).  If not, see <http://www.gnu.org/licenses/>.
+ */
+
+class InformationObjectDeleteFindingAidAction extends sfAction
+{
+    public function execute($request)
+    {
+        $this->resource = $this->getRoute()->resource;
+
+        // Check that object exists and that it is not the root
+        if (!isset($this->resource) || !isset($this->resource->parent)) {
+            $this->forward404();
+        }
+
+        // Check user authorization
+        // SECURITY: require update authorization on the specific object, not just
+        // an authenticated session (any logged-in user could delete finding aids).
+        if (!QubitAcl::check($this->resource, 'update')) {
+            QubitAcl::forwardUnauthorized();
+        }
+
+        $this->form = new sfForm();
+        $findingAid = new QubitFindingAid($this->resource);
+
+        $this->path = $findingAid->getPath();
+        $this->filename = basename($this->path);
+
+        if ($request->isMethod('delete')) {
+            $this->form->bind($request->getPostParameters());
+
+            if ($this->form->isValid()) {
+                $i18n = $this->context->i18n;
+
+                $params = [
+                    'objectId' => $this->resource->id,
+                    'description' => $i18n->__(
+                        'Deleting finding aid for: %1%',
+                        [
+                            '%1%' => $this->resource->getTitle(
+                                ['cultureFallback' => true]
+                            ),
+                        ]
+                    ),
+                    'delete' => true,
+                ];
+
+                QubitJob::runJob('arFindingAidJob', $params);
+
+                $this->redirect(
+                    [$this->resource, 'module' => 'informationobject']
+                );
+            }
+        }
+    }
+}

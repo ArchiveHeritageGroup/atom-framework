@@ -399,6 +399,37 @@ if [ -f "${PATCH_LIB}/ahgLdapUser.class.php" ]; then
     echo "  ✓ Applied ahgLdapUser patch (opt-in LDAP user class, #29)"
 fi
 
+# AtoM 2.10.1 security fixes (coordinated disclosure to Artefactual, 2026-07-12).
+# ATOM-1..9: XXE in XML import, REST physical-object create ACL, finding-aid
+# generate/delete authorization, digitalobject update CSRF, CSV export draft
+# leak, unserialize allowed_classes hardening, weak password salt, pdftotext
+# argument escaping. Each source mirrors its AtoM base path under patches/,
+# with the leading "plugins/" segment dropped (as with the qbAclPlugin patch).
+SECFIX_FILES=(
+    "lib/QubitXmlImport.class.php"
+    "lib/QubitFindingAid.class.php"
+    "lib/QubitCsvTransform.class.php"
+    "lib/model/QubitInformationObject.php"
+    "lib/model/QubitActor.php"
+    "lib/model/QubitUser.php"
+    "lib/filter/QubitSettingsFilter.class.php"
+    "apps/qubit/modules/informationobject/actions/generateFindingAidAction.class.php"
+    "apps/qubit/modules/informationobject/actions/deleteFindingAidAction.class.php"
+    "apps/qubit/modules/informationobject/actions/exportCsvAction.class.php"
+    "apps/qubit/modules/digitalobject/actions/updateAction.class.php"
+    "apps/qubit/modules/settings/actions/inventoryAction.class.php"
+    "plugins/arRestApiPlugin/modules/api/actions/physicalobjectsCreateAction.class.php"
+)
+SECFIX_APPLIED=0
+for _rel in "${SECFIX_FILES[@]}"; do
+    _src="${FRAMEWORK_PATH}/patches/${_rel#plugins/}"
+    if [ -f "${_src}" ]; then
+        cp -f "${_src}" "${ATOM_ROOT}/${_rel}"
+        SECFIX_APPLIED=$((SECFIX_APPLIED + 1))
+    fi
+done
+echo "  ✓ Applied AtoM 2.10.1 security fixes (${SECFIX_APPLIED}/13 files, ATOM-1..9)"
+
 # =============================================================================
 # Step 12: Copy dist assets (icons)
 # =============================================================================
