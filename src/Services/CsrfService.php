@@ -24,8 +24,11 @@ class CsrfService
     /** Token lifetime in seconds (1 hour) */
     private const TOKEN_LIFETIME = 3600;
 
-    /** POST parameter name */
-    public const FIELD_NAME = '_csrf_token';
+    /** POST parameter name - deliberately NOT '_csrf_token' so it does not collide
+     *  with base AtoM's own sfForm CSRF token (also named '_csrf_token', validated
+     *  separately by Symfony with csrf_secret). The M12 shim injects THIS field;
+     *  base forms keep their own token untouched. */
+    public const FIELD_NAME = '_ahg_csrf_token';
 
     /** HTTP header name (for AJAX requests) */
     public const HEADER_NAME = 'X-CSRF-TOKEN';
@@ -87,15 +90,16 @@ class CsrfService
      */
     public static function getTokenFromRequest(): ?string
     {
-        // Check POST body
-        if (isset($_POST[self::FIELD_NAME]) && is_string($_POST[self::FIELD_NAME])) {
-            return $_POST[self::FIELD_NAME];
-        }
-
-        // Check HTTP header (normalize to HTTP_X_CSRF_TOKEN)
+        // Check the HTTP header first (AJAX/fetch, set by the M12 shim) so our token
+        // is preferred and never confused with base AtoM's separate '_csrf_token'.
         $headerKey = 'HTTP_' . str_replace('-', '_', strtoupper(self::HEADER_NAME));
         if (isset($_SERVER[$headerKey]) && is_string($_SERVER[$headerKey])) {
             return $_SERVER[$headerKey];
+        }
+
+        // Then our own POST body field (FIELD_NAME = '_ahg_csrf_token', not base's).
+        if (isset($_POST[self::FIELD_NAME]) && is_string($_POST[self::FIELD_NAME])) {
+            return $_POST[self::FIELD_NAME];
         }
 
         return null;
