@@ -42,9 +42,13 @@ class SectorRecordWriteService
             'defaults' => [], 'cascade' => false,
             'extra_tables' => ['dam_external_links', 'dam_format_holdings', 'dam_version_links'],
         ],
+        // Production uses the `museum` module, which stores the record as a JSON
+        // blob in property name='ccoData' (verified: 23 ccoData records vs 20 in
+        // the legacy `cco` module's museum_metadata table, 18 overlapping, and the
+        // active /museum editor writes ccoData). The museum_metadata table (cco
+        // module) is legacy/superseded, so we target the property blob here.
         'museum' => [
-            'storage' => 'table', 'table' => 'museum_metadata', 'key' => 'object_id',
-            'defaults' => [], 'cascade' => true, 'json_fields' => ['materials', 'techniques'],
+            'storage' => 'property', 'property' => 'ccoData', 'cascade' => true,
         ],
         'gallery' => [
             'storage' => 'property', 'property' => 'galleryData', 'cascade' => true,
