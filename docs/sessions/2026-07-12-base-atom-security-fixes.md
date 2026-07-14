@@ -34,3 +34,16 @@ All 13 files `php -l` clean. Smoke tests post-patch: PSIS homepage 302, `informa
 
 - `stuff/` deliverable (DOCX + patches) is intentionally uncommitted (working-folder rule).
 - The DOCX documents per finding: cause, consequence-if-unfixed, what-it-guards-against, and the fix, with file names/lines.
+
+## Related: Artefactual official advisory - autocomplete access control (2026-07-14)
+
+**This is Artefactual's OWN find, NOT one of our ATOM-1..9.** While preparing our disclosure, Johan surfaced Artefactual's published advisory for AtoM 2.5-2.10:
+
+> An access-control issue on one or more unauthenticated endpoints could expose limited user-account metadata (usernames, email addresses, user role) and, under specific conditions, the title of **draft** archival descriptions. No passwords/tokens/files exposed. Fix = `security_yml.patch` (gist `b7875f864acb41bd39890f701e66c4a5`).
+
+- **Root cause:** the `autocomplete` actions (`user`, `taxonomy`) fell through to `default: is_secure: false`, reachable unauthenticated. `/user/autocomplete` leaked usernames/emails/roles; actor/search autocomplete could surface draft titles.
+- **The patch** (5 files): global `apps/qubit/config/security.yml` gains `autocomplete: credentials [[editor, administrator]], is_secure: true`; `actor` (new file) and `search` explicitly re-open theirs to public (`is_secure: false`); `taxonomy` flips `false→true`; `user` gains `autocomplete: credentials: administrator`.
+- **Overlap with our scan:** distinct vulnerability, but same *class* as our plugin-side finding **M3/M10 (donor autocomplete IDOR)** - we caught the AHG-plugin autocompletes, Artefactual caught base `user`/`taxonomy`.
+- **PSIS state (2026-07-14):** confirmed vulnerable - `user` module had no `autocomplete` rule → exposed. Raw patch downloaded to scratchpad; `patch -p1 --dry-run --forward` **clean on all 5 files** (actor security.yml absent → created; others match upstream context exactly).
+- **Disposition:** stage via `atom-framework/patches/` (same mechanism as ATOM-1..9, `bin/install` Step 11 re-apply), apply live to PSIS + archaeology, verify `/user/autocomplete` returns non-200 unauthenticated. **Pending owner go-ahead to apply (base-AtoM files locked).**
+- **Timing signal for our disclosure:** Artefactual is actively patching this exact subsystem now - reinforces getting our 9 findings to `security@artefactual.com` promptly, referencing this advisory as the current baseline.

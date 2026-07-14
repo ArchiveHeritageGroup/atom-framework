@@ -1,0 +1,52 @@
+create:
+  credentials: administrator
+  is_secure: true
+
+delete:
+  credentials: administrator
+  is_secure: true
+
+edit:
+  credentials: administrator
+  is_secure: true
+
+index:
+  credentials: [[ researcher, contributor, editor, administrator, translator, authenticated ]]
+  is_secure: true
+
+list:
+  credentials: administrator
+  is_secure: true
+
+passwordEdit:
+  credentials: [[ researcher, contributor, editor, administrator, translator, authenticated ]]
+  is_secure: true
+
+update:
+  credentials: administrator
+  is_secure: true
+
+indexTermAcl:
+  is_secure: true
+
+indexRepositoryAcl:
+  is_secure: true
+
+editActorAcl:
+  credentials: administrator
+  is_secure: true
+
+editInformationObjectAcl:
+  credentials: administrator
+  is_secure: true
+
+editRepositoryAcl:
+  credentials: administrator
+  is_secure: true
+
+editTermAcl:
+  credentials: administrator
+  is_secure: true
+
+autocomplete:
+  credentials: administrator

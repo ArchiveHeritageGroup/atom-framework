@@ -419,16 +419,25 @@ SECFIX_FILES=(
     "apps/qubit/modules/digitalobject/actions/updateAction.class.php"
     "apps/qubit/modules/settings/actions/inventoryAction.class.php"
     "plugins/arRestApiPlugin/modules/api/actions/physicalobjectsCreateAction.class.php"
+    # Artefactual official advisory (gist b7875f8): autocomplete access control -
+    # unauthenticated user/actor/taxonomy/search autocomplete leaked user metadata
+    # (usernames/emails/roles) + draft description titles. Route-level security.yml.
+    "apps/qubit/config/security.yml"
+    "apps/qubit/modules/actor/config/security.yml"
+    "apps/qubit/modules/search/config/security.yml"
+    "apps/qubit/modules/taxonomy/config/security.yml"
+    "apps/qubit/modules/user/config/security.yml"
 )
 SECFIX_APPLIED=0
 for _rel in "${SECFIX_FILES[@]}"; do
     _src="${FRAMEWORK_PATH}/patches/${_rel#plugins/}"
     if [ -f "${_src}" ]; then
+        mkdir -p "$(dirname "${ATOM_ROOT}/${_rel}")"
         cp -f "${_src}" "${ATOM_ROOT}/${_rel}"
         SECFIX_APPLIED=$((SECFIX_APPLIED + 1))
     fi
 done
-echo "  ✓ Applied AtoM 2.10.1 security fixes (${SECFIX_APPLIED}/13 files, ATOM-1..9)"
+echo "  ✓ Applied AtoM 2.10.1 security fixes (${SECFIX_APPLIED}/18 files, ATOM-1..9 + autocomplete advisory)"
 
 # =============================================================================
 # Step 12: Copy dist assets (icons)
