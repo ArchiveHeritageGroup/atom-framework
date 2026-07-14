@@ -42,13 +42,13 @@ class SectorRecordWriteService
             'defaults' => [], 'cascade' => false,
             'extra_tables' => ['dam_external_links', 'dam_format_holdings', 'dam_version_links'],
         ],
-        // Production uses the `museum` module, which stores the record as a JSON
-        // blob in property name='ccoData' (verified: 23 ccoData records vs 20 in
-        // the legacy `cco` module's museum_metadata table, 18 overlapping, and the
-        // active /museum editor writes ccoData). The museum_metadata table (cco
-        // module) is legacy/superseded, so we target the property blob here.
+        // Step 4: museum_metadata is now the single canonical store for museum
+        // records (ccoData retired). museum_metadata.object_id has an ON DELETE
+        // CASCADE FK to information_object, so the extension row is removed with the
+        // IO. materials/techniques are JSON-encoded scalars in their columns.
         'museum' => [
-            'storage' => 'property', 'property' => 'ccoData', 'cascade' => true,
+            'storage' => 'table', 'table' => 'museum_metadata', 'key' => 'object_id',
+            'defaults' => [], 'cascade' => true, 'json_fields' => ['materials', 'techniques'],
         ],
         'gallery' => [
             'storage' => 'property', 'property' => 'galleryData', 'cascade' => true,
@@ -77,6 +77,17 @@ class SectorRecordWriteService
         'location_within_repository' => 'current_location',
         'condition_summary' => 'condition_notes', 'culture' => 'cultural_context',
         'rights_statement' => 'rights_remarks',
+        // Step 4 (ccoData retirement): the remaining structured/display fields now
+        // also live in museum_metadata so nothing persists only in the blob. Four
+        // map to existing columns; six use columns added in Step 4. IO-level fields
+        // (title/object_number/description) stay on the information object; the
+        // template stays in the ccoTemplate property.
+        'attribution_qualifier' => 'creator_attribution',
+        'signature' => 'mark_description', 'support' => 'physical_appearance',
+        'subjects_depicted' => 'subject_extent', 'title_type' => 'title_type',
+        'credit_line' => 'credit_line', 'creator_display' => 'creator_display',
+        'materials_display' => 'materials_display', 'height_value' => 'height_value',
+        'width_value' => 'width_value', 'depth_value' => 'depth_value',
     ];
 
     public static function supportedSectors(): array

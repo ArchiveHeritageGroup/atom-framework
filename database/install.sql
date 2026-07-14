@@ -2758,6 +2758,13 @@ CREATE TABLE IF NOT EXISTS `museum_metadata` (
   `object_sub_category` varchar(255) DEFAULT NULL,
   `edition_number` varchar(100) DEFAULT NULL,
   `edition_size` varchar(100) DEFAULT NULL,
+  `title_type` varchar(100) DEFAULT NULL,
+  `credit_line` text,
+  `creator_display` text,
+  `materials_display` text,
+  `height_value` varchar(50) DEFAULT NULL,
+  `width_value` varchar(50) DEFAULT NULL,
+  `depth_value` varchar(50) DEFAULT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `unique_object` (`object_id`),
   CONSTRAINT `museum_metadata_ibfk_1` FOREIGN KEY (`object_id`) REFERENCES `information_object` (`id`) ON DELETE CASCADE
