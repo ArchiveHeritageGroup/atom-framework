@@ -55,9 +55,104 @@ class SectorRecordWriteService
         ],
     ];
 
+    /**
+     * Museum-module form field -> canonical museum_metadata column mapping.
+     * Used by syncMuseumMetadata() to keep the read-canonical museum_metadata
+     * table current when a record is edited via the museum module (which stores
+     * a ccoData JSON blob). Fixes the split-brain where reports/facets/exports
+     * (all built on museum_metadata columns) showed stale data. IO-level fields
+     * (title, object_number, description, template) are intentionally omitted -
+     * they live on the information object, not museum_metadata.
+     */
+    private const MUSEUM_FORM_TO_METADATA = [
+        'work_type' => 'work_type', 'creator_role' => 'creator_role',
+        'creation_date_display' => 'creation_date_display',
+        'creation_date_earliest' => 'creation_date_earliest',
+        'creation_date_latest' => 'creation_date_latest',
+        'creation_place' => 'creation_place', 'style' => 'style', 'period' => 'period',
+        'materials' => 'materials', 'techniques' => 'techniques',
+        'subject_display' => 'subject_display', 'inscriptions' => 'inscriptions',
+        'creator' => 'creator_identity', 'dimensions_display' => 'dimensions',
+        'repository' => 'current_location_repository',
+        'location_within_repository' => 'current_location',
+        'condition_summary' => 'condition_notes', 'culture' => 'cultural_context',
+        'rights_statement' => 'rights_remarks',
+    ];
+
     public static function supportedSectors(): array
     {
         return array_keys(self::SECTORS);
+    }
+
+    /**
+     * Sync bridge: mirror the mapped fields of a museum-module edit (ccoData form
+     * data) into the canonical museum_metadata table that reports/facets/exports
+     * read.
+     *
+     * FILL-EMPTY-ONLY (never clobbers): for an existing museum_metadata row, a
+     * mapped value is written ONLY where that column is currently empty. This is a
+     * deliberate safety property - the museum form still LOADS from ccoData (which
+     * holds placeholders for the 18 legacy overlap records), so an authoritative
+     * overwrite here could push those placeholders over real museum_metadata data.
+     * New records get all mapped values (nothing to clobber). Full bidirectional
+     * consistency (edits to already-populated fields propagating) requires the
+     * load-side rewrite (form loading from museum_metadata) - a separate follow-on.
+     * Additive/reversible; the ccoData blob is left intact.
+     *
+     * @param int   $ioId     information object id
+     * @param array $formData the museum module's ccoData field array
+     */
+    public function syncMuseumMetadata(int $ioId, array $formData): void
+    {
+        $mapped = [];
+        foreach (self::MUSEUM_FORM_TO_METADATA as $formKey => $col) {
+            if (!array_key_exists($formKey, $formData)) {
+                continue;
+            }
+            $v = $formData[$formKey];
+            if (is_array($v)) {
+                $v = json_encode($v);
+            }
+            if (null === $v || '' === $v) {
+                continue;
+            }
+            $mapped[$col] = $v;
+        }
+        if (!$mapped) {
+            return;
+        }
+
+        $schema = DB::schema();
+        $now = date('Y-m-d H:i:s');
+        $existing = DB::table('museum_metadata')->where('object_id', $ioId)->first();
+
+        if ($existing) {
+            // only fill columns that are currently empty - never overwrite real data
+            $data = [];
+            foreach ($mapped as $col => $v) {
+                $cur = $existing->{$col} ?? null;
+                if (null === $cur || '' === $cur) {
+                    $data[$col] = $v;
+                }
+            }
+            if (!$data) {
+                return;
+            }
+            if ($schema->hasColumn('museum_metadata', 'updated_at')) {
+                $data['updated_at'] = $now;
+            }
+            DB::table('museum_metadata')->where('object_id', $ioId)->update($data);
+        } else {
+            $data = $mapped;
+            $data['object_id'] = $ioId;
+            if ($schema->hasColumn('museum_metadata', 'created_at')) {
+                $data['created_at'] = $now;
+            }
+            if ($schema->hasColumn('museum_metadata', 'updated_at')) {
+                $data['updated_at'] = $now;
+            }
+            DB::table('museum_metadata')->insert($data);
+        }
     }
 
     private function config(string $sector): array
