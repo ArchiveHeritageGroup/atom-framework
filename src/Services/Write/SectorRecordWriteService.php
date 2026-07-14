@@ -89,15 +89,13 @@ class SectorRecordWriteService
      * data) into the canonical museum_metadata table that reports/facets/exports
      * read.
      *
-     * FILL-EMPTY-ONLY (never clobbers): for an existing museum_metadata row, a
-     * mapped value is written ONLY where that column is currently empty. This is a
-     * deliberate safety property - the museum form still LOADS from ccoData (which
-     * holds placeholders for the 18 legacy overlap records), so an authoritative
-     * overwrite here could push those placeholders over real museum_metadata data.
-     * New records get all mapped values (nothing to clobber). Full bidirectional
-     * consistency (edits to already-populated fields propagating) requires the
-     * load-side rewrite (form loading from museum_metadata) - a separate follow-on.
-     * Additive/reversible; the ccoData blob is left intact.
+     * Authoritative for mapped columns (non-empty values overwrite). This is safe
+     * because the museum form loads those fields FROM museum_metadata via
+     * museumFormOverridesFromMetadata() (Step 3b), so a submitted value is always
+     * the canonical value or a deliberate edit, never a stale ccoData placeholder.
+     * Empty form values are skipped (a blank field never clears canonical data),
+     * and the ~70 columns the form does not expose are never touched. New records
+     * get all mapped values. Additive/reversible; the ccoData blob is left intact.
      *
      * @param int   $ioId     information object id
      * @param array $formData the museum module's ccoData field array
@@ -127,17 +125,12 @@ class SectorRecordWriteService
         $existing = DB::table('museum_metadata')->where('object_id', $ioId)->first();
 
         if ($existing) {
-            // only fill columns that are currently empty - never overwrite real data
-            $data = [];
-            foreach ($mapped as $col => $v) {
-                $cur = $existing->{$col} ?? null;
-                if (null === $cur || '' === $cur) {
-                    $data[$col] = $v;
-                }
-            }
-            if (!$data) {
-                return;
-            }
+            // Authoritative overwrite of the mapped columns. Safe because the museum
+            // form loads these fields FROM museum_metadata (museumFormOverridesFromMetadata
+            // overlay, Step 3b), so a submitted value is either the canonical value or
+            // a deliberate user edit - never a stale ccoData placeholder. Empty values
+            // are skipped above, so a blank field never clears canonical data.
+            $data = $mapped;
             if ($schema->hasColumn('museum_metadata', 'updated_at')) {
                 $data['updated_at'] = $now;
             }
@@ -153,6 +146,41 @@ class SectorRecordWriteService
             }
             DB::table('museum_metadata')->insert($data);
         }
+    }
+
+    /**
+     * Reverse of the museum sync: read the canonical museum_metadata row and return
+     * its mapped values keyed by the museum-module FORM field names. The museum edit
+     * form overlays these onto its ccoData so it shows the same data the readers use
+     * (Step 3b). Returns [] when there is no museum_metadata row. materials/techniques
+     * are JSON-decoded back to arrays to match the form's ccoData shape.
+     *
+     * @return array<string,mixed> form-field => canonical value
+     */
+    public function museumFormOverridesFromMetadata(int $ioId): array
+    {
+        $row = DB::table('museum_metadata')->where('object_id', $ioId)->first();
+        if (!$row) {
+            return [];
+        }
+        $row = (array) $row;
+        $jsonFields = ['materials', 'techniques'];
+        $out = [];
+        foreach (self::MUSEUM_FORM_TO_METADATA as $formKey => $col) {
+            $v = $row[$col] ?? null;
+            if (null === $v || '' === $v) {
+                continue;
+            }
+            if (in_array($col, $jsonFields, true)) {
+                $decoded = json_decode((string) $v, true);
+                if (null !== $decoded) {
+                    $v = $decoded;
+                }
+            }
+            $out[$formKey] = $v;
+        }
+
+        return $out;
     }
 
     private function config(string $sector): array
