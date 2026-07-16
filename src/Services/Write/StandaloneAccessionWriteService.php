@@ -25,6 +25,12 @@ class StandaloneAccessionWriteService implements AccessionWriteServiceInterface
 
     public function createAccession(array $attributes, string $culture = 'en'): object
     {
+        // The accession table carries its own created_at/updated_at (NOT NULL, no
+        // DB default), unlike information_object whose timestamps live on `object`.
+        $now = date('Y-m-d H:i:s');
+        $attributes['created_at'] = $attributes['created_at'] ?? $now;
+        $attributes['updated_at'] = $attributes['updated_at'] ?? $now;
+
         [$core, $i18n] = $this->splitI18nFields($attributes, self::I18N_FIELDS);
 
         $objectId = $this->insertEntity(
