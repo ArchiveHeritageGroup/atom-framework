@@ -17,6 +17,7 @@ A running base **AtoM** install (see Artefactual's official AtoM installation), 
 - MySQL 8.0
 - Elasticsearch 7.10 (AtoM 2.10 requires ES 7.x; 7.11-8.x are not supported)
 - Composer 2.x, Node.js 18+ (theme asset build)
+- ImageMagick + `php8.3-imagick` (base AtoM requirement - digital-object thumbnail/reference derivatives are generated via Imagick; without it, image uploads have no derivatives)
 
 > On Ubuntu, if you install `php8.3-fpm` from the `ondrej/php` PPA, its unit ships
 > `ProtectSystem=full` (mounts `/usr` read-only). If AtoM lives under `/usr/share/nginx`,

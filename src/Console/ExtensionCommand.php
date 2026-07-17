@@ -308,14 +308,27 @@ class ExtensionCommand
         }
 
         $this->line('');
-        $this->info("→ Installing {$name}...");
 
-        $this->manager->install($name);
+        // Idempotent: if already installed, skip install() (it would throw
+        // "already installed") and just ensure the extension is enabled. So
+        // `extension:install` always ends installed AND enabled - matching its
+        // documented "auto-enables" behaviour - even when re-run on an
+        // already-installed-but-disabled plugin (e.g. a bulk enable sweep).
+        if ($this->manager->isInstalled($name)) {
+            $this->line("  Already installed.");
+        } else {
+            $this->info("→ Installing {$name}...");
+            $this->manager->install($name);
+        }
 
         // Auto-enable unless --no-enable flag
         if (!$noEnable) {
-            $this->manager->enable($name);
-            $this->success("Extension '{$name}' installed and enabled.");
+            if ($this->manager->isEnabled($name)) {
+                $this->success("Extension '{$name}' is installed and already enabled.");
+            } else {
+                $this->manager->enable($name);
+                $this->success("Extension '{$name}' installed and enabled.");
+            }
         } else {
             $this->success("Extension '{$name}' installed.");
             $this->line("Run 'php bin/atom extension:enable {$name}' to enable it.");
