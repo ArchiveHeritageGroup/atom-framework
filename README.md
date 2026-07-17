@@ -222,9 +222,9 @@
 | Component | Minimum | Recommended |
 |-----------|---------|-------------|
 | **AtoM** | 2.8.0 | 2.10.x |
-| **PHP** | 8.1 | 8.3 |
+| **PHP** | 8.2 | 8.3 |
 | **MySQL** | 8.0 | 8.0+ |
-| **Elasticsearch** | 5.x | 6.x / 8.x |
+| **Elasticsearch** | 5.x | 7.10 (AtoM 2.10; ES 8.x not supported) |
 | **OS** | Ubuntu 20.04 | Ubuntu 22.04 LTS |
 
 ### Quick Start
