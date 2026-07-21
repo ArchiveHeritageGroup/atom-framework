@@ -14,11 +14,29 @@ use Illuminate\Database\Capsule\Manager as DB;
  *   php bin/atom tools:settings                   # List all settings
  *   php bin/atom tools:settings --name=site_title  # Show a specific setting
  *   php bin/atom tools:settings --name=site_title --value="My Archive"  # Set a value
+ *   php bin/atom tools:settings --sync-cultures    # Backfill culture-invariant settings
  */
 class SettingsCommand extends BaseCommand
 {
     protected string $name = 'tools:settings';
     protected string $description = 'Show or set AtoM settings';
+
+    /**
+     * Settings whose value is the same in every language.
+     *
+     * AtoM stores these in setting_i18n, and the settings form only ever writes
+     * the culture you happened to be using. Base AtoM then reads them back for
+     * the CURRENT culture with no fallback to source_culture - so a URL set in
+     * English reads as empty in Afrikaans, and apps/qubit/templates/_header.php
+     * nags administrators to "set your site base URL" in every other language.
+     *
+     * Only genuinely language-independent settings belong here. Do NOT add
+     * translatable prose (site_title, descriptions): copying English into every
+     * culture would hide translations that are legitimately missing.
+     */
+    private const CULTURE_INVARIANT = [
+        'siteBaseUrl',
+    ];
 
     protected function configure(): void
     {
@@ -26,6 +44,7 @@ class SettingsCommand extends BaseCommand
         $this->addOption('value', null, 'New value (requires --name)');
         $this->addOption('culture', null, 'Culture code for i18n settings', 'en');
         $this->addOption('scope', null, 'Setting scope filter');
+        $this->addOption('sync-cultures', null, 'Copy culture-invariant settings into every enabled UI language', false);
     }
 
     protected function handle(): int
@@ -33,6 +52,10 @@ class SettingsCommand extends BaseCommand
         $name = $this->option('name');
         $value = $this->option('value');
         $culture = $this->option('culture') ?: 'en';
+
+        if ($this->option('sync-cultures')) {
+            return $this->syncCultures($name);
+        }
 
         // Set a specific setting
         if ($name && $value !== null) {
@@ -78,6 +101,78 @@ class SettingsCommand extends BaseCommand
         }
 
         $this->success("Setting '{$name}' updated to: {$value}");
+
+        return 0;
+    }
+
+    /**
+     * Give every enabled UI language a row for the culture-invariant settings.
+     *
+     * Idempotent and insert-only: a culture that already has a row is left
+     * alone, so a translated or hand-corrected value is never overwritten.
+     *
+     * @param null|string $only Restrict to one setting name
+     */
+    private function syncCultures(?string $only): int
+    {
+        $names = $only ? [$only] : self::CULTURE_INVARIANT;
+
+        $languages = DB::table('setting')
+            ->where('scope', 'i18n_languages')
+            ->pluck('name')
+            ->all();
+
+        if (empty($languages)) {
+            $this->info('No UI languages are enabled; nothing to sync.');
+
+            return 0;
+        }
+
+        $this->newline();
+        $this->bold('  Enabled UI languages: ' . implode(', ', $languages));
+
+        $inserted = 0;
+        foreach ($names as $name) {
+            $setting = DB::table('setting')->where('name', $name)->first();
+            if (!$setting) {
+                $this->info("  {$name}: not present on this install, skipped");
+
+                continue;
+            }
+
+            // Prefer the setting's own source culture, then English, then any value.
+            $source = $setting->source_culture ?? 'en';
+            $value = DB::table('setting_i18n')->where('id', $setting->id)->where('culture', $source)->value('value')
+                ?: DB::table('setting_i18n')->where('id', $setting->id)->where('culture', 'en')->value('value')
+                ?: DB::table('setting_i18n')->where('id', $setting->id)->whereNotNull('value')->value('value');
+
+            if (null === $value || '' === $value) {
+                $this->info("  {$name}: no value set anywhere, skipped");
+
+                continue;
+            }
+
+            $have = DB::table('setting_i18n')->where('id', $setting->id)->pluck('culture')->all();
+            $missing = array_diff($languages, $have);
+
+            foreach ($missing as $c) {
+                DB::table('setting_i18n')->insert([
+                    'id' => $setting->id,
+                    'culture' => $c,
+                    'value' => $value,
+                ]);
+                ++$inserted;
+            }
+
+            $this->info(sprintf(
+                '  %s: %s',
+                $name,
+                $missing ? 'added ' . implode(', ', $missing) : 'already complete'
+            ));
+        }
+
+        $this->newline();
+        $this->success(sprintf('%d culture row(s) added.', $inserted));
 
         return 0;
     }

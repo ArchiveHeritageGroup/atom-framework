@@ -5616,17 +5616,17 @@
       </trans-unit>
       <trans-unit id="d78dca84fb22f51e97d39c20a021d39026e0b47d">
         <source xml:space="preserve">Treeview</source>
-        <target xml:space="preserve">Boomaansig</target>
+        <target xml:space="preserve">Takaansig</target>
         <note>https://github.com/artefactual/atom/blob/master/apps/qubit/modules/settings/actions/menuComponent.class.php</note>
       </trans-unit>
       <trans-unit id="d90d5b007cad4352601f0b442ef7c72d2735f248">
         <source xml:space="preserve">Treeview settings</source>
-        <target xml:space="preserve">Boomaansig-instellings</target>
+        <target xml:space="preserve">Takaansig-instellings</target>
         <note>https://github.com/artefactual/atom/blob/master/apps/qubit/modules/settings/templates/treeviewSuccess.php</note>
       </trans-unit>
       <trans-unit id="5e384d296d3baaf24af7d0d9f08d9f4f1900eaf8">
         <source xml:space="preserve">Treeview settings saved.</source>
-        <target xml:space="preserve">Boomaansig-instellings gestoor.</target>
+        <target xml:space="preserve">Takaansig-instellings gestoor.</target>
         <note>https://github.com/artefactual/atom/blob/master/apps/qubit/modules/settings/actions/treeviewAction.class.php</note>
       </trans-unit>
       <trans-unit id="3deb7456519697ecf4eefc455516c969a3681bae">
