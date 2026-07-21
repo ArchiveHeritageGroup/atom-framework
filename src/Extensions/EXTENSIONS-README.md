@@ -5,7 +5,7 @@
 This package contains three comprehensive extension suites for AtoM 2.10 Laravel rebuild:
 
 1. **Security Extension** - NARSSA/POPIA compliance, security clearances, audit logging
-2. **Condition Extension** - Spectrum 5.0 compliant condition reporting, conservation tracking
+2. **Condition Extension** - Collections Procedures compliant condition reporting, conservation tracking
 3. **Privacy Extension** - POPIA/PAIA/GDPR compliance, ROPA, DSAR, breach management
 
 All extensions follow the atom-framework architecture patterns using:
@@ -114,7 +114,7 @@ GET  /admin/security/compliance/justification-templates - Template management
 - `conservation_link` - Links events to conservation treatments
 - `condition_vocabulary_term` - Controlled vocabulary terms
 - `condition_assessment_schedule` - Scheduled assessment tracking
-- `condition_conservation_treatment` - Spectrum 5.0 treatment records
+- `condition_conservation_treatment` - Collections Procedures treatment records
 
 ### Routes
 ```
@@ -226,7 +226,7 @@ ConditionVocabularyService::initializeDefaultVocabularies();
 
 ### International
 - **GDPR** (General Data Protection Regulation - EU)
-- **Spectrum 5.0** (Museum documentation procedures)
+- **Collections Procedures** (Museum documentation procedures)
 - **IIIF** (International Image Interoperability Framework)
 - **ISAD(G)** (General International Standard Archival Description)
 

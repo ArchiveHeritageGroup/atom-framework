@@ -11,7 +11,7 @@
 
 The `ahgDataMigrationPlugin` currently exports ALL data to ISAD-G (Archives) CSV format, regardless of the target sector. This means:
 
-- Museum data (Spectrum) → outputs ISAD fields ❌
+- Museum data (Collections Procedures) → outputs ISAD fields ❌
 - Library data (MARC) → outputs ISAD fields ❌
 - Gallery data (CCO) → outputs ISAD fields ❌
 - DAM data (Dublin Core) → outputs ISAD fields ❌
@@ -30,7 +30,7 @@ The `ahgDataMigrationPlugin` currently exports ALL data to ISAD-G (Archives) CSV
 | Save/Load Mappings | ✅ Done | Database stored |
 | Preview Data | ✅ Done | Shows transformed records |
 | **Export to Archives CSV** | ✅ Done | ISAD-G format |
-| **Export to Museum CSV** | ❌ NOT DONE | Spectrum fields |
+| **Export to Museum CSV** | ❌ NOT DONE | Collections Procedures fields |
 | **Export to Library CSV** | ❌ NOT DONE | MARC/RDA fields |
 | **Export to Gallery CSV** | ❌ NOT DONE | CCO/VRA fields |
 | **Export to DAM CSV** | ❌ NOT DONE | Dublin Core/IPTC fields |
@@ -46,7 +46,7 @@ The `ahgDataMigrationPlugin` currently exports ALL data to ISAD-G (Archives) CSV
 - [ ] Document what fields each sector needs
 
 ### Phase 2: Sector-Specific CSV Export
-- [ ] Create Museum CSV exporter (Spectrum 5.0 fields)
+- [ ] Create Museum CSV exporter (Collections Procedures fields)
 - [ ] Create Library CSV exporter (MARC/RDA fields)
 - [ ] Create Gallery CSV exporter (CCO/VRA fields)
 - [ ] Create DAM CSV exporter (Dublin Core/IPTC fields)

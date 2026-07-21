@@ -8,7 +8,7 @@
 
 ahgDataMigrationPlugin exports ALL data to ISAD-G (Archives) CSV format only.
 
-- Museum (Spectrum) → ISAD ❌
+- Museum (Collections Procedures) → ISAD ❌
 - Library (MARC) → ISAD ❌
 - Gallery (CCO) → ISAD ❌
 - DAM (Dublin Core) → ISAD ❌

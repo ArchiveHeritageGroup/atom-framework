@@ -105,7 +105,7 @@ Files to evaluate:
 - `Routes/routes.php`
 - `Views/` (blade templates)
 
-### Spectrum → ahgSpectrumPlugin
+### Collections Procedures → ahgSpectrumPlugin
 **Status:** Pending
 **Priority:** Low
 
