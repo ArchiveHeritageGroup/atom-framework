@@ -399,18 +399,37 @@ if [ -f "${PATCH_LIB}/ahgLdapUser.class.php" ]; then
     echo "  ✓ Applied ahgLdapUser patch (opt-in LDAP user class, #29)"
 fi
 
-# Afrikaans UI translation. Upstream AtoM ships apps/qubit/i18n/af/messages.xml
-# with every <target> blank, so selecting Afrikaans renders English — and an
-# upgrade silently overwrites any local translation with that empty stub (which
-# is exactly what happened to PSIS at 2.10). This catalogue is the RARI 2.6-era
-# Afrikaans translation merged onto the 2.10 string set: 1147 of 1263 units
-# (90%), with genuinely-new 2.10 strings left untranslated rather than invented.
-# Unlike fr/es/nl/pt this is local work, not an Artefactual translation, so it
-# will never come back from upstream — it has to be reapplied on every install.
-if [ -f "${PATCH_APPS}/qubit/i18n/af/messages.xml" ]; then
-    cp -f "${PATCH_APPS}/qubit/i18n/af/messages.xml" \
-          "${ATOM_ROOT}/apps/qubit/i18n/af/messages.xml"
-    echo "  ✓ Applied Afrikaans i18n catalogue (1147/1263 translated)"
+# South African language UI catalogues.
+#
+# Upstream AtoM ships these with every <target> blank (they are not Artefactual
+# translations), so an upgrade silently replaces local translation work with an
+# empty stub — exactly what happened to Afrikaans on PSIS at 2.10. Nothing warns
+# you, because an empty target legitimately falls back to English. This work will
+# never come back from upstream, so it must be reapplied on every install.
+#
+# Any language directory added under patches/apps/qubit/i18n/ is picked up here;
+# no need to edit this block when a new one is contributed.
+if [ -d "${PATCH_APPS}/qubit/i18n" ]; then
+    i18n_applied=0
+    for lang_dir in "${PATCH_APPS}"/qubit/i18n/*/; do
+        [ -d "${lang_dir}" ] || continue
+        lang_code="$(basename "${lang_dir}")"
+        [ -f "${lang_dir}messages.xml" ] || continue
+
+        mkdir -p "${ATOM_ROOT}/apps/qubit/i18n/${lang_code}"
+        cp -f "${lang_dir}messages.xml" \
+              "${ATOM_ROOT}/apps/qubit/i18n/${lang_code}/messages.xml"
+
+        # Count non-empty <target> elements so the operator sees real coverage
+        # rather than a bare "applied". grep -c prints 0 AND exits 1 when there
+        # are no matches, so the fallback must be an assignment, not an echo.
+        translated="$(grep -c '<target[^/>]*>[^<]' "${lang_dir}messages.xml" 2>/dev/null)" || translated=0
+        echo "  ✓ Applied ${lang_code} i18n catalogue (${translated} translated)"
+        i18n_applied=$((i18n_applied + 1))
+    done
+    if [ "${i18n_applied}" -gt 0 ]; then
+        echo "  ✓ ${i18n_applied} language catalogue(s) applied"
+    fi
 fi
 
 # AtoM 2.10.1 security fixes (coordinated disclosure to Artefactual, 2026-07-12).
@@ -466,5 +485,24 @@ if [ -d "${AHG_PLUGINS}/ahgThemeB5Plugin/web/dist/icons" ]; then
     echo "  ✓ Copied $(ls ${AHG_PLUGINS}/ahgThemeB5Plugin/web/dist/icons/ | wc -l) icons to dist/icons/"
 else
     echo "  ⚠ No icons found in ahgThemeB5Plugin/web/dist/icons/"
+fi
+
+# =============================================================================
+# Step 13: Give culture-invariant settings a row per enabled UI language
+# =============================================================================
+# AtoM stores siteBaseUrl in setting_i18n and reads it back for the CURRENT
+# culture with no fallback to source_culture. The settings form only ever writes
+# the culture the admin happened to be using, so a base URL set in English reads
+# as empty in every other language and apps/qubit/templates/_header.php nags
+# administrators to "set your site base URL" — one that is already set. Insert
+# only; a value someone has corrected is never overwritten.
+echo ""
+echo "Step 13: Syncing culture-invariant settings across enabled languages..."
+
+if [ -f "${FRAMEWORK_PATH}/bin/atom" ]; then
+    (cd "${FRAMEWORK_PATH}" && php bin/atom tools:settings --sync-cultures) \
+        || echo "  ⚠ Culture sync skipped (non-fatal)"
+else
+    echo "  ⚠ bin/atom not found, skipped"
 fi
 
