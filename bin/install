@@ -399,6 +399,20 @@ if [ -f "${PATCH_LIB}/ahgLdapUser.class.php" ]; then
     echo "  ✓ Applied ahgLdapUser patch (opt-in LDAP user class, #29)"
 fi
 
+# Afrikaans UI translation. Upstream AtoM ships apps/qubit/i18n/af/messages.xml
+# with every <target> blank, so selecting Afrikaans renders English — and an
+# upgrade silently overwrites any local translation with that empty stub (which
+# is exactly what happened to PSIS at 2.10). This catalogue is the RARI 2.6-era
+# Afrikaans translation merged onto the 2.10 string set: 1147 of 1263 units
+# (90%), with genuinely-new 2.10 strings left untranslated rather than invented.
+# Unlike fr/es/nl/pt this is local work, not an Artefactual translation, so it
+# will never come back from upstream — it has to be reapplied on every install.
+if [ -f "${PATCH_APPS}/qubit/i18n/af/messages.xml" ]; then
+    cp -f "${PATCH_APPS}/qubit/i18n/af/messages.xml" \
+          "${ATOM_ROOT}/apps/qubit/i18n/af/messages.xml"
+    echo "  ✓ Applied Afrikaans i18n catalogue (1147/1263 translated)"
+fi
+
 # AtoM 2.10.1 security fixes (coordinated disclosure to Artefactual, 2026-07-12).
 # ATOM-1..9: XXE in XML import, REST physical-object create ACL, finding-aid
 # generate/delete authorization, digitalobject update CSRF, CSV export draft
