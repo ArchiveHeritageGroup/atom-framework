@@ -1,4 +1,5 @@
 <?php
+
 declare(strict_types=1);
 
 namespace AtomExtensions\Services;
@@ -22,6 +23,7 @@ class LevelOfDescriptionService
     public const SECTOR_LIBRARY = 'library';
     public const SECTOR_GALLERY = 'gallery';
     public const SECTOR_DAM = 'dam';
+    public const SECTOR_ARCHAEOLOGY = 'archaeology';
 
     public const ALL_SECTORS = [
         self::SECTOR_ARCHIVE,
@@ -29,6 +31,7 @@ class LevelOfDescriptionService
         self::SECTOR_LIBRARY,
         self::SECTOR_GALLERY,
         self::SECTOR_DAM,
+        self::SECTOR_ARCHAEOLOGY,
     ];
 
     // Plugin to sector mapping
@@ -38,6 +41,7 @@ class LevelOfDescriptionService
         self::SECTOR_LIBRARY => ['ahgLibraryPlugin', 'arLibraryPlugin'],
         self::SECTOR_GALLERY => ['arGalleryPlugin', 'ahgGalleryPlugin'],
         self::SECTOR_DAM => ['ahgDAMPlugin', 'arDAMPlugin'],
+        self::SECTOR_ARCHAEOLOGY => ['ahgArchaeologyPlugin'],
     ];
 
     // Default levels per sector (by name - IDs vary between installations)
@@ -57,6 +61,14 @@ class LevelOfDescriptionService
         ],
         self::SECTOR_DAM => [
             'Photograph', 'Audio', 'Video', 'Image', 'Document', '3D Model', 'Dataset'
+        ],
+        // Archaeology keeps the ISAD spine - series is the site, subseries the
+        // trench, file the stratigraphic context - and adds only the two levels
+        // ISAD has no word for. Nothing nests below a find or a sample, so they
+        // cannot conflict with the hierarchy above them.
+        self::SECTOR_ARCHAEOLOGY => [
+            'Fonds', 'Series', 'Subseries', 'File', 'Item',
+            'Find', 'Sample',
         ],
     ];
 
@@ -351,5 +363,168 @@ class LevelOfDescriptionService
             ->toArray();
 
         return $counts;
+    }
+
+    /**
+     * Create any level term declared in SECTOR_DEFAULT_LEVELS that is missing.
+     *
+     * bin/migrate-levels.php has always advertised this, but the method was
+     * never written - running `up` fatalled on an undefined method, so the CLI
+     * was a front end to nothing.
+     *
+     * Idempotent: an existing term is skipped, never duplicated. Matching is by
+     * name within taxonomy 34, because ids differ between installations.
+     *
+     * @return array{created: string[], skipped: string[], errors: string[]}
+     */
+    public static function migrate(): array
+    {
+        $results = ['created' => [], 'skipped' => [], 'errors' => []];
+
+        // Sectors share level names (Photograph is in both gallery and DAM), so
+        // work from a deduplicated set rather than creating twice.
+        $wanted = [];
+        foreach (self::SECTOR_DEFAULT_LEVELS as $levels) {
+            foreach ($levels as $name) {
+                $wanted[$name] = true;
+            }
+        }
+
+        $existing = self::existingLevelNames();
+
+        foreach (array_keys($wanted) as $name) {
+            if (isset($existing[mb_strtolower($name)])) {
+                $results['skipped'][] = $name;
+
+                continue;
+            }
+
+            try {
+                self::createLevelTerm($name);
+                $results['created'][] = $name;
+                $existing[mb_strtolower($name)] = true;
+            } catch (\Throwable $e) {
+                $results['errors'][] = sprintf('%s: %s', $name, $e->getMessage());
+            }
+        }
+
+        return $results;
+    }
+
+    /**
+     * Remove level terms this migration added, where it is safe to do so.
+     *
+     * Deliberately conservative. A term is only removed when it is:
+     *   - NOT part of the archive sector (those are base AtoM's own levels and
+     *     must survive a rollback), and
+     *   - not referenced by any information object.
+     *
+     * @return array{removed: string[], skipped: string[], errors: string[]}
+     */
+    public static function rollback(): array
+    {
+        $results = ['removed' => [], 'skipped' => [], 'errors' => []];
+
+        $protected = [];
+        foreach (self::SECTOR_DEFAULT_LEVELS[self::SECTOR_ARCHIVE] as $name) {
+            $protected[mb_strtolower($name)] = true;
+        }
+
+        $candidates = [];
+        foreach (self::SECTOR_DEFAULT_LEVELS as $sector => $levels) {
+            if (self::SECTOR_ARCHIVE === $sector) {
+                continue;
+            }
+            foreach ($levels as $name) {
+                if (!isset($protected[mb_strtolower($name)])) {
+                    $candidates[$name] = true;
+                }
+            }
+        }
+
+        foreach (array_keys($candidates) as $name) {
+            try {
+                $termId = DB::table('term as t')
+                    ->join('term_i18n as ti', 'ti.id', '=', 't.id')
+                    ->where('t.taxonomy_id', self::TAXONOMY_ID)
+                    ->where('ti.name', $name)
+                    ->value('t.id');
+
+                if (!$termId) {
+                    continue;   // never created, or already gone
+                }
+
+                $inUse = DB::table('information_object')->where('level_of_description_id', $termId)->count();
+                if ($inUse > 0) {
+                    $results['skipped'][] = sprintf('%s (in use by %d record(s))', $name, $inUse);
+
+                    continue;
+                }
+
+                // object cascades to term, term_i18n and slug.
+                DB::table('object')->where('id', $termId)->delete();
+                $results['removed'][] = $name;
+            } catch (\Throwable $e) {
+                $results['errors'][] = sprintf('%s: %s', $name, $e->getMessage());
+            }
+        }
+
+        return $results;
+    }
+
+    /**
+     * Level term names already present in the taxonomy, keyed lowercase.
+     */
+    private static function existingLevelNames(): array
+    {
+        $names = [];
+        $rows = DB::table('term as t')
+            ->join('term_i18n as ti', 'ti.id', '=', 't.id')
+            ->where('t.taxonomy_id', self::TAXONOMY_ID)
+            ->whereNotNull('ti.name')
+            ->pluck('ti.name');
+
+        foreach ($rows as $name) {
+            $names[mb_strtolower((string) $name)] = true;
+        }
+
+        return $names;
+    }
+
+    /**
+     * Create one level term through AtoM's entity-inheritance chain.
+     */
+    private static function createLevelTerm(string $name): int
+    {
+        $now = date('Y-m-d H:i:s');
+
+        $termId = DB::table('object')->insertGetId([
+            'class_name' => 'QubitTerm',
+            'created_at' => $now,
+            'updated_at' => $now,
+        ]);
+
+        DB::table('term')->insert([
+            'id' => $termId,
+            'taxonomy_id' => self::TAXONOMY_ID,
+            'source_culture' => 'en',
+        ]);
+
+        DB::table('term_i18n')->insert([
+            'id' => $termId,
+            'culture' => 'en',
+            'name' => $name,
+        ]);
+
+        // Slugs must be unique across every object, not just terms.
+        $base = trim(preg_replace('/[^a-z0-9]+/', '-', mb_strtolower($name)), '-');
+        $slug = $base;
+        $i = 2;
+        while (DB::table('slug')->where('slug', $slug)->exists()) {
+            $slug = $base . '-' . $i++;
+        }
+        DB::table('slug')->insert(['object_id' => $termId, 'slug' => $slug]);
+
+        return $termId;
     }
 }
