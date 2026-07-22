@@ -301,11 +301,42 @@ class LevelOfDescriptionService
     {
         $sector = self::detectCurrentSector();
 
-        if ($sector) {
-            return self::getBySector($sector, $culture);
-        }
+        $levels = $sector ? self::getBySector($sector, $culture) : self::getAll($culture);
 
-        return self::getAll($culture);
+        // Always offer any level already in use in the catalogue, even if its
+        // sector is not active here. Otherwise a level assigned to existing
+        // records (e.g. archaeology's Site/Trench/Context on an instance without
+        // ahgArchaeologyPlugin) shows on those records but cannot be picked when
+        // adding a sibling - the "shows on Edit not Add" gap.
+        $present = $levels->pluck('id')->flip();
+        $inUse = self::getInUse($culture)->reject(
+            static fn ($t) => $present->has($t->id)
+        );
+
+        return $levels->concat($inUse)->values();
+    }
+
+    /**
+     * Level terms actually assigned to at least one information object.
+     */
+    public static function getInUse(?string $culture = null): Collection
+    {
+        $culture = $culture ?? CultureHelper::getCulture();
+
+        return DB::table('term as t')
+            ->join('term_i18n as ti', function ($j) use ($culture) {
+                $j->on('t.id', '=', 'ti.id')->where('ti.culture', '=', $culture);
+            })
+            ->leftJoin('slug as s', 't.id', '=', 's.object_id')
+            ->where('t.taxonomy_id', self::TAXONOMY_ID)
+            ->whereExists(function ($q) {
+                $q->select(DB::raw(1))
+                    ->from('information_object as io')
+                    ->whereColumn('io.level_of_description_id', 't.id');
+            })
+            ->orderBy('ti.name')
+            ->select('t.id', 'ti.name', 'ti.culture', 's.slug')
+            ->get();
     }
 
     /**
