@@ -504,9 +504,15 @@ class LevelOfDescriptionService
             'updated_at' => $now,
         ]);
 
+        // parent_id must be the taxonomy root term (QubitTerm::ROOT_ID = 110),
+        // or the term sits outside the nested set and never appears in the
+        // level-of-description form dropdown (which walks the nested set) - even
+        // though records referencing it by FK still display correctly. The
+        // caller must run propel:build-nested-set afterwards to assign lft/rgt.
         DB::table('term')->insert([
             'id' => $termId,
             'taxonomy_id' => self::TAXONOMY_ID,
+            'parent_id' => 110,
             'source_culture' => 'en',
         ]);
 
