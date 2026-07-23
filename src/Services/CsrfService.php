@@ -136,6 +136,17 @@ class CsrfService
             return true;
         }
 
+        // Base AtoM forms carry their own CSRF token ('_csrf_token'), validated by
+        // AtoM's own sfForm CSRF filter. They are already protected and must NOT
+        // also carry the M12 token - the extra field breaks strict sfForm
+        // validation (see the ahgThemeB5 CSRF JS, which likewise skips any form
+        // that already has _csrf_token). Exempt them here rather than log a
+        // spurious "token missing" for every base-form POST (e.g.
+        // object/addDigitalObject).
+        if (!empty($_POST['_csrf_token'])) {
+            return true;
+        }
+
         return false;
     }
 
