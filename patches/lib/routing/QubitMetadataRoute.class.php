@@ -152,6 +152,18 @@ class QubitMetadataRoute extends QubitRoute
 
                     $parameters['module'] = $this->getActionParameter(['isad', 'dc', 'mods', 'rad', 'ead', 'dacs', 'museum', 'dam', 'gallery', 'library', 'ric'], $default, $parameters);
 
+                    // AHG: send the bare-slug edit (/:slug/edit - the URL the record
+                    // view's "Edit" button generates) to the AHG editing form
+                    // (ioManage). ioManage detects the descriptive standard and
+                    // dispatches to the matching AHG form (ISAD/DC/RAD/MODS/DACS/RiC or
+                    // a sector form). Without this, editing an information object from
+                    // the record view lands on base AtoM's stock form instead of the
+                    // AHG forms. The record view itself (action=index) keeps the
+                    // standard-plugin module resolved above.
+                    if ('edit' === $parameters['action']) {
+                        $parameters['module'] = 'ioManage';
+                    }
+
                     break;
 
                 case $this->resource instanceof QubitAccession:
