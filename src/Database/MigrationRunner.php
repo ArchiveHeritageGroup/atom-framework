@@ -229,26 +229,44 @@ class MigrationRunner
                 try {
                     DB::statement($statement);
                 } catch (\Exception $e) {
-                    // Ignore safe errors (column/table already exists, etc.)
+                    // Ignore "schema already there / not there" errors so a
+                    // migration is idempotent AND tolerant of optional-plugin
+                    // tables that aren't installed on this instance (e.g. a
+                    // cross-cutting enum->varchar MODIFY that lists a table the
+                    // 3D viewer plugin would have created). A genuinely wrong
+                    // statement still surfaces because its error code is not
+                    // in this list.
                     $safeErrors = [
                         '42S21', // Column already exists
                         '42S01', // Table already exists
                         '42000', // Duplicate key name
+                        '42S02', // Base table or view not found
+                        '1050',  // Table already exists
+                        '1054',  // Unknown column
                         '1060',  // Duplicate column name
                         '1061',  // Duplicate key name
-                        '1050',  // Table already exists
+                        '1072',  // Key column doesn't exist in table
+                        '1091',  // Can't DROP; check that it exists
+                        '1146',  // Table doesn't exist
                     ];
-                    
+                    $safePhrases = ['already exists', 'Duplicate', "doesn't exist", 'Unknown column'];
+
                     $isSafe = false;
                     foreach ($safeErrors as $code) {
-                        if (strpos($e->getMessage(), $code) !== false || 
-                            strpos($e->getMessage(), 'already exists') !== false ||
-                            strpos($e->getMessage(), 'Duplicate') !== false) {
+                        if (strpos($e->getMessage(), $code) !== false) {
                             $isSafe = true;
                             break;
                         }
                     }
-                    
+                    if (!$isSafe) {
+                        foreach ($safePhrases as $phrase) {
+                            if (strpos($e->getMessage(), $phrase) !== false) {
+                                $isSafe = true;
+                                break;
+                            }
+                        }
+                    }
+
                     if (!$isSafe) {
                         throw $e;
                     }
@@ -277,8 +295,12 @@ class MigrationRunner
      *
      * The password is passed via MYSQL_PWD (never on the command line, so it
      * stays out of the process list and avoids the client's insecure-password
-     * warning); every other connection parameter is shell-escaped. A non-zero
-     * exit throws, so the caller records the migration as failed.
+     * warning); every other connection parameter is shell-escaped. --force lets
+     * the client run every statement (skipping ones that error) so the file
+     * applies as fully as possible; we then inspect the errors and only throw on
+     * a genuine one - a "schema already there / not there" error (an optional
+     * table/column not installed on this instance) is tolerated, matching the
+     * PDO path's safe-skip.
      */
     protected function runSqlViaMysqlClient(string $file, string $name): void
     {
@@ -290,7 +312,7 @@ class MigrationRunner
         $password = (string) ($config['password'] ?? '');
 
         $cmd = sprintf(
-            'mysql --host=%s --port=%s --user=%s --default-character-set=utf8mb4 %s',
+            'mysql --force --host=%s --port=%s --user=%s --default-character-set=utf8mb4 %s',
             escapeshellarg((string) $host),
             escapeshellarg($port),
             escapeshellarg((string) $username),
@@ -317,7 +339,22 @@ class MigrationRunner
         fclose($pipes[2]);
         $exit = proc_close($proc);
 
-        if (0 !== $exit) {
+        // mysql prints one "ERROR <code> (SQLSTATE) at line N: ..." per failed
+        // statement. Collect the codes and tolerate only the schema-present /
+        // schema-absent ones (same set as the PDO path). Anything else - or a
+        // non-zero exit we can't attribute (e.g. can't connect) - is a real
+        // failure and throws.
+        $codes = [];
+        if (preg_match_all('/ERROR\s+(\d+)/', (string) $stderr, $m)) {
+            $codes = array_values(array_unique($m[1]));
+        }
+        $tolerable = ['1050', '1054', '1060', '1061', '1072', '1091', '1146'];
+        $untolerable = array_diff($codes, $tolerable);
+
+        if (!empty($untolerable)) {
+            throw new \Exception("mysql client failed on migration '{$name}' (error " . implode(', ', $untolerable) . '): ' . trim((string) $stderr));
+        }
+        if (0 !== $exit && empty($codes)) {
             $detail = trim($stderr) !== '' ? trim($stderr) : trim((string) $stdout);
             throw new \Exception("mysql client failed (exit {$exit}) on migration '{$name}': {$detail}");
         }
