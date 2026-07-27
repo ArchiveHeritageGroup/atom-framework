@@ -207,7 +207,22 @@ class MigrationRunner
     {
         $sql = file_get_contents($file);
         $this->validateSqlMigration($sql, $name);
-        
+
+        // Stored procedures, triggers, DELIMITER blocks and PREPARE/EXECUTE
+        // cannot be run through PDO's single-statement DB::statement() (PDO does
+        // not understand the DELIMITER client directive, and naive ";" splitting
+        // shreds a routine body). Hand those files to the mysql client, which
+        // parses them natively. Such migrations guard themselves for idempotency
+        // (information_schema checks, CREATE TABLE IF NOT EXISTS, DROP PROCEDURE
+        // IF EXISTS), so they are safe to re-run without the per-statement
+        // safe-error skipping the PDO path below provides. Plain-DDL migrations
+        // stay on the PDO path so that path's "already exists" tolerance keeps
+        // them idempotent.
+        if ($this->sqlNeedsMysqlClient($sql)) {
+            $this->runSqlViaMysqlClient($file, $name);
+            return;
+        }
+
         $statements = $this->parseSqlStatements($sql);
         foreach ($statements as $statement) {
             if (!empty(trim($statement))) {
@@ -240,6 +255,71 @@ class MigrationRunner
                     // Safe error - continue with next statement
                 }
             }
+        }
+    }
+
+    /**
+     * Does this SQL need the mysql client rather than PDO?
+     *
+     * True for stored routines / triggers / DELIMITER blocks / prepared
+     * statements - constructs PDO's single-statement executor cannot run.
+     */
+    protected function sqlNeedsMysqlClient(string $sql): bool
+    {
+        return (bool) preg_match(
+            '/^\s*DELIMITER\b|\bCREATE\s+(DEFINER\s*=\s*\S+\s+)?(PROCEDURE|FUNCTION|TRIGGER)\b|\bPREPARE\s+\w+\s+FROM\b/im',
+            $sql
+        );
+    }
+
+    /**
+     * Run a .sql migration through the mysql client (see runSqlMigration).
+     *
+     * The password is passed via MYSQL_PWD (never on the command line, so it
+     * stays out of the process list and avoids the client's insecure-password
+     * warning); every other connection parameter is shell-escaped. A non-zero
+     * exit throws, so the caller records the migration as failed.
+     */
+    protected function runSqlViaMysqlClient(string $file, string $name): void
+    {
+        $config = DB::connection()->getConfig();
+        $host = $config['host'] ?? '127.0.0.1';
+        $port = (string) ($config['port'] ?? 3306);
+        $database = $config['database'] ?? '';
+        $username = $config['username'] ?? 'root';
+        $password = (string) ($config['password'] ?? '');
+
+        $cmd = sprintf(
+            'mysql --host=%s --port=%s --user=%s --default-character-set=utf8mb4 %s',
+            escapeshellarg((string) $host),
+            escapeshellarg($port),
+            escapeshellarg((string) $username),
+            escapeshellarg((string) $database)
+        );
+
+        $env = getenv();
+        $env['MYSQL_PWD'] = $password;
+
+        $descriptors = [
+            0 => ['file', $file, 'r'], // feed the migration file on stdin
+            1 => ['pipe', 'w'],
+            2 => ['pipe', 'w'],
+        ];
+
+        $proc = proc_open($cmd, $descriptors, $pipes, null, $env);
+        if (!is_resource($proc)) {
+            throw new \Exception("Could not launch mysql client for migration '{$name}'.");
+        }
+
+        $stdout = stream_get_contents($pipes[1]);
+        fclose($pipes[1]);
+        $stderr = stream_get_contents($pipes[2]);
+        fclose($pipes[2]);
+        $exit = proc_close($proc);
+
+        if (0 !== $exit) {
+            $detail = trim($stderr) !== '' ? trim($stderr) : trim((string) $stdout);
+            throw new \Exception("mysql client failed (exit {$exit}) on migration '{$name}': {$detail}");
         }
     }
 
