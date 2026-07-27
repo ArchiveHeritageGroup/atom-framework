@@ -35,8 +35,13 @@ class MigrationRunner
                 $this->recordMigration($migration['name']);
                 $results[] = ['migration' => $migration['name'], 'status' => 'success'];
             } catch (\Exception $e) {
+                // Do NOT halt the whole run on one bad migration. Plugin migrations
+                // are largely independent, so a single failure (e.g. a migration
+                // using MariaDB-only `IF NOT EXISTS` on MySQL) must not block every
+                // other plugin's migrations. The failure is reported and left
+                // unrecorded, so it retries on the next run once fixed.
                 $results[] = ['migration' => $migration['name'], 'status' => 'failed', 'error' => $e->getMessage()];
-                break;
+                continue;
             }
         }
         return $results;
@@ -124,7 +129,10 @@ class MigrationRunner
         if (!empty($this->pluginsPath) && is_dir($this->pluginsPath)) {
             foreach (glob($this->pluginsPath . '/ahg*Plugin', GLOB_ONLYDIR) as $pluginDir) {
                 $pluginName = basename($pluginDir);
-                $migrationsDir = $pluginDir . '/data/migrations';
+                // Plugins keep migrations in database/migrations (all 18 do; none
+                // use data/migrations). This path was wrong, so NO plugin migration
+                // was ever discovered by `bin/atom migrate run`.
+                $migrationsDir = $pluginDir . '/database/migrations';
                 
                 if (is_dir($migrationsDir)) {
                     foreach (glob($migrationsDir . '/*.sql') as $file) {
