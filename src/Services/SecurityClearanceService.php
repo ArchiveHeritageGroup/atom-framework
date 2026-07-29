@@ -231,7 +231,7 @@ class SecurityClearanceService
                 'object_id' => $objectId,
                 'classification_id' => $classificationId,
                 'classified_by' => $classifiedBy,
-                'classified_date' => date('Y-m-d'),
+                'classified_at' => date('Y-m-d H:i:s'),
                 'review_date' => $data['review_date'] ?? null,
                 'declassify_date' => $data['declassify_date'] ?? null,
                 'reason' => $data['reason'] ?? null,
