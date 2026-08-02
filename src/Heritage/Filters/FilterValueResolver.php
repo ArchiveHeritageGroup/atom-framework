@@ -167,28 +167,27 @@ class FilterValueResolver
      */
     private function resolveActorValues(?int $institutionId, int $limit): array
     {
+        // Creators are resolved through the event table (event.actor_id), which is
+        // indexed, rather than the generic relation table. The previous version
+        // OR-joined relation and information_object in both directions; MySQL cannot
+        // use an index for an OR'd join predicate, so it degraded to nested-loop
+        // scans (~25s per call) and saturated php-fpm from the landing page.
+        // Same approach as ahgDisplayPlugin DynamicFacetService::getCreatorCounts().
         $culture = $this->culture;
-        $query = DB::table('actor as a')
+        $query = DB::table('event as ev')
+            ->join('information_object as io', 'ev.object_id', '=', 'io.id')
             ->join('actor_i18n as ai', function ($join) use ($culture) {
-                $join->on('a.id', '=', 'ai.id')
+                $join->on('ev.actor_id', '=', 'ai.id')
                     ->where('ai.culture', '=', $culture);
-            })
-            ->join('relation as r', function ($join) {
-                $join->on('a.id', '=', 'r.object_id')
-                    ->orOn('a.id', '=', 'r.subject_id');
-            })
-            ->join('information_object as io', function ($join) {
-                $join->on('r.subject_id', '=', 'io.id')
-                    ->orOn('r.object_id', '=', 'io.id');
             })
             ->join('status as st', function ($join) {
                 $join->on('io.id', '=', 'st.object_id')
                     ->where('st.type_id', '=', 158);
             })
             ->where('st.status_id', 160)
+            ->whereNotNull('ev.actor_id')
             ->whereNotNull('ai.authorized_form_of_name')
-            ->groupBy('a.id', 'ai.authorized_form_of_name')
-            ->havingRaw('COUNT(DISTINCT io.id) > 0')
+            ->groupBy('ev.actor_id', 'ai.authorized_form_of_name')
             ->orderByRaw('COUNT(DISTINCT io.id) DESC')
             ->limit($limit);
 
@@ -197,7 +196,7 @@ class FilterValueResolver
         }
 
         return $query->select(
-            'a.id as value',
+            'ev.actor_id as value',
             'ai.authorized_form_of_name as label',
             DB::raw('COUNT(DISTINCT io.id) as count')
         )
