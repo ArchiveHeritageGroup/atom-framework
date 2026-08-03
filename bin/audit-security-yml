@@ -1,0 +1,101 @@
+#!/usr/bin/env bash
+# =============================================================================
+# AtoM Heratio - module security.yml audit
+#
+# A module without modules/<name>/config/security.yml inherits
+# apps/qubit/config/security.yml, where `default: is_secure: false` makes every
+# action PUBLIC. The absence of a file is therefore the bug - and it is invisible
+# in review, because nothing looks wrong when nothing is there.
+#
+# That is not theoretical. On 2026-08-03 this pattern was found exposing, all
+# anonymously: heritage accounting (settings/add/edit plus a POST write path),
+# scanManage (create and run, feeding a worker that MOVES files), copyCataloguing
+# (created information objects from posted MARC), the heritage API (full asset
+# financial records and authority enumeration), and physical storage browse and
+# holdings export.
+#
+# Reports every module that has actions but declares no security posture.
+# See bin/audit-security-yml-check for the CI ratchet.
+# =============================================================================
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+FRAMEWORK_DIR="$(dirname "$SCRIPT_DIR")"
+
+# Overridable so CI can point at checkouts that are not siblings on disk.
+ATOM_ROOT="${ATOM_ROOT:-$(dirname "$FRAMEWORK_DIR")}"
+APPS_DIR="${APPS_DIR:-$ATOM_ROOT/apps/qubit/modules}"
+PLUGINS_DIR="${PLUGINS_DIR:-$ATOM_ROOT/atom-ahg-plugins}"
+
+FORMAT="${1:-text}"   # text | list | scopes
+
+declare -a MISSING=()
+declare -a SCOPES=()
+
+scan_module() {
+    local dir="$1" label="$2"
+    [ -d "$dir/actions" ] || return 0
+    [ -f "$dir/config/security.yml" ] && return 0
+
+    # A code-level guard counts as a declared posture.
+    if grep -qE "isAdministrator|isAuthenticated|forward\('admin', *'secure'\)|AclService::|hasGroup|checkAdminAccess|requireAuth" \
+        "$dir"/actions/*.php 2>/dev/null; then
+        return 0
+    fi
+
+    MISSING+=("$label")
+}
+
+# Base application modules
+if [ -d "$APPS_DIR" ]; then
+    SCOPES+=("apps")
+    for d in "$APPS_DIR"/*/; do
+        [ -d "$d" ] || continue
+        scan_module "$d" "apps/qubit/modules/$(basename "$d")"
+    done
+fi
+
+# AHG plugin modules
+if [ -d "$PLUGINS_DIR" ]; then
+    SCOPES+=("plugins")
+    for d in "$PLUGINS_DIR"/*/modules/*/; do
+        [ -d "$d" ] || continue
+        plugin="$(basename "$(dirname "$(dirname "$d")")")"
+        scan_module "$d" "$plugin/$(basename "$d")"
+    done
+fi
+
+# Which scopes were actually present. A caller that cannot tell the difference
+# between "nothing is wrong" and "nothing was looked at" will eventually report
+# the second as the first.
+if [ "$FORMAT" = "scopes" ]; then
+    printf '%s\n' "${SCOPES[@]+"${SCOPES[@]}"}"
+    exit 0
+fi
+
+if [ "$FORMAT" = "list" ]; then
+    printf '%s\n' "${MISSING[@]+"${MISSING[@]}"}" | sort
+    exit 0
+fi
+
+if [ ${#SCOPES[@]} -eq 0 ]; then
+    echo "Nothing scanned: neither $APPS_DIR nor $PLUGINS_DIR exists."
+    echo "Set ATOM_ROOT, APPS_DIR or PLUGINS_DIR to point at the checkouts."
+    exit 2
+fi
+
+echo "Modules with actions but no security.yml and no code-level guard:"
+echo
+printf '  %s\n' "${MISSING[@]+"${MISSING[@]}"}" | sort
+echo
+echo "Total: ${#MISSING[@]}"
+echo
+echo "Each inherits 'default: is_secure: false' and is therefore PUBLIC."
+echo "Add modules/<name>/config/security.yml declaring the posture explicitly -"
+echo "including 'all: { is_secure: false }' where a module is genuinely public."
+echo
+echo "NOTE: a plugin module overriding a base module's routes under a DIFFERENT"
+echo "name does NOT inherit the base module's security.yml. storageManage"
+echo "(/physicalobject/*) and rightsHolderManage (/rightsholder/*) both silently"
+echo "dropped base AtoM's access control that way."

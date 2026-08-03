@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+# =============================================================================
+# AtoM Heratio - record the current security.yml gaps as the baseline
+#
+# Writes every module that has actions but declares no security posture to
+# .security-yml-baseline.txt. bin/audit-security-yml-check then fails only on
+# modules ADDED to that set - so the existing backlog does not block CI, while a
+# newly added unguarded module does.
+#
+# Re-run this after clearing entries, so the baseline ratchets DOWN. Never
+# re-run it to make a new failure go away: that is the one action which defeats
+# the whole mechanism.
+# =============================================================================
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+FRAMEWORK_DIR="$(dirname "$SCRIPT_DIR")"
+BASELINE_FILE="$FRAMEWORK_DIR/.security-yml-baseline.txt"
+
+"$SCRIPT_DIR/audit-security-yml" list > "$BASELINE_FILE"
+
+COUNT=$(grep -cve '^$' "$BASELINE_FILE" || true)
+
+echo "Baseline written: $BASELINE_FILE"
+echo "Modules currently without a declared security posture: $COUNT"
+echo
+echo "These are a backlog, not an approval. Each inherits"
+echo "'default: is_secure: false' and is PUBLIC until given a security.yml."

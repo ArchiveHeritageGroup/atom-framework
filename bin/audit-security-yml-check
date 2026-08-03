@@ -1,0 +1,106 @@
+#!/usr/bin/env bash
+# =============================================================================
+# AtoM Heratio - security.yml CI ratchet
+#
+# Fails when a module gains actions without declaring a security posture, i.e.
+# when the unguarded set grows beyond the recorded baseline.
+#
+# Why this exists: apps/qubit/config/security.yml sets `default: is_secure:
+# false`, so a module with no security.yml is PUBLIC. The failure is silent -
+# nothing errors, the pages simply serve to anyone. This check turns that
+# silence into a red build.
+#
+# Exit 0: no new gaps (improvements are reported and are not failures)
+# Exit 1: at least one module is newly unguarded
+# =============================================================================
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+FRAMEWORK_DIR="$(dirname "$SCRIPT_DIR")"
+BASELINE_FILE="$FRAMEWORK_DIR/.security-yml-baseline.txt"
+AUDIT="$SCRIPT_DIR/audit-security-yml"
+
+if [ -t 1 ]; then
+    BOLD="\033[1m"; RED="\033[0;31m"; GREEN="\033[0;32m"; YELLOW="\033[0;33m"; RESET="\033[0m"
+else
+    BOLD="" RED="" GREEN="" YELLOW="" RESET=""
+fi
+
+if [ ! -f "$BASELINE_FILE" ]; then
+    echo -e "${YELLOW}WARNING: no baseline at $BASELINE_FILE${RESET}"
+    echo "Run bin/audit-security-yml-baseline first."
+    exit 0
+fi
+
+SCOPES="$("$AUDIT" scopes)"
+
+if [ -z "$SCOPES" ]; then
+    echo -e "${RED}${BOLD}FAIL: nothing was scanned.${RESET}"
+    echo
+    echo "Neither apps/qubit/modules nor atom-ahg-plugins was found, so this run"
+    echo "checked zero modules. Passing here would be a green tick that proves"
+    echo "nothing - the exact failure this audit exists to catch."
+    echo
+    echo "Point it at the code, e.g.:"
+    echo "    PLUGINS_DIR=\$GITHUB_WORKSPACE bin/audit-security-yml-check"
+    exit 1
+fi
+
+CURRENT="$(mktemp)"; BASE_SCOPED="$(mktemp)"
+trap 'rm -f "$CURRENT" "$BASE_SCOPED"' EXIT
+
+"$AUDIT" list | sort -u > "$CURRENT"
+
+# Compare only within the scopes actually scanned, or a partial checkout reports
+# every unscanned module as newly fixed.
+: > "$BASE_SCOPED"
+for scope in $SCOPES; do
+    case "$scope" in
+        apps)    grep    '^apps/qubit/modules/' "$BASELINE_FILE" || true ;;
+        plugins) grep -v '^apps/qubit/modules/' "$BASELINE_FILE" || true ;;
+    esac >> "$BASE_SCOPED"
+done
+sort -u -o "$BASE_SCOPED" "$BASE_SCOPED"
+
+echo "Scanned: $(echo $SCOPES) ($(grep -cve '^$' "$CURRENT" || true) unguarded, baseline $(grep -cve '^$' "$BASE_SCOPED" || true))"
+echo
+
+NEW="$(comm -13 "$BASE_SCOPED" "$CURRENT" || true)"
+FIXED="$(comm -23 "$BASE_SCOPED" "$CURRENT" || true)"
+
+if [ -n "$FIXED" ]; then
+    echo -e "${GREEN}Improved - these now declare a security posture:${RESET}"
+    printf '  %s\n' $FIXED
+    echo -e "  ${YELLOW}Run bin/audit-security-yml-baseline to ratchet the baseline down.${RESET}"
+    echo
+fi
+
+if [ -n "$NEW" ]; then
+    echo -e "${RED}${BOLD}FAIL: module(s) with actions but no declared security posture:${RESET}"
+    printf "  ${RED}%s${RESET}\n" $NEW
+    echo
+    echo "Each inherits 'default: is_secure: false' from apps/qubit/config/security.yml"
+    echo "and is therefore reachable by anonymous users."
+    echo
+    echo "Fix by adding modules/<name>/config/security.yml, for example:"
+    echo
+    echo "    all:"
+    echo "      is_secure:   true"
+    echo "      credentials: [[ editor, administrator ]]"
+    echo
+    echo "Use the double-bracket (OR) form - 'credentials: [editor]' as a"
+    echo "single-item list requires literally that group and 403s administrators."
+    echo
+    echo "If the module is genuinely public, say so explicitly:"
+    echo
+    echo "    all:"
+    echo "      is_secure: false"
+    echo
+    echo "A code-level guard (isAdministrator / forward('admin','secure') /"
+    echo "AclService:: / hasGroup) also counts and will clear this check."
+    exit 1
+fi
+
+echo -e "${GREEN}OK${RESET} - no module has become unguarded since the baseline."
+exit 0
