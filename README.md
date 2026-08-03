@@ -227,6 +227,18 @@
 | **Elasticsearch** | 5.x | 7.10 (AtoM 2.10; ES 8.x not supported) |
 | **OS** | Ubuntu 20.04 | Ubuntu 22.04 LTS |
 
+Also required: **Composer 2.x** (resolves the framework's 16 PHP dependencies),
+and **ImageMagick + `php8.3-imagick`**, which base AtoM needs to generate
+digital-object derivatives.
+
+JavaScript and CSS libraries are vendored and committed, so there is no npm step
+at deploy time and nothing is fetched from a CDN at runtime - the interface works
+without outbound internet. Node.js 18+ is only needed to rebuild the theme bundle.
+
+Optional per-feature tools (Tesseract, ClamAV, Siegfried, Aspell, Argos Translate,
+Cantaloupe) are listed in **[INSTALLATION.md](INSTALLATION.md#third-party-dependencies)**.
+Each degrades gracefully when absent.
+
 ### Quick Start
 ```bash
 # Download and run installer

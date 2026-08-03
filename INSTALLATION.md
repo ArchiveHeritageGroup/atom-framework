@@ -26,6 +26,75 @@ A running base **AtoM** install (see Artefactual's official AtoM installation), 
 > `[Service]` and `ReadWritePaths=/usr/share/nginx/atom`, then `systemctl daemon-reload`
 > and restart php8.3-fpm.
 
+## Third-party dependencies
+
+Nothing here needs to be downloaded by hand. This section documents what gets
+pulled in, so you know what to expect on an air-gapped or firewalled host.
+
+### PHP packages (Composer)
+
+`composer install` inside `atom-framework/` resolves **15 direct packages** (plus a
+PHP version constraint) into `atom-framework/vendor/`, 85 including transitive
+dependencies.
+That directory is gitignored, so a fresh clone must run Composer before the
+framework will boot.
+
+| Package | Used for |
+|---|---|
+| `illuminate/database`, `view`, `filesystem`, `events`, `routing`, `http` | Laravel Query Builder, Blade, routing - the framework's foundation |
+| `webonyx/graphql-php` | GraphQL API endpoint (ahgGraphQLPlugin) |
+| `phpoffice/phpspreadsheet` | XLSX export (reports, metadata export) |
+| `phpoffice/phpword` | Word export (report builder, finding aids) |
+| `dompdf/dompdf` | PDF export |
+| `monolog/monolog` | Logging |
+| `phpmailer/phpmailer` | Outbound mail (notifications, access requests) |
+| `firebase/php-jwt` | JWT signing (API tokens, share links) |
+| `web-auth/webauthn-lib` | WebAuthn / passkey authentication |
+| `tecnickcom/tc-lib-barcode` | Barcode and QR generation for labels |
+
+`composer install` runs automatically from `bin/release`, `bin/ahg-installer.sh`,
+`bin/atom-setup-wizard.sh` and `bin/build-deb.sh`. On a manual install you must
+run it yourself, as shown below.
+
+> Add framework dependencies to **`atom-framework/composer.json`**, never to the
+> AtoM root `composer.json`. The AtoM root is not a git repository in this
+> deployment, so a dependency added there exists only on the machine where it was
+> installed and is silently missing everywhere else.
+
+### JavaScript and CSS libraries
+
+All are **vendored and committed** to `atom-ahg-plugins` - roughly 48 minified
+bundles under each plugin's `web/js/` or `js/`. There is no npm install step at
+deploy time and nothing is fetched from a CDN at runtime, so the interface works
+without outbound internet and without widening the Content-Security-Policy.
+
+Among them: Bootstrap, OpenSeadragon and Mirador (IIIF viewers), Annotorious,
+PDF.js, three.js with model-viewer (3D), Cytoscape and 3d-force-graph (RiC
+Explorer), D3, Chart.js, Leaflet, Mermaid, FlexSearch, TipTap, html2canvas,
+JsBarcode and Konva.
+
+Node.js 18+ is needed only to **rebuild** the theme's webpack bundle. The built
+output is committed, so a normal install does not require Node.
+
+### Optional external tools
+
+Only needed if you enable the feature that uses them. Each degrades gracefully
+when absent - the feature is unavailable rather than broken.
+
+| Tool | Package (Ubuntu) | Enables |
+|---|---|---|
+| ImageMagick + `php8.3-imagick` | `imagemagick php8.3-imagick` | Digital-object derivatives (**base AtoM requirement**, not optional in practice) |
+| Tesseract, `pdftotext` | `tesseract-ocr poppler-utils` | OCR during ingest |
+| ClamAV | `clamav-daemon` | Virus scanning during ingest |
+| Siegfried (`sf`) | see PRONOM/Siegfried docs | Format identification, preservation |
+| Aspell | `aspell aspell-en` | Spellcheck |
+| Python 3 + spaCy | via `atom-ahg-python` | NER, summarisation |
+| Argos Translate | `pip install argostranslate` | Offline machine translation |
+| Cantaloupe | see Cantaloupe docs | IIIF image tiling (optional; the bundled viewers work without it) |
+
+AI features route through the AHG AI gateway rather than calling model hosts
+directly; see the gateway documentation for its own requirements.
+
 ## Install (manual / git)
 
 From the AtoM root (e.g. `/usr/share/nginx/atom`):
