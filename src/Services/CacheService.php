@@ -32,6 +32,16 @@ class CacheService
         
         $file = $this->getFile($key);
         if (file_exists($file)) {
+            // #245: deliberately NOT hardened with allowed_classes => false.
+            // This is a general-purpose cache whose callers store arbitrary
+            // objects, so refusing instantiation would silently return
+            // __PHP_Incomplete_Class instead of the cached value.
+            //
+            // The input is a file this process wrote into its own cache
+            // directory, not user input - reaching it requires write access to
+            // that directory, at which point object injection is not the
+            // weakest link. Revisit if this cache ever stores data derived from
+            // a request, or moves to shared storage.
             $data = unserialize(file_get_contents($file));
             if ($data['expires'] > time()) {
                 $this->memory[$key] = $data;

@@ -129,6 +129,14 @@ if (!class_exists('sfParameterHolder', false)) {
             return serialize($this->__serialize());
         }
 
+        // #245: deliberately NOT hardened with allowed_classes => false.
+        // This implements Serializable for a generic parameter holder that
+        // callers populate with arbitrary values, including objects; refusing
+        // instantiation would corrupt anything stored that way.
+        //
+        // The payload is session state written by this application, so an
+        // attacker needs the session store to reach it. Revisit if parameter
+        // holders are ever serialised into a client-visible cookie.
         public function unserialize($data)
         {
             $this->__unserialize(unserialize($data));
