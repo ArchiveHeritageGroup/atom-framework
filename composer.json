@@ -17,7 +17,8 @@
         "dompdf/dompdf": "^2.0",
         "phpmailer/phpmailer": "^7.0",
         "firebase/php-jwt": "^6.10",
-        "web-auth/webauthn-lib": "^5.3"
+        "web-auth/webauthn-lib": "^5.3",
+        "tecnickcom/tc-lib-barcode": "^1.15"
     },
     "autoload": {
         "psr-4": {
