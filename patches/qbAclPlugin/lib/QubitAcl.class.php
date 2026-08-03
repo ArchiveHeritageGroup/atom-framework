@@ -498,6 +498,9 @@ class QubitAcl
                             // user has grant permission on ANY repository. This will force
                             // showing ONLY resources in allowed repositories
                             $forceBan = count($rows) > 0;
+                        } elseif ($permission->grantDeny) {
+                            // Handle description-specific viewDraft permissions
+                            $ids[] = $permission->objectId;
                         }
 
                         break;
@@ -611,13 +614,11 @@ class QubitAcl
             if (0 < count($aclUserGroups = $user->user->getAclUserGroups())) {
                 foreach ($aclUserGroups as $aclUserGroup) {
                     $aclGroup = $aclUserGroup->group;
-                    if (in_array($aclGroup->id, $this->_roles)) {
-                        $parents[] = $aclGroup->id;
-                        continue;
+                    // Skip if role already added (prevents Role 99 duplicate)
+                    if (!in_array($aclGroup->id, $this->_roles)) {
+                        $this->acl->addRole($aclGroup, $aclGroup->parent);
+                        $this->_roles[] = $aclGroup->id;
                     }
-                    $aclGroup = $aclUserGroup->group;
-                    $this->acl->addRole($aclGroup, $aclGroup->parent);
-                    $this->_roles[] = $aclGroup->id;
                     $parents[] = $aclGroup->id;
                 }
             } else {

@@ -270,20 +270,26 @@ echo -e "  ${GREEN}✓${NC} Plugin versions synced"
 echo ""
 echo -e "${BLUE}Step 7: Patching QubitMetadataRoute...${NC}"
 
+# Copy the patch file rather than editing base in place (#261).
+#
+# This step used to run four `sed -i` inserts guarded by
+# `grep -q "ahgLibraryPlugin"`. The file never contains that string - the seds
+# insert 'library' => 'library', not the plugin name - so the guard was always
+# false and every run re-inserted the four entries, duplicating them in
+# $METADATA_PLUGINS and compounding on each install.
+#
+# It also meant patches/lib/routing/QubitMetadataRoute.class.php was a reference
+# copy that was never actually applied, contrary to the patches convention, so
+# edits to it silently did nothing.
+#
+# Copying is idempotent and makes the patch file authoritative.
+ROUTE_PATCH="${FRAMEWORK_PATH}/patches/lib/routing/QubitMetadataRoute.class.php"
 ROUTE_FILE="${ATOM_ROOT}/lib/routing/QubitMetadataRoute.class.php"
-if [ -f "$ROUTE_FILE" ]; then
-    if ! grep -q "ahgLibraryPlugin" "$ROUTE_FILE"; then
-        sed -i "/'isdf' => 'sfIsdfPlugin',/a\        'library' => 'library'," "$ROUTE_FILE"
-        sed -i "/'isdf' => 'sfIsdfPlugin',/a\        'gallery' => 'gallery'," "$ROUTE_FILE"
-        sed -i "/'isdf' => 'sfIsdfPlugin',/a\        'dam' => 'dam'," "$ROUTE_FILE"
-        sed -i "/'isdf' => 'sfIsdfPlugin',/a\        'museum' => 'museum'," "$ROUTE_FILE"
-        echo -e "  ${GREEN}✓${NC} Added GLAM plugins to METADATA_PLUGINS"
-    fi
-    if ! grep -q "museum.*dam.*gallery.*library" "$ROUTE_FILE"; then
-        sed -i "s/\['isad', 'dc', 'mods', 'rad', 'ead', 'dacs'\]/['isad', 'dc', 'mods', 'rad', 'ead', 'dacs', 'museum', 'dam', 'gallery', 'library']/" "$ROUTE_FILE"
-        echo -e "  ${GREEN}✓${NC} Added GLAM to getActionParameter"
-    fi
-    echo -e "  ${GREEN}✓${NC} QubitMetadataRoute patched"
+if [ -f "$ROUTE_PATCH" ]; then
+    cp -f "$ROUTE_PATCH" "$ROUTE_FILE"
+    echo -e "  ${GREEN}✓${NC} Applied QubitMetadataRoute patch (GLAM sectors, RiC, edit routing)"
+elif [ -f "$ROUTE_FILE" ]; then
+    echo -e "  ${YELLOW}⚠${NC} No QubitMetadataRoute patch found - leaving base file untouched"
 else
     echo -e "  ${YELLOW}⚠${NC} QubitMetadataRoute.class.php not found"
 fi
@@ -335,6 +341,25 @@ if [ -f "${FRAMEWORK_PATH}/patches/qbAclPlugin/lib/QubitAcl.class.php" ]; then
 else
     echo "  ⚠ QubitAcl patch not found"
 fi
+
+# SECURITY (#258): close the text/PDF readMaster bypass.
+#
+# Upstream grants EVERY user readMaster on TEXT media objects, returning before
+# both the standard ACL check and QubitGrantedRight::checkPremis - so PDF masters
+# of draft, embargoed and access-restricted records are anonymously downloadable,
+# and PREMIS Rights cannot restrict them (artefactual/atom#1724).
+#
+# These must be reapplied on every install: without them an upgrade silently
+# reopens the bypass, and nothing warns you because the pages still work.
+for aclPatch in QubitInformationObjectAcl QubitActorAcl; do
+    if [ -f "${FRAMEWORK_PATH}/patches/qbAclPlugin/lib/${aclPatch}.class.php" ]; then
+        cp -f "${FRAMEWORK_PATH}/patches/qbAclPlugin/lib/${aclPatch}.class.php" \
+              "${ATOM_ROOT}/plugins/qbAclPlugin/lib/${aclPatch}.class.php"
+        echo "  ✓ Applied ${aclPatch} patch (text/PDF readMaster bypass closed, #258)"
+    else
+        echo "  ⚠ ${aclPatch} patch not found - text/PDF master bypass may be OPEN"
+    fi
+done
 
 # Apply base AtoM app patches (templates + actions)
 PATCH_APPS="${FRAMEWORK_PATH}/patches/apps"
