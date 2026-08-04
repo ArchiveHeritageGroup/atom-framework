@@ -113,6 +113,13 @@ class ProjectConfiguration extends sfProjectConfiguration
             $plugins[] = 'arOidcPlugin';
         }
 
+        // Drop any plugin whose declared dependencies are absent or not enabled.
+        // Without this a plugin installs cleanly, enables cleanly, then fatals on first
+        // use with "Class AhgController not found" - and because AtoM answers HTTP 200
+        // for things that are not there, it reads as a blank page rather than an error.
+        // Deliberately self-contained: it has to work when the runtime is missing.
+        $plugins = $this->filterPluginsByDependencies($plugins);
+
         $this->enablePlugins($plugins);
 
         // Web debug panel (dev only)
@@ -196,6 +203,57 @@ class ProjectConfiguration extends sfProjectConfiguration
     /**
      * Load enabled plugins from database, with fallback to core plugins.
      */
+    /**
+     * Remove plugins whose extension.json dependencies are not satisfied.
+     *
+     * Fails closed on the plugin and open on the site: the dependent plugin is skipped
+     * and the reason logged, while AtoM stays up. A plugin declaring no dependencies -
+     * which is most of them today - is unaffected.
+     */
+    private function filterPluginsByDependencies(array $plugins): array
+    {
+        $dir = sfConfig::get('sf_root_dir').'/plugins';
+
+        // Iterate to a fixed point: dropping B because its dependency is missing must
+        // also drop A, which depends on B.
+        do {
+            $enabled = array_flip($plugins);
+            $keep = [];
+
+            foreach ($plugins as $plugin) {
+                $missing = [];
+                $file = $dir.'/'.$plugin.'/extension.json';
+
+                if (is_file($file)) {
+                    $config = json_decode((string) file_get_contents($file), true);
+
+                    foreach ((array) ($config['dependencies'] ?? []) as $dependency) {
+                        if (!isset($enabled[$dependency]) || !is_dir($dir.'/'.$dependency)) {
+                            $missing[] = $dependency;
+                        }
+                    }
+                }
+
+                if (!empty($missing)) {
+                    error_log(sprintf(
+                        'AHG: plugin "%s" not loaded - missing dependency: %s',
+                        $plugin,
+                        implode(', ', $missing)
+                    ));
+
+                    continue;
+                }
+
+                $keep[] = $plugin;
+            }
+
+            $changed = count($keep) !== count($plugins);
+            $plugins = $keep;
+        } while ($changed);
+
+        return $plugins;
+    }
+
     private function loadPluginsFromDatabase(array $corePlugins): array
     {
         try {
