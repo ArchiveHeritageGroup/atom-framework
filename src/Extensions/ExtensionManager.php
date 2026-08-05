@@ -512,6 +512,7 @@ class ExtensionManager implements ExtensionManagerContract
             );
         } catch (\Exception $e) {}
 
+        $this->reconcilePluginSchema($machineName);
         $this->syncMenuEntries($machineName, true);
         $this->updateSymfonyPlugins($machineName, true);
         return true;
@@ -569,6 +570,7 @@ class ExtensionManager implements ExtensionManagerContract
             ]
         );
 
+        $this->reconcilePluginSchema($machineName);
         $this->syncMenuEntries($machineName, true);
         $this->updateSymfonyPlugins($machineName, true);
         return true;
@@ -974,23 +976,46 @@ class ExtensionManager implements ExtensionManagerContract
         if (empty($sql)) {
             return;
         }
-        $configPath = dirname($this->pluginsPath) . '/config/config.php';
-        if (!file_exists($configPath)) {
+
+        $pdo = $this->schemaConnection();
+        if (null === $pdo) {
             return;
         }
+
+        try {
+            $pdo->exec($sql);
+            $this->reconcileSchema($pdo, $sql);
+        } catch (\Exception $e) {
+            error_log("runSqlFile ERROR: " . $e->getMessage());
+        }
+    }
+
+    /**
+     * A direct connection for schema work.
+     *
+     * Not the Capsule connection: this runs from install and enable, which the CLI
+     * reaches before the application has booted its database layer.
+     */
+    protected function schemaConnection(): ?\PDO
+    {
+        $configPath = dirname($this->pluginsPath) . '/config/config.php';
+        if (!file_exists($configPath)) {
+            return null;
+        }
+
         $config = require $configPath;
         $params = $config['all']['propel']['param'] ?? [];
-        $dsn = $params['dsn'] ?? '';
         $dsnParts = [];
-        $dsnWithoutDriver = preg_replace('/^[a-z]+:/', '', $dsn);
-        foreach (explode(';', $dsnWithoutDriver) as $part) {
-            if (strpos($part, '=') !== false) {
+
+        foreach (explode(';', preg_replace('/^[a-z]+:/', '', $params['dsn'] ?? '')) as $part) {
+            if (false !== strpos($part, '=')) {
                 list($key, $value) = explode('=', $part, 2);
                 $dsnParts[trim($key)] = trim($value);
             }
         }
+
         try {
-            $pdo = new \PDO(
+            return new \PDO(
                 sprintf('mysql:host=%s;port=%d;dbname=%s;charset=utf8mb4',
                     $dsnParts['host'] ?? 'localhost',
                     $dsnParts['port'] ?? 3306,
@@ -1000,10 +1025,237 @@ class ExtensionManager implements ExtensionManagerContract
                 $params['password'] ?? '',
                 [\PDO::ATTR_ERRMODE => \PDO::ERRMODE_EXCEPTION]
             );
-            $pdo->exec($sql);
         } catch (\Exception $e) {
-            error_log("runSqlFile ERROR: " . $e->getMessage());
+            return null;
         }
+    }
+
+    /**
+     * Reconcile a plugin's tables against its declared schema, without re-running
+     * the file.
+     *
+     * Called on enable, which is the only lifecycle step an already-installed
+     * plugin passes through. Executing install.sql again here would re-run its
+     * seed INSERTs, so only the ALTER work is done.
+     */
+    public function reconcilePluginSchema(string $machineName): void
+    {
+        $manifest = $this->findManifest($machineName);
+        $relative = $manifest['install_sql'] ?? null;
+
+        if (empty($relative)) {
+            $relative = 'database/install.sql';
+        }
+
+        $sqlPath = $this->pluginsPath . '/' . $machineName . '/' . $relative;
+        if (!file_exists($sqlPath)) {
+            return;
+        }
+
+        $sql = file_get_contents($sqlPath);
+        $pdo = $this->schemaConnection();
+
+        if (empty($sql) || null === $pdo) {
+            return;
+        }
+
+        try {
+            $this->reconcileSchema($pdo, $sql);
+        } catch (\Exception $e) {
+            echo "  Warning: schema reconciliation failed for {$machineName}: {$e->getMessage()}\n";
+        }
+    }
+
+    /**
+     * Bring already-existing tables up to the schema the plugin declares.
+     *
+     * Every table is created with CREATE TABLE IF NOT EXISTS, which is a no-op once
+     * the table exists. So a column added to a plugin's install.sql reaches new
+     * installs and never reaches any install that already has the table - the
+     * declared schema and the live schema drift apart silently and stay that way.
+     * The failure surfaces much later as a 500 from a column the code writes and the
+     * database has never heard of.
+     *
+     * Two real cases this was written for: favorites was missing seven of its
+     * fourteen declared columns, so adding a favourite was a 500; and
+     * feedback_i18n.status_id was declared NOT NULL DEFAULT 1030 but existed as
+     * NOT NULL with no default, so submitting feedback was a 500 under
+     * STRICT_TRANS_TABLES - on production as well as on a test install.
+     *
+     * Deliberately additive only. Missing columns are added and a declared default
+     * is applied where the live column has none. Nothing is dropped, no type is
+     * changed, and no column the database has but the manifest does not is touched -
+     * this runs against client databases, so anything it cannot do safely it leaves
+     * alone and reports.
+     */
+    protected function reconcileSchema(\PDO $pdo, string $sql): void
+    {
+        foreach ($this->parseCreateTables($sql) as $table => $declared) {
+            try {
+                $stmt = $pdo->query("SHOW COLUMNS FROM `{$table}`");
+            } catch (\Exception $e) {
+                continue;   // table absent: the CREATE above will have handled it
+            }
+
+            $live = [];
+            foreach ($stmt->fetchAll(\PDO::FETCH_ASSOC) as $row) {
+                $live[$row['Field']] = $row;
+            }
+
+            if (empty($live)) {
+                continue;
+            }
+
+            foreach ($declared as $column => $definition) {
+                try {
+                    if (!isset($live[$column])) {
+                        // Added nullable regardless of what the manifest says. An
+                        // existing table has rows, and NOT NULL without a default
+                        // cannot be added to a populated table at all.
+                        $safe = $this->nullableDefinition($definition);
+                        $pdo->exec("ALTER TABLE `{$table}` ADD COLUMN `{$column}` {$safe}");
+                        echo "  Schema: added {$table}.{$column}\n";
+
+                        continue;
+                    }
+
+                    // Column present but the declared default never applied.
+                    $default = $this->declaredDefault($definition);
+                    if (null !== $default && null === $live[$column]['Default']) {
+                        $pdo->exec("ALTER TABLE `{$table}` ALTER COLUMN `{$column}` SET DEFAULT {$default}");
+                        echo "  Schema: set default on {$table}.{$column}\n";
+                    }
+                } catch (\Exception $e) {
+                    echo "  Schema: could not reconcile {$table}.{$column} - {$e->getMessage()}\n";
+                }
+            }
+        }
+    }
+
+    /**
+     * Column definitions per table, from the CREATE TABLE statements in a SQL file.
+     *
+     * Split at depth zero and outside quotes rather than on commas: a type carries
+     * parenthesised arguments and a COMMENT can contain a comma, both of which a
+     * naive explode() would tear in half.
+     */
+    protected function parseCreateTables(string $sql): array
+    {
+        $tables = [];
+
+        // Strip comments first. These files carry -- notes explaining why a column
+        // exists, and a note wrapping onto its own line reads as a column named
+        // after its first word, producing nonsense ALTERs.
+        $sql = preg_replace('/\/\*.*?\*\//s', '', $sql);
+        $sql = preg_replace('/^\s*--[^\n]*$/m', '', $sql);
+        $sql = preg_replace('/\s--\s[^\n]*$/m', '', $sql);
+
+        if (!preg_match_all('/CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?`?([a-zA-Z0-9_]+)`?\s*\((.*?)\)\s*(?:ENGINE|;)/is', $sql, $matches, PREG_SET_ORDER)) {
+            return $tables;
+        }
+
+        foreach ($matches as $match) {
+            $columns = [];
+
+            foreach ($this->splitTopLevel($match[2]) as $line) {
+                $line = trim($line);
+
+                // Keys, constraints and indexes are not columns.
+                if (preg_match('/^(PRIMARY|UNIQUE|KEY|INDEX|FULLTEXT|SPATIAL|CONSTRAINT|FOREIGN)\b/i', $line)) {
+                    continue;
+                }
+                if (!preg_match('/^`?([a-zA-Z0-9_]+)`?\s+(.+)$/s', $line, $column)) {
+                    continue;
+                }
+
+                $columns[$column[1]] = trim($column[2]);
+            }
+
+            if ($columns) {
+                $tables[$match[1]] = $columns;
+            }
+        }
+
+        return $tables;
+    }
+
+    protected function splitTopLevel(string $body): array
+    {
+        $parts = [];
+        $current = '';
+        $depth = 0;
+        $quote = null;
+        $length = strlen($body);
+
+        for ($i = 0; $i < $length; ++$i) {
+            $char = $body[$i];
+
+            if (null !== $quote) {
+                $current .= $char;
+                if ($char === $quote && ($i === 0 || '\\' !== $body[$i - 1])) {
+                    $quote = null;
+                }
+
+                continue;
+            }
+
+            if ("'" === $char || '"' === $char || '`' === $char) {
+                $quote = $char;
+                $current .= $char;
+
+                continue;
+            }
+
+            if ('(' === $char) {
+                ++$depth;
+            } elseif (')' === $char) {
+                --$depth;
+            } elseif (',' === $char && 0 === $depth) {
+                $parts[] = $current;
+                $current = '';
+
+                continue;
+            }
+
+            $current .= $char;
+        }
+
+        if ('' !== trim($current)) {
+            $parts[] = $current;
+        }
+
+        return $parts;
+    }
+
+    /**
+     * The DEFAULT literal a definition declares, or null if it declares none.
+     */
+    protected function declaredDefault(string $definition): ?string
+    {
+        if (!preg_match("/\\bDEFAULT\\s+('(?:[^']|'')*'|[^\\s,]+)/i", $definition, $match)) {
+            return null;
+        }
+
+        $value = trim($match[1]);
+
+        // CURRENT_TIMESTAMP and friends are expressions, not literals, and are not
+        // worth special-casing here - skip rather than emit something invalid.
+        return preg_match('/^(NULL|CURRENT_TIMESTAMP)/i', $value) ? null : $value;
+    }
+
+    /**
+     * A definition safe to add to a table that already holds rows.
+     */
+    protected function nullableDefinition(string $definition): string
+    {
+        $definition = preg_replace('/\bAUTO_INCREMENT\b/i', '', $definition);
+        $definition = preg_replace('/\bPRIMARY\s+KEY\b/i', '', $definition);
+
+        if (!preg_match('/\bDEFAULT\b/i', $definition)) {
+            $definition = preg_replace('/\bNOT\s+NULL\b/i', 'NULL', $definition);
+        }
+
+        return trim(preg_replace('/\s+/', ' ', $definition));
     }
 
     private function updateSymfonyPlugins(string $machineName, bool $add): void
