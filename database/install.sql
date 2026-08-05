@@ -448,3 +448,26 @@ CREATE TABLE IF NOT EXISTS ahg_settings (
     INDEX idx_setting_group (setting_group),
     FOREIGN KEY (updated_by) REFERENCES user(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- Which rows in AtoM's `menu` table a plugin created.
+--
+-- Without this, removal has to be re-derived from whatever the manifest currently
+-- declares - so dropping an entry from a manifest, or renaming one, leaves the old
+-- row behind for good. Ownership is recorded when the row is created, so disabling
+-- a plugin removes exactly what it added regardless of what the manifest says now.
+--
+-- Deliberately not atom_extension_menu: that is an unused parallel menu design with
+-- its own routes and permissions, keyed to atom_extension, and a plugin enabled
+-- through atom_plugin alone has no row there to reference.
+CREATE TABLE IF NOT EXISTS `atom_plugin_menu` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `plugin_name` varchar(255) NOT NULL,
+  `menu_id` int NOT NULL COMMENT 'menu.id of the row this plugin created',
+  `menu_name` varchar(255) NOT NULL COMMENT 'the name it was created with',
+  `menu_path` varchar(255) NOT NULL COMMENT 'the path it was created with',
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_plugin_menu` (`plugin_name`, `menu_id`),
+  KEY `idx_plugin` (`plugin_name`),
+  KEY `idx_menu` (`menu_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

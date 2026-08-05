@@ -597,34 +597,60 @@ class ExtensionManager implements ExtensionManagerContract
         $manifest = $this->findManifest($machineName);
         $entries = $manifest['menu'] ?? [];
 
-        if (empty($entries) || !is_array($entries)) {
-            return;
+        if (!is_array($entries)) {
+            $entries = [];
         }
 
         try {
+            // Driven by what this plugin owns, not by what the manifest currently
+            // declares. Deriving removal from the manifest cannot remove an entry
+            // that has been taken out of it - the row is simply never looked at
+            // again - so dropping or renaming an entry orphaned it permanently.
+            $owned = DB::table('atom_plugin_menu')->where('plugin_name', $machineName)->get();
+
+            if (!$enabled) {
+                foreach ($owned as $record) {
+                    $this->releaseMenuRow($record);
+                }
+
+                return;
+            }
+
+            $declared = [];
             foreach ($entries as $entry) {
-                $name = $entry['name'] ?? null;
-                $path = $entry['path'] ?? null;
-
-                if (!$name || !$path) {
-                    continue;
+                if (!empty($entry['name']) && !empty($entry['path'])) {
+                    $declared[$entry['name'].'|'.$entry['path']] = $entry;
                 }
+            }
 
-                $existing = DB::table('menu')->where('name', $name)->where('path', $path)->first();
+            // Anything owned but no longer declared goes, which covers a manifest
+            // that dropped an entry while the plugin stayed enabled.
+            foreach ($owned as $record) {
+                $key = $record->menu_name.'|'.$record->menu_path;
 
-                if (!$enabled) {
-                    if ($existing) {
-                        $this->removeMenuNode($existing);
-                    }
-
-                    continue;
+                if (isset($declared[$key])) {
+                    unset($declared[$key]);   // already present and still wanted
+                } else {
+                    $this->releaseMenuRow($record);
                 }
+            }
+
+            foreach ($declared as $entry) {
+                // A row created before ownership was tracked, or added by hand, is
+                // adopted rather than duplicated. Without this the first enable
+                // after the upgrade would insert a second copy of every entry.
+                $existing = DB::table('menu')
+                    ->where('name', $entry['name'])
+                    ->where('path', $entry['path'])
+                    ->first();
 
                 if ($existing) {
+                    $this->recordMenuOwnership($machineName, (int) $existing->id, $entry);
+
                     continue;
                 }
 
-                $this->appendMenuNode($entry);
+                $this->appendMenuNode($machineName, $entry);
             }
         } catch (\Exception $e) {
             // Navigation is cosmetic - never let it fail an enable or a disable.
@@ -633,9 +659,38 @@ class ExtensionManager implements ExtensionManagerContract
     }
 
     /**
+     * Remove a menu row this plugin created, and forget that it owned it.
+     *
+     * The row may already be gone - an administrator can delete any entry from
+     * /menu/list - in which case only the ownership record needs clearing.
+     */
+    protected function releaseMenuRow(object $record): void
+    {
+        $node = DB::table('menu')->where('id', $record->menu_id)->first();
+
+        if ($node) {
+            $this->removeMenuNode($node);
+        }
+
+        DB::table('atom_plugin_menu')->where('id', $record->id)->delete();
+    }
+
+    protected function recordMenuOwnership(string $machineName, int $menuId, array $entry): void
+    {
+        DB::table('atom_plugin_menu')->updateOrInsert(
+            ['plugin_name' => $machineName, 'menu_id' => $menuId],
+            [
+                'menu_name' => $entry['name'],
+                'menu_path' => $entry['path'],
+                'created_at' => date('Y-m-d H:i:s'),
+            ]
+        );
+    }
+
+    /**
      * Insert a menu row as the last child of its parent, keeping lft/rgt consistent.
      */
-    protected function appendMenuNode(array $entry): void
+    protected function appendMenuNode(string $machineName, array $entry): void
     {
         $parentName = $entry['parent'] ?? 'manage';
         $parent = DB::table('menu')->where('name', $parentName)->first();
@@ -672,6 +727,8 @@ class ExtensionManager implements ExtensionManagerContract
             'label' => $entry['label'] ?? $entry['name'],
             'description' => $entry['description'] ?? null,
         ]);
+
+        $this->recordMenuOwnership($machineName, (int) $id, $entry);
     }
 
     /**
