@@ -428,3 +428,23 @@ VALUES
 ('ahgSecurityClearancePlugin', 'Security Clearance', '1.0.0', 'Security classification system for records', 'enabled', 'system', NOW(), NOW(), NOW()),
 ('ahgDisplayPlugin', 'Display Mode Manager', '1.0.0', 'Display mode switching for GLAM sectors', 'enabled', 'system', NOW(), NOW(), NOW())
 ON DUPLICATE KEY UPDATE protection_level = 'system';
+
+-- ahg_settings is the AHG-wide settings store, read by AhgSettingsService. Fifteen
+-- framework files and thirty-five plugins depend on it, so it belongs here and not
+-- to any one plugin. It was briefly assigned to ahgMultiTenantPlugin when the
+-- installer was split per plugin, which left it uncreated on a fresh install -
+-- ahgMultiTenantPlugin ships disabled.
+CREATE TABLE IF NOT EXISTS ahg_settings (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    setting_key VARCHAR(100) NOT NULL UNIQUE,
+    setting_value TEXT,
+    setting_type VARCHAR(49) COMMENT 'string, integer, boolean, json, float' DEFAULT 'string',
+    setting_group VARCHAR(50) NOT NULL DEFAULT 'general',
+    description VARCHAR(500),
+    is_sensitive TINYINT(1) DEFAULT 0,
+    updated_by INT,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_setting_group (setting_group),
+    FOREIGN KEY (updated_by) REFERENCES user(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
