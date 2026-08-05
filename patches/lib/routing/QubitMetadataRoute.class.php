@@ -160,7 +160,15 @@ class QubitMetadataRoute extends QubitRoute
                     // the record view lands on base AtoM's stock form instead of the
                     // AHG forms. The record view itself (action=index) keeps the
                     // standard-plugin module resolved above.
-                    if ('edit' === $parameters['action']) {
+                    //
+                    // Conditional because the framework is installable without
+                    // ahgInformationObjectManagePlugin. Rewriting unconditionally sent
+                    // every /:slug/edit to a module that did not exist on such an
+                    // install, so editing ANY archival description answered 404 - the
+                    // framework alone broke a base AtoM feature. Left unresolved, the
+                    // standard plugin resolved above handles the action, which is
+                    // stock AtoM behaviour.
+                    if ('edit' === $parameters['action'] && self::ioManageAvailable()) {
                         $parameters['module'] = 'ioManage';
                     }
 
@@ -327,5 +335,33 @@ class QubitMetadataRoute extends QubitRoute
             WHERE scope = "default_template" AND name = ?';
 
         return QubitPdo::fetchColumn($sql, [$module]);
+    }
+
+    /**
+     * Is the AHG information object editing form actually available?
+     *
+     * Tested against the loaded plugin list rather than the directory on disk: a
+     * plugin can be present but switched off, and only an enabled one has its
+     * modules and actions registered. Routing runs before the module is resolved,
+     * so an unavailable ioManage has to be detected here - by the time Symfony
+     * reports "Action ioManage/edit does not exist" the request is already lost.
+     */
+    protected static function ioManageAvailable(): bool
+    {
+        static $available;
+
+        if (null === $available) {
+            try {
+                $available = in_array(
+                    'ahgInformationObjectManagePlugin',
+                    sfProjectConfiguration::getActive()->getPlugins(),
+                    true
+                );
+            } catch (Exception $e) {
+                $available = false;
+            }
+        }
+
+        return $available;
     }
 }
