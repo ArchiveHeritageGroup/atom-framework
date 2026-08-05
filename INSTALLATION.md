@@ -123,6 +123,39 @@ Run `bin/install` as the user that owns the AtoM tree (e.g.
 7. Patch `QubitMetadataRoute` for GLAM-sector routing
 8. Apply the bundled base-AtoM patches (`patches/`)
 
+### ⚠️ Step 8 overwrites 38 base AtoM files - read before installing
+
+`patches/` mirrors the AtoM root, and step 8 copies those files over your AtoM with an
+unconditional `cp -f`. **Take a backup of the AtoM tree and database first.**
+
+**What they carry.** Several are security fixes that upstream AtoM 2.10.1 does not have:
+
+| File | Change |
+|---|---|
+| `lib/model/QubitUser.php` | Password salt was `md5(rand(100000, 999999) . $email)` - a six-digit seed space keyed on a known value. Replaced with `bin2hex(random_bytes(16))`, plus Argon2id-aware verification |
+| `qbAclPlugin/lib/QubitAcl.class.php` | Duplicate-role guard (the "Role 99" Zend ACL crash) |
+| `lib/model/QubitActor.php`, `lib/filter/QubitSettingsFilter.class.php` | `unserialize(..., ['allowed_classes' => false])` - object-injection hardening |
+| `lib/QubitFindingAid.class.php` | `escapeshellarg()` on a `pdftotext` invocation |
+| `lib/model/QubitInformationObject.php` | Added lookup method (~150 lines) |
+
+Also `apps/qubit/config/security.yml` and four module `security.yml` files (a missing
+`security.yml` **fails open**), 11 South African i18n message files, several
+`user`/`informationobject`/`digitalobject` actions, and `arRestApiPlugin`'s
+`physicalobjectsCreateAction`.
+
+**On an AtoM version upgrade:**
+
+1. **The patches are lost.** Upstream files replace them and the fixes above silently
+   revert - unless upstream fixed the same issues independently, which nothing verifies.
+2. **Re-running `bin/install` afterwards can revert upstream's own fixes**, because it
+   copies the older patched files unconditionally. **Always diff `patches/` against the
+   new upstream before re-installing.**
+3. **No patched file carries a marker** - `grep` will not tell you whether a given file
+   is patched or pristine.
+
+Full file list and the upstream diffs:
+[issue #274](https://github.com/ArchiveHeritageGroup/atom-extensions-catalog/issues/274).
+
 ## Post-install
 
 ```bash

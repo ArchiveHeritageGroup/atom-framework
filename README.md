@@ -217,6 +217,34 @@
 
 ## ⚡ Installation
 
+> ### ⚠️ What the installer changes in your AtoM
+>
+> **`bin/install` overwrites 38 base AtoM files** from `atom-framework/patches/`, which
+> mirrors the AtoM root. You should know this before you run it on an existing
+> installation.
+>
+> These patches carry real fixes, several of them security fixes that upstream AtoM
+> 2.10.1 does not have - a cryptographically secure password salt replacing
+> `md5(rand(100000, 999999) . $email)`, `escapeshellarg()` on a `pdftotext` call,
+> `unserialize(..., ['allowed_classes' => false])` object-injection hardening, and an
+> ACL duplicate-role fix. The patched files include `lib/model/QubitUser.php`,
+> `lib/model/QubitActor.php`, `lib/model/QubitInformationObject.php`,
+> `qbAclPlugin/lib/QubitAcl.class.php`, `apps/qubit/config/security.yml`, and 11 South
+> African i18n message files.
+>
+> **Three consequences to plan for:**
+>
+> 1. **An AtoM version upgrade discards them.** Upstream files replace the patched ones
+>    and the fixes above silently revert. Nothing warns you.
+> 2. **Re-running `bin/install` after an upgrade can revert upstream fixes**, because it
+>    copies these files unconditionally. **Diff before you install.**
+> 3. **Patched files carry no marker**, so you cannot tell by reading one whether it is
+>    patched or pristine.
+>
+> The full list and the upstream diffs are in
+> [issue #274](https://github.com/ArchiveHeritageGroup/atom-extensions-catalog/issues/274).
+> Take a backup of your AtoM tree and database before installing.
+
 ### Prerequisites
 
 | Component | Minimum | Recommended |
