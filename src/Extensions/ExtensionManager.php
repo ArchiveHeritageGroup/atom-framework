@@ -512,6 +512,7 @@ class ExtensionManager implements ExtensionManagerContract
             );
         } catch (\Exception $e) {}
 
+        $this->syncMenuEntries($machineName, true);
         $this->updateSymfonyPlugins($machineName, true);
         return true;
     }
@@ -568,8 +569,123 @@ class ExtensionManager implements ExtensionManagerContract
             ]
         );
 
+        $this->syncMenuEntries($machineName, true);
         $this->updateSymfonyPlugins($machineName, true);
         return true;
+    }
+
+    /**
+     * Add or remove the navigation entries a plugin declares in its manifest.
+     *
+     * AtoM builds its Add/Manage/Import/Admin dropdowns from the `menu` table, so a
+     * plugin only has to own a row there to appear in the navigation - no theme
+     * override, no injection, and the entry stays editable at /menu/list like any
+     * other. The catch is lifecycle: a row inserted at install outlives the plugin,
+     * and QubitMenu::checkUserAccess() falls through to the app-wide security
+     * default for a module that is no longer loaded, so a stale entry renders and
+     * then errors when clicked. Tying the row to enable/disable is what makes the
+     * table safe to write to.
+     *
+     * Declared as:
+     *   "menu": [{"name": "feedback", "parent": "manage",
+     *             "path": "feedback/browse", "label": "Feedback"}]
+     */
+    protected function syncMenuEntries(string $machineName, bool $enabled): void
+    {
+        $manifest = $this->findManifest($machineName);
+        $entries = $manifest['menu'] ?? [];
+
+        if (empty($entries) || !is_array($entries)) {
+            return;
+        }
+
+        try {
+            foreach ($entries as $entry) {
+                $name = $entry['name'] ?? null;
+                $path = $entry['path'] ?? null;
+
+                if (!$name || !$path) {
+                    continue;
+                }
+
+                $existing = DB::table('menu')->where('name', $name)->where('path', $path)->first();
+
+                if (!$enabled) {
+                    if ($existing) {
+                        $this->removeMenuNode($existing);
+                    }
+
+                    continue;
+                }
+
+                if ($existing) {
+                    continue;
+                }
+
+                $this->appendMenuNode($entry);
+            }
+        } catch (\Exception $e) {
+            // Navigation is cosmetic - never let it fail an enable or a disable.
+            echo "  Warning: could not update menu entries for {$machineName}: {$e->getMessage()}\n";
+        }
+    }
+
+    /**
+     * Insert a menu row as the last child of its parent, keeping lft/rgt consistent.
+     */
+    protected function appendMenuNode(array $entry): void
+    {
+        $parentName = $entry['parent'] ?? 'manage';
+        $parent = DB::table('menu')->where('name', $parentName)->first();
+
+        if (!$parent) {
+            echo "  Warning: menu parent '{$parentName}' not found, skipping '{$entry['name']}'.\n";
+
+            return;
+        }
+
+        $culture = $entry['culture'] ?? 'en';
+        $boundary = (int) $parent->rgt;
+        $now = date('Y-m-d H:i:s');
+
+        // Open a two-unit gap at the parent's right edge, then fill it.
+        DB::table('menu')->where('rgt', '>=', $boundary)->update(['rgt' => DB::raw('rgt + 2')]);
+        DB::table('menu')->where('lft', '>', $boundary)->update(['lft' => DB::raw('lft + 2')]);
+
+        $id = DB::table('menu')->insertGetId([
+            'parent_id' => $parent->id,
+            'name' => $entry['name'],
+            'path' => $entry['path'],
+            'lft' => $boundary,
+            'rgt' => $boundary + 1,
+            'created_at' => $now,
+            'updated_at' => $now,
+            'source_culture' => $culture,
+            'serial_number' => 0,
+        ]);
+
+        DB::table('menu_i18n')->insert([
+            'id' => $id,
+            'culture' => $culture,
+            'label' => $entry['label'] ?? $entry['name'],
+            'description' => $entry['description'] ?? null,
+        ]);
+    }
+
+    /**
+     * Delete a menu row and close the gap it leaves in the tree.
+     */
+    protected function removeMenuNode(object $node): void
+    {
+        $left = (int) $node->lft;
+        $right = (int) $node->rgt;
+        $width = $right - $left + 1;
+
+        // menu_i18n cascades on the foreign key, so the label goes with it.
+        DB::table('menu')->where('id', $node->id)->delete();
+
+        DB::table('menu')->where('lft', '>', $right)->update(['lft' => DB::raw("lft - {$width}")]);
+        DB::table('menu')->where('rgt', '>', $right)->update(['rgt' => DB::raw("rgt - {$width}")]);
     }
 
     /**
@@ -623,6 +739,7 @@ class ExtensionManager implements ExtensionManagerContract
             DB::table('atom_plugin')->where('name', $machineName)->update(['is_enabled' => 0]);
         } catch (\Exception $e) {}
 
+        $this->syncMenuEntries($machineName, false);
         $this->updateSymfonyPlugins($machineName, false);
         return true;
     }
@@ -652,6 +769,7 @@ class ExtensionManager implements ExtensionManagerContract
         }
 
         DB::table('atom_plugin')->where('name', $machineName)->update(['is_enabled' => 0, 'disabled_at' => date('Y-m-d H:i:s')]);
+        $this->syncMenuEntries($machineName, false);
         $this->updateSymfonyPlugins($machineName, false);
         return true;
     }
