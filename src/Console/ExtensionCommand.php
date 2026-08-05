@@ -16,6 +16,28 @@ class ExtensionCommand
     protected MigrationHandler $migrationHandler;
     protected bool $interactive = true;
 
+    /**
+     * Is there a terminal on stdin to answer a prompt?
+     *
+     * stream_isatty is the modern test; posix_isatty covers builds without it. When
+     * neither is available, assume no terminal - defaulting to "yes there is" is what
+     * causes the hang, and a wrong "no" only skips a question.
+     */
+    protected function hasTerminal(): bool
+    {
+        if (!defined('STDIN')) {
+            return false;
+        }
+        if (function_exists('stream_isatty')) {
+            return @stream_isatty(STDIN);
+        }
+        if (function_exists('posix_isatty')) {
+            return @posix_isatty(STDIN);
+        }
+
+        return false;
+    }
+
     protected array $commands = [
         'list' => 'List installed extensions',
         'info' => 'Show extension details',
@@ -38,7 +60,13 @@ class ExtensionCommand
         $pluginsPath = $this->manager->getSetting('extensions_path', null, PathResolver::getPluginsDir());
         $this->fetcher = new PluginFetcher($pluginsPath);
         $this->migrationHandler = new MigrationHandler($pluginsPath);
-        $this->interactive = !in_array('--no-interaction', $argv) && !in_array('-n', $argv);
+        // Interactive means the flag allows it AND there is a terminal to answer with.
+        // Without the TTY test every prompt blocks forever on fgets(STDIN) when run
+        // from a script, cron, CI or ssh without a pty - the command simply hangs with
+        // no output, which reads as a crash rather than a question waiting.
+        $this->interactive = !in_array('--no-interaction', $argv)
+            && !in_array('-n', $argv)
+            && $this->hasTerminal();
     }
 
     public function run(): int
@@ -266,6 +294,13 @@ class ExtensionCommand
                 echo "  Create tables automatically? [Y/n]: ";
                 $answer = strtolower(trim(fgets(STDIN)));
                 $createTables = ($answer === '' || $answer === 'y' || $answer === 'yes');
+            } elseif ($hasSql) {
+                // Non-interactive, and the plugin ships a schema. Create it: a plugin
+                // installed without its tables is broken, and the framework installer
+                // no longer creates every plugin's schema up front, so nothing else
+                // would. --skip-tables remains the way to opt out.
+                $createTables = true;
+                $this->line('  Non-interactive: creating tables from the plugin schema (--skip-tables to opt out).');
             } else {
                 $createTables = false;
                 $this->line("  Run with --with-tables to create automatically.");

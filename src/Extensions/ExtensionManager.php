@@ -347,8 +347,20 @@ class ExtensionManager implements ExtensionManagerContract
             $this->runSymfonyTask($manifest['install_task']);
         }
 
-        if (!empty($manifest["install_sql"])) {
-            $sqlPath = $this->pluginsPath . "/" . $machineName . "/" . $manifest["install_sql"];
+        // A plugin brings its own schema. install_sql stays honoured for anything that
+        // names a different file, but database/install.sql is the convention and is
+        // used when the manifest is silent - which is almost all of them.
+        //
+        // This matters more since the framework installer stopped creating every
+        // plugin's tables: without the fallback, installing a plugin whose manifest
+        // omits install_sql gives you a plugin with no tables and no warning.
+        $manifestSql = $manifest["install_sql"] ?? null;
+        if (empty($manifestSql) && file_exists($this->pluginsPath.'/'.$machineName.'/database/install.sql')) {
+            $manifestSql = 'database/install.sql';
+        }
+
+        if (!empty($manifestSql)) {
+            $sqlPath = $this->pluginsPath . "/" . $machineName . "/" . $manifestSql;
             if (file_exists($sqlPath)) {
                 $this->runSqlFile($sqlPath);
             }
