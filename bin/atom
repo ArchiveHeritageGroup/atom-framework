@@ -50,6 +50,29 @@ switch ($module) {
         $cmd = new \AtomFramework\Console\ThesaurusCommand(array_merge(['atom', $command], $remaining));
         exit($cmd->run());
 
+    case 'schema':
+        if ('install' === $command) {
+            require_once FRAMEWORK_ROOT . '/src/Console/SchemaInstallCommand.php';
+            $cmd = new \AtomFramework\Console\SchemaInstallCommand(ATOM_ROOT);
+            exit($cmd->run($remaining));
+        }
+        echo "Usage: atom schema:install [--plugin=ahgFooPlugin] [--all] [--dry-run] [-v]\n";
+        exit(1);
+
+    case 'i18n':
+        if ('extract' === $command) {
+            require_once FRAMEWORK_ROOT . '/src/Console/I18nExtractCommand.php';
+            $cmd = new \AtomFramework\Console\I18nExtractCommand(ATOM_ROOT);
+            exit($cmd->run($remaining));
+        }
+        echo "Usage: atom i18n:extract [--culture=af] [--plugin=ahgFooPlugin]\n";
+        exit(1);
+
+    case 'plugins':
+        require_once FRAMEWORK_ROOT . '/src/Config/PluginLoader.php';
+        require_once FRAMEWORK_ROOT . '/src/Config/PluginActivation.php';
+        exit(runPluginsCommand($command, $remaining));
+
     case 'framework':
         switch ($command) {
             case 'install':
@@ -131,6 +154,68 @@ switch ($module) {
         echo "\033[31mUnknown command: {$module}" . ($command !== 'help' ? ":{$command}" : '') . "\033[0m\n";
         showHelp($registry);
         exit(1);
+}
+
+/**
+ * plugins:check and plugins:sync
+ *
+ * AtoM decides what to load from the `plugins` setting, which sfPluginAdminPlugin
+ * reads. This project treats atom_plugin as the source of truth. Anything that
+ * changes plugin state without going through ExtensionManager - bin/install, a
+ * restored database, a direct SQL update, an instance cloned from another - moves
+ * one and not the other, and the symptom is a plugin the admin screen calls
+ * enabled whose routes return 404.
+ *
+ * check exits non-zero on drift so it can be used as a health check.
+ */
+function runPluginsCommand(string $command, array $args = []): int
+{
+    if (!in_array($command, ['check', 'sync'], true)) {
+        echo "Usage: atom plugins:check | atom plugins:sync [--prune]\n";
+
+        return 1;
+    }
+
+    $prune = in_array('--prune', $args, true);
+
+    $report = 'sync' === $command
+        ? \AtomFramework\Config\PluginActivation::sync(ATOM_ROOT, $prune)
+        : \AtomFramework\Config\PluginActivation::drift(ATOM_ROOT, $prune);
+
+    $show = function (string $label, array $names, string $colour) {
+        if ($names === []) {
+            return;
+        }
+        echo "\033[{$colour}m{$label}:\033[0m\n";
+        foreach ($names as $name) {
+            echo "  {$name}\n";
+        }
+    };
+
+    $show('Enabled in atom_plugin but not loading', $report['missing'], '31');
+    $show('Will be removed', $report['removed'], '33');
+    $show('Loading, but atom_plugin says disabled', $report['contradicted'], '36');
+    $show('Loading, not tracked in atom_plugin', $report['unmanaged'], '36');
+
+    if ($report['contradicted'] !== [] && !$prune) {
+        echo "  \033[2mLeft loading. --prune would remove these; check each one first.\033[0m\n";
+    }
+
+    if ($report['missing'] === [] && $report['removed'] === []) {
+        echo "\033[32mIn sync:\033[0m ".count($report['current'])." plugins loading.\n";
+
+        return $report['contradicted'] === [] && $report['unmanaged'] === [] ? 0 : 1;
+    }
+
+    if ('sync' === $command) {
+        echo "\033[32mApplied.\033[0m ".count($report['desired'])." plugins will load. Clear the cache.\n";
+
+        return 0;
+    }
+
+    echo "\nRun \033[1matom plugins:sync\033[0m to correct.\n";
+
+    return 1;
 }
 
 function runFrameworkInstall(): void

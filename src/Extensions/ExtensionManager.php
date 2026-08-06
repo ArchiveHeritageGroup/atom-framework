@@ -1327,15 +1327,65 @@ class ExtensionManager implements ExtensionManagerContract
                 return;
             }
             $key = array_search($machineName, $plugins);
+            $changed = false;
+
             if ($add && $key === false) {
                 $plugins[] = $machineName;
-                DB::table('setting_i18n')->where('id', 1)->where('culture', \AtomExtensions\Helpers\CultureHelper::getCulture())->update(['value' => serialize($plugins)]);
+                $changed = true;
             } elseif (!$add && $key !== false) {
                 unset($plugins[$key]);
                 $plugins = array_values($plugins);
-                DB::table('setting_i18n')->where('id', 1)->where('culture', \AtomExtensions\Helpers\CultureHelper::getCulture())->update(['value' => serialize($plugins)]);
+                $changed = true;
+            }
+
+            $ordered = self::orderCoreFirst($plugins);
+
+            if ($changed || $ordered !== $plugins) {
+                DB::table('setting_i18n')->where('id', 1)->where('culture', \AtomExtensions\Helpers\CultureHelper::getCulture())->update(['value' => serialize($ordered)]);
             }
         } catch (\Exception $e) {}
+    }
+
+    /**
+     * Move ahgCorePlugin ahead of every other AHG plugin in the load list.
+     *
+     * sfPluginAdminPlugin initialises plugins in the order this list gives, and
+     * ahgCorePluginConfiguration::bootstrapFramework() is what registers the
+     * AtomFramework autoloader. Any AHG plugin initialised before it references
+     * classes that do not exist yet, which fatals during configuration and
+     * returns an empty 200 for every page on the site rather than an error on
+     * one of them.
+     *
+     * Until now the order was whatever sequence the plugins happened to be
+     * enabled in, so this worked by accident. Base AtoM plugins keep their
+     * relative positions; only the AHG block is touched.
+     */
+    private static function orderCoreFirst(array $plugins): array
+    {
+        $position = array_search('ahgCorePlugin', $plugins, true);
+
+        if (false === $position) {
+            return $plugins;
+        }
+
+        $firstAhg = null;
+        foreach ($plugins as $index => $name) {
+            if (0 === strpos((string) $name, 'ahg')) {
+                $firstAhg = $index;
+
+                break;
+            }
+        }
+
+        if (null === $firstAhg || $firstAhg >= $position) {
+            return $plugins;
+        }
+
+        unset($plugins[$position]);
+        $plugins = array_values($plugins);
+        array_splice($plugins, $firstAhg, 0, 'ahgCorePlugin');
+
+        return $plugins;
     }
 
     public function updateVersion(string $machineName, string $newVersion): bool

@@ -28,6 +28,45 @@ echo -e "${YELLOW}Paths detected:${NC}"
 echo "  Framework: $FRAMEWORK_PATH"
 echo "  AtoM Root: $ATOM_ROOT"
 
+# -----------------------------------------------------------------------------
+# Base AtoM patches are OPT-IN.
+#
+# patches/ holds 41 files that overwrite base AtoM. The AHG plugins do not need
+# any of them: verified 2026-08-05 on a pristine AtoM checkout, where the full
+# plugin set loads, renders and saves with zero modified AtoM files.
+#
+# They used to be copied unconditionally, which meant installing our plugins
+# silently forked the customer's AtoM with two dozen files they never asked for -
+# files that then have to be reapplied after every AtoM upgrade, and that make
+# their install unsupportable by Artefactual. That is the opposite of what a
+# plugin bundle should do.
+#
+# They remain available with --with-base-patches, which is what our own instances
+# use, because several of them are fixes to base AtoM that we do want on the
+# servers we operate.
+# -----------------------------------------------------------------------------
+APPLY_BASE_PATCHES=0
+for _arg in "$@"; do
+    case "$_arg" in
+        --with-base-patches) APPLY_BASE_PATCHES=1 ;;
+        --help|-h)
+            echo ""
+            echo "Usage: bin/install [--with-base-patches]"
+            echo ""
+            echo "  --with-base-patches   Also overwrite base AtoM files from patches/."
+            echo "                        Not needed by the plugins. For AHG-operated"
+            echo "                        servers only."
+            exit 0
+            ;;
+    esac
+done
+
+if [ "$APPLY_BASE_PATCHES" = "1" ]; then
+    echo -e "  ${YELLOW}Base patches: ENABLED (base AtoM files will be overwritten)${NC}"
+else
+    echo "  Base patches: disabled (base AtoM will not be modified)"
+fi
+
 # Get database credentials from config.php
 CONFIG_FILE="${ATOM_ROOT}/config/config.php"
 if [ ! -f "$CONFIG_FILE" ]; then
@@ -120,8 +159,27 @@ echo -e "${BLUE}Step 3: Updating ProjectConfiguration...${NC}"
 PROJECT_CONFIG="${ATOM_ROOT}/config/ProjectConfiguration.class.php"
 TEMPLATE_CONFIG="${FRAMEWORK_PATH}/config/ProjectConfiguration.class.php.template"
 
-if grep -q "loadPluginsFromDatabase" "$PROJECT_CONFIG"; then
+# ProjectConfiguration is a base AtoM file, and the plugins no longer need it
+# touched.
+#
+# AtoM already loads plugins from the database: sfPluginAdminPlugin reads the
+# `plugins` setting and enables what it finds. The only thing that was missing
+# was the framework autoloader, and ahgCorePluginConfiguration now registers
+# that itself. Verified 2026-08-05 against a pristine AtoM 2.10.1: the full
+# plugin set loads and every page is byte-identical to a patched install.
+#
+# Overwriting it was also the step that made this installer fail hard on a
+# stock AtoM, where the file is root-owned and www-data cannot write it. The
+# script aborted under `set -e` at this point, leaving an install that had
+# symlinked plugins and done nothing else.
+if [ "$APPLY_BASE_PATCHES" != "1" ]; then
+    echo "  → Left untouched. Plugin loading does not require it;"
+    echo "    ahgCorePlugin bootstraps the framework itself."
+elif grep -q "loadPluginsFromDatabase" "$PROJECT_CONFIG"; then
     echo -e "  ${YELLOW}→${NC} ProjectConfiguration already has database plugin loading"
+elif [ ! -w "$PROJECT_CONFIG" ]; then
+    echo -e "  ${YELLOW}⚠${NC} ${PROJECT_CONFIG} is not writable by $(id -un) - skipping."
+    echo "     Re-run as a user that can write it, or drop --with-base-patches."
 else
     cp "$PROJECT_CONFIG" "${PROJECT_CONFIG}.bak.$(date +%Y%m%d_%H%M%S)"
     echo -e "  ${GREEN}✓${NC} Backed up existing ProjectConfiguration"
@@ -130,12 +188,6 @@ else
         sed -i "s|vendor/composer/autoload.php|vendor/autoload.php|" "$PROJECT_CONFIG"
     fi
     echo -e "  ${GREEN}✓${NC} Installed ProjectConfiguration with database plugin loading"
-fi
-
-if grep -q "atom-framework/bootstrap.php" "$PROJECT_CONFIG"; then
-    echo -e "  ${YELLOW}→${NC} Framework bootstrap already configured"
-else
-    echo -e "  ${RED}✗${NC} Framework bootstrap missing - run install again"
 fi
 
 # =============================================================================
@@ -285,7 +337,9 @@ echo -e "${BLUE}Step 7: Patching QubitMetadataRoute...${NC}"
 # Copying is idempotent and makes the patch file authoritative.
 ROUTE_PATCH="${FRAMEWORK_PATH}/patches/lib/routing/QubitMetadataRoute.class.php"
 ROUTE_FILE="${ATOM_ROOT}/lib/routing/QubitMetadataRoute.class.php"
-if [ -f "$ROUTE_PATCH" ]; then
+if [ "$APPLY_BASE_PATCHES" != "1" ]; then
+    echo "  → QubitMetadataRoute patch skipped (base AtoM not modified)"
+elif [ -f "$ROUTE_PATCH" ]; then
     cp -f "$ROUTE_PATCH" "$ROUTE_FILE"
     echo -e "  ${GREEN}✓${NC} Applied QubitMetadataRoute patch (GLAM sectors, RiC, edit routing)"
 elif [ -f "$ROUTE_FILE" ]; then
@@ -332,6 +386,23 @@ fi
 # =============================================================================
 echo ""
 echo "Step 11: Applying AtoM core patches..."
+
+if [ "$APPLY_BASE_PATCHES" != "1" ]; then
+    echo "  → Skipped. Base AtoM is left exactly as installed."
+    echo ""
+    echo "    The plugins do not need these patches. Two things to be aware of:"
+    echo ""
+    echo "    1. patches/qbAclPlugin/ closes an upstream bypass where every user is"
+    echo "       granted readMaster on TEXT objects, making PDF masters of draft,"
+    echo "       embargoed and access-restricted records anonymously downloadable"
+    echo "       (artefactual/atom#1724). That is a bug in AtoM, not in this bundle,"
+    echo "       and it is present on a stock install whether or not you install us."
+    echo "    2. patches/apps/qubit/config/security.yml and friends carry the AtoM"
+    echo "       2.10.1 security fixes. If this AtoM predates 2.10.1, apply the"
+    echo "       upstream release rather than our copies."
+    echo ""
+    echo "    Run with --with-base-patches to apply them anyway."
+else
 
 # Copy patched QubitAcl.class.php (Role 99 fix)
 if [ -f "${FRAMEWORK_PATH}/patches/qbAclPlugin/lib/QubitAcl.class.php" ]; then
@@ -496,6 +567,8 @@ for _rel in "${SECFIX_FILES[@]}"; do
     fi
 done
 echo "  ✓ Applied AtoM 2.10.1 security fixes (${SECFIX_APPLIED}/18 files, ATOM-1..9 + autocomplete advisory)"
+
+fi   # end of APPLY_BASE_PATCHES
 
 # =============================================================================
 # Step 12: Copy dist assets (icons)
