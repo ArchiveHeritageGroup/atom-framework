@@ -47,6 +47,8 @@ cp -r "$FRAMEWORK/vendor" "$OUT/vendor"
     echo "-- ahgRuntimePlugin schema - runtime tables ONLY."
     echo "-- Every other table belongs to the plugin that uses it."
     echo
+    cat "$FRAMEWORK/database/runtime_tables.sql"
+    echo
     cat "$FRAMEWORK/database/encryption_tables.sql"
 } > "$OUT/database/install.sql"
 

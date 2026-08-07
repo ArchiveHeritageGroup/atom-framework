@@ -97,7 +97,6 @@ class SavedSearchRepository implements SavedSearchContract
             ->get()
             ->toArray();
     }
-}
 
     public function getGlobal(?string $entityType = null, int $limit = 20): array
     {
@@ -113,3 +112,4 @@ class SavedSearchRepository implements SavedSearchContract
 
         return $query->get()->map(fn ($row) => $this->hydrate($row))->toArray();
     }
+}
