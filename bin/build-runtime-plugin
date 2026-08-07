@@ -36,6 +36,14 @@ touch "$OUT/.generated-by-build-runtime-plugin"
 # ---------------------------------------------------------------- code + deps
 cp -r "$FRAMEWORK/src"    "$OUT/src"
 cp -r "$FRAMEWORK/vendor" "$OUT/vendor"
+
+# Operator scripts - the backup and restore shell scripts that ahgBackupPlugin
+# tells administrators to schedule. They were never copied, so the cron line the
+# settings page prints pointed at a file the bundle did not contain.
+if [ -d "$FRAMEWORK/scripts" ]; then
+    cp -r "$FRAMEWORK/scripts" "$OUT/scripts"
+    chmod +x "$OUT/scripts/"*.sh 2>/dev/null || true
+fi
 [ -f "$FRAMEWORK/bootstrap.php" ] && cp "$FRAMEWORK/bootstrap.php" "$OUT/bootstrap.php"
 
 # ---------------------------------------------------------------- schema

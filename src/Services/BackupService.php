@@ -3,6 +3,14 @@
 namespace AtomExtensions\Services;
 
 use AtomFramework\Helpers\PathResolver;
+// ShellCommandService lives in AtomFramework\Services while this class is in
+// AtomExtensions\Services, so the unqualified calls below resolved to
+// AtomExtensions\Services\ShellCommandService and never found it. The bootstrap
+// maps both PSR-4 prefixes to the same directory, so the file was located and
+// the class inside it did not match - "Class not found" despite the file being
+// present. A missing class raises Error rather than Exception, so the callers'
+// catch(Exception) missed it and the response came back empty.
+use AtomFramework\Services\ShellCommandService;
 use Illuminate\Database\Capsule\Manager as DB;
 
 class BackupService

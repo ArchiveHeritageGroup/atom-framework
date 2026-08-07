@@ -1,8 +1,39 @@
 #!/bin/bash
 set -e
-ATOM_ROOT="/usr/share/nginx/archive"
-BACKUP_DIR="/var/backups/atom"
-LOG="/var/log/atom/backup.log"
+# Find the AtoM root from this script's own location rather than hardcoding it.
+#
+# This was fixed to /usr/share/nginx/archive, which is one particular site. Any
+# other installation scheduling this script would have backed up a directory
+# that was not its own, or nothing at all - and it would have looked like it
+# worked. The script sits at <framework>/scripts/, and the framework is either
+# <atom>/atom-framework/ or <atom>/plugins/ahgRuntimePlugin/ depending on
+# whether it was installed from git or from a plugin bundle, so walk up looking
+# for config/config.php instead of counting directories.
+#
+# ATOM_ROOT, BACKUP_DIR and LOG may all be overridden from the environment, which
+# is how a cron entry pins them if a site wants something other than the default.
+if [ -z "${ATOM_ROOT:-}" ]; then
+    _dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+    while [ "$_dir" != "/" ]; do
+        if [ -f "$_dir/config/config.php" ]; then
+            ATOM_ROOT="$_dir"
+            break
+        fi
+        _dir="$(dirname "$_dir")"
+    done
+
+    unset _dir
+fi
+
+if [ -z "${ATOM_ROOT:-}" ] || [ ! -f "$ATOM_ROOT/config/config.php" ]; then
+    echo "run-backup.sh: cannot locate the AtoM root from $(dirname "${BASH_SOURCE[0]}")." >&2
+    echo "Set ATOM_ROOT explicitly, e.g. ATOM_ROOT=/usr/share/nginx/mysite $0" >&2
+    exit 1
+fi
+
+BACKUP_DIR="${BACKUP_DIR:-$ATOM_ROOT/backups}"
+LOG="${LOG:-$ATOM_ROOT/log/backup.log}"
 TIMESTAMP=$(date '+%Y-%m-%d_%H-%M-%S')
 BACKUP_ID="${TIMESTAMP}_$(head -c 4 /dev/urandom | xxd -p)"
 

@@ -1,8 +1,30 @@
 #!/bin/bash
 set -e
-ATOM_ROOT="/usr/share/nginx/archive"
-BACKUP_DIR="/var/backups/atom"
-LOG="/var/log/atom/backup.log"
+# Locate the AtoM root from this script's position, not a fixed path. See the
+# note in run-backup.sh - restoring into the wrong instance is worse than backing
+# up the wrong one, so this must never guess.
+if [ -z "${ATOM_ROOT:-}" ]; then
+    _dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+    while [ "$_dir" != "/" ]; do
+        if [ -f "$_dir/config/config.php" ]; then
+            ATOM_ROOT="$_dir"
+            break
+        fi
+        _dir="$(dirname "$_dir")"
+    done
+
+    unset _dir
+fi
+
+if [ -z "${ATOM_ROOT:-}" ] || [ ! -f "$ATOM_ROOT/config/config.php" ]; then
+    echo "restore-backup.sh: cannot locate the AtoM root from $(dirname "${BASH_SOURCE[0]}")." >&2
+    echo "Set ATOM_ROOT explicitly before restoring." >&2
+    exit 1
+fi
+
+BACKUP_DIR="${BACKUP_DIR:-$ATOM_ROOT/backups}"
+LOG="${LOG:-$ATOM_ROOT/log/backup.log}"
 
 [ -z "$1" ] && { echo "Usage: $0 <backup-id>"; ls -1 "$BACKUP_DIR" 2>/dev/null | head -20; exit 1; }
 
