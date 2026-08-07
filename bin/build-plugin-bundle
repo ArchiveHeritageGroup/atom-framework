@@ -1,0 +1,190 @@
+#!/usr/bin/env bash
+#
+# Build a distributable zip for one AHG plugin.
+#
+# Why this exists: Provenance and Backup were assembled by hand, and the second
+# INSTALL.md was a sed of the first. That does not survive a dozen plugins - the
+# version, the table list and the dependencies drift from what the plugin
+# actually declares, and the person reading the instructions is the one who finds
+# out. Everything here is read from extension.json so there is one source of
+# truth.
+#
+# The runtime is NOT bundled. It is 56MB unpacked and identical for every plugin,
+# so twelve bundles would carry twelve copies and a runtime fix would mean twelve
+# re-releases. It ships once, as its own download, and INSTALL.md names the
+# version required.
+#
+# Usage: bin/build-plugin-bundle <pluginName> [output-dir]
+#
+set -euo pipefail
+
+PLUGIN="${1:-}"
+if [ -z "$PLUGIN" ]; then
+    echo "Usage: $0 <pluginName> [output-dir]" >&2
+    exit 1
+fi
+
+FRAMEWORK="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ROOT="$(cd "$FRAMEWORK/.." && pwd)"
+PLUGINS="$ROOT/atom-ahg-plugins"
+OUTDIR="${2:-$ROOT/stuff/dist}"
+SRC="$PLUGINS/$PLUGIN"
+
+[ -d "$SRC" ] || { echo "No such plugin: $SRC" >&2; exit 1; }
+[ -f "$SRC/extension.json" ] || { echo "$PLUGIN has no extension.json" >&2; exit 1; }
+
+meta() { python3 -c "import json,sys;d=json.load(open('$SRC/extension.json'));print(d.get('$1','') if not isinstance(d.get('$1'),list) else ' '.join(d.get('$1')))"; }
+
+VERSION="$(meta version)"
+NAME="$(meta name)"
+DESC="$(meta description)"
+LICENCE="$(meta license)"
+DEPS="$(meta dependencies)"
+RUNTIME_VERSION="$(python3 -c "import json;print(json.load(open('$FRAMEWORK/version.json'))['version'])" 2>/dev/null || echo '0.0.0')"
+
+STAGE="$(mktemp -d)"
+trap 'rm -rf "$STAGE"' EXIT
+mkdir -p "$OUTDIR"
+
+echo "Building $PLUGIN $VERSION"
+
+# ------------------------------------------------------------------ payload
+cp -r "$SRC" "$STAGE/$PLUGIN"
+rm -rf "$STAGE/$PLUGIN/.git" "$STAGE/$PLUGIN/node_modules"
+find "$STAGE/$PLUGIN" -name '*.log' -delete 2>/dev/null || true
+
+# ahgCorePlugin is the foundation every AHG plugin builds on, so it travels with
+# each bundle. It is small; the runtime is the large part and that ships apart.
+for dep in $DEPS; do
+    if [ -d "$PLUGINS/$dep" ]; then
+        cp -r "$PLUGINS/$dep" "$STAGE/$dep"
+        rm -rf "$STAGE/$dep/.git" "$STAGE/$dep/node_modules"
+    else
+        echo "  WARNING: declared dependency $dep is not present" >&2
+    fi
+done
+
+[ -f "$PLUGINS/LICENSE" ] && cp "$PLUGINS/LICENSE" "$STAGE/LICENSE"
+
+# Screenshots, if any have been captured for this plugin.
+if [ -d "$ROOT/stuff/screenshots/$PLUGIN" ]; then
+    cp -r "$ROOT/stuff/screenshots/$PLUGIN" "$STAGE/screenshots"
+fi
+
+# ------------------------------------------------------------------ schema summary
+TABLES=""
+if [ -f "$SRC/database/install.sql" ]; then
+    TABLES="$(grep -ohiE 'CREATE TABLE (IF NOT EXISTS )?`?[a-z_]+`?' "$SRC/database/install.sql" \
+        | grep -oiE '[a-z_]+`?$' | tr -d '`' | sort -u | sed 's/^/    /')"
+fi
+
+INSTALL_ORDER="ahgRuntimePlugin"
+for dep in $DEPS; do INSTALL_ORDER="$INSTALL_ORDER $dep"; done
+INSTALL_ORDER="$INSTALL_ORDER $PLUGIN"
+
+# ------------------------------------------------------------------ instructions
+{
+cat <<EOF
+# $NAME - installation
+
+$DESC
+
+## Requirements
+
+    AtoM            2.9 or 2.10
+    PHP             8.1 or later
+    MySQL           8.0
+    ahgRuntimePlugin $RUNTIME_VERSION or later, installed separately
+
+AtoM 2.9 and 2.10 both require PHP 8 already, so on a supported AtoM there is
+nothing to prepare. AtoM 2.8 is not supported: it is the last release that runs on
+PHP 7.4, and the runtime is built on Laravel 10, which is PHP 8.1+ by
+construction.
+
+Nothing in base AtoM is modified. No file under apps/, lib/, vendor/ or config/ is
+touched, and ProjectConfiguration.class.php stays as upstream ships it.
+
+## Install
+
+Install ahgRuntimePlugin first if it is not already present - it is a separate
+download, shared by every AHG plugin.
+
+From the AtoM root:
+
+    unzip $PLUGIN-$VERSION.zip -d plugins/
+    chown -R www-data:www-data plugins/
+
+Load the schema. Each plugin owns its own tables:
+
+EOF
+for p in $DEPS $PLUGIN; do
+    [ -f "$PLUGINS/$p/database/install.sql" ] && echo "    mysql -u <user> -p <database> < plugins/$p/database/install.sql"
+done
+cat <<EOF
+
+Enable in this order, in Admin > Plugins:
+
+EOF
+i=1
+for p in $INSTALL_ORDER; do echo "    $i. $p"; i=$((i+1)); done
+cat <<EOF
+
+Then clear the cache and reload PHP:
+
+    rm -rf cache/*
+    php symfony cc
+    systemctl reload php8.3-fpm
+
+## Tables created
+
+$( [ -n "$TABLES" ] && echo "$TABLES" || echo "    (none)" )
+
+## If a page fails
+
+Read the AtoM log rather than the rendered page. AtoM returns HTTP 200 for pages
+that are not successes - the login page among them - so a status code on its own
+proves very little, and an empty body with a 200 usually means a fatal:
+
+    tail -50 log/qubit_prod.log
+
+## If the AtoM root lives under /usr/share/nginx
+
+php-fpm ships with ProtectSystem=full, which mounts /usr read-only for the worker.
+The site then cannot write its own cache or logs and every page returns 500 with an
+empty body - a symptom that looks nothing like a permissions problem. Grant the
+paths in /etc/systemd/system/php8.3-fpm.service.d/<site>-storage.conf:
+
+    [Service]
+    ReadWritePaths=/usr/share/nginx/<site>/log
+    ReadWritePaths=/usr/share/nginx/<site>/cache
+    ReadWritePaths=/usr/share/nginx/<site>/uploads
+    ReadWritePaths=/usr/share/nginx/<site>/downloads
+    ReadWritePaths=/usr/share/nginx/<site>/backups
+
+Then systemctl daemon-reload && systemctl restart php8.3-fpm.
+
+## Uninstall
+
+Disable in Admin > Plugins, in reverse order, then remove the directories and
+clear the cache. The tables are left in place; drop them by hand if the data is
+genuinely no longer wanted.
+
+## Licence
+
+$LICENCE. The Archive and Heritage Group (Pty) Ltd.
+EOF
+} > "$STAGE/INSTALL.md"
+
+# ------------------------------------------------------------------ package
+ZIP="$OUTDIR/$PLUGIN-$VERSION.zip"
+rm -f "$ZIP"
+( cd "$STAGE" && zip -qr "$ZIP" . -x '*/.git/*' '*/node_modules/*' )
+
+( cd "$OUTDIR" && sha256sum "$(basename "$ZIP")" > "$(basename "$ZIP").sha256" )
+
+echo "  plugin  : $PLUGIN $VERSION"
+echo "  deps    : ${DEPS:-none}"
+echo "  tables  : $(echo "$TABLES" | grep -c . || echo 0)"
+echo "  shots   : $( [ -d "$STAGE/screenshots" ] && ls "$STAGE/screenshots" | wc -l || echo 0)"
+echo "  zip     : $ZIP ($(du -h "$ZIP" | cut -f1))"
+echo "  sha256  : $(cut -d' ' -f1 "$ZIP.sha256")"
