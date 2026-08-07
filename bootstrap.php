@@ -59,47 +59,59 @@ use Illuminate\Database\Capsule\Manager as Capsule;
  * Returns an array suitable for Illuminate Capsule::addConnection(),
  * or null if the config file is missing/invalid.
  */
-function atomParseDbConfig(string $rootPath): ?array
-{
-    $configFile = $rootPath . '/config/config.php';
-    if (!file_exists($configFile)) {
-        return null;
+// Guarded, because an early return does not prevent this being declared.
+//
+// The ATOM_FRAMEWORK_LOADED check at the top of this file returns before any
+// of it runs, but PHP registers top-level function declarations when the file
+// is compiled, not when it executes - so the return does nothing to stop a
+// second copy of this file redeclaring the function. An installation carrying
+// both layouts, atom-framework/ from a checkout and plugins/ahgRuntimePlugin
+// from a bundle, therefore died with "Cannot redeclare atomParseDbConfig()"
+// on every request. The other helpers below were already guarded this way;
+// this one was missed.
+if (!function_exists('atomParseDbConfig')) {
+    function atomParseDbConfig(string $rootPath): ?array
+    {
+        $configFile = $rootPath . '/config/config.php';
+        if (!file_exists($configFile)) {
+            return null;
+        }
+
+        $config = require $configFile;
+        if (!isset($config['all']['propel']['param'])) {
+            return null;
+        }
+
+        $dbConfig = $config['all']['propel']['param'];
+        $dsn = $dbConfig['dsn'] ?? '';
+
+        $database = 'atom';
+        if (preg_match('/dbname=([^;]+)/', $dsn, $matches)) {
+            $database = $matches[1];
+        }
+
+        $host = 'localhost';
+        if (preg_match('/host=([^;]+)/', $dsn, $matches)) {
+            $host = $matches[1];
+        }
+
+        $port = 3306;
+        if (preg_match('/port=([^;]+)/', $dsn, $matches)) {
+            $port = (int) $matches[1];
+        }
+
+        return [
+            'driver' => 'mysql',
+            'host' => $host,
+            'port' => $port,
+            'database' => $database,
+            'username' => $dbConfig['username'] ?? 'atom',
+            'password' => $dbConfig['password'] ?? '',
+            'charset' => 'utf8mb4',
+            'collation' => 'utf8mb4_unicode_ci',
+            'prefix' => '',
+        ];
     }
-
-    $config = require $configFile;
-    if (!isset($config['all']['propel']['param'])) {
-        return null;
-    }
-
-    $dbConfig = $config['all']['propel']['param'];
-    $dsn = $dbConfig['dsn'] ?? '';
-
-    $database = 'atom';
-    if (preg_match('/dbname=([^;]+)/', $dsn, $matches)) {
-        $database = $matches[1];
-    }
-
-    $host = 'localhost';
-    if (preg_match('/host=([^;]+)/', $dsn, $matches)) {
-        $host = $matches[1];
-    }
-
-    $port = 3306;
-    if (preg_match('/port=([^;]+)/', $dsn, $matches)) {
-        $port = (int) $matches[1];
-    }
-
-    return [
-        'driver' => 'mysql',
-        'host' => $host,
-        'port' => $port,
-        'database' => $database,
-        'username' => $dbConfig['username'] ?? 'atom',
-        'password' => $dbConfig['password'] ?? '',
-        'charset' => 'utf8mb4',
-        'collation' => 'utf8mb4_unicode_ci',
-        'prefix' => '',
-    ];
 }
 
 $dbConnection = atomParseDbConfig(ATOM_ROOT_PATH);
