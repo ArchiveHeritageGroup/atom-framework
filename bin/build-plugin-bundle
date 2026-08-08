@@ -39,7 +39,24 @@ VERSION="$(meta version)"
 NAME="$(meta name)"
 DESC="$(meta description)"
 LICENCE="$(meta license)"
-DEPS="$(meta dependencies)"
+# Dependencies, resolved transitively.
+#
+# This read only the plugin's own dependencies list, so a bundle carried its
+# direct dependencies and nothing further. ahgSeadragonPlugin declares
+# ahgIiifPlugin, which declares ahgCorePlugin, and the resulting zip contained the
+# first and not the second - a plugin that cannot boot, packaged and shipped.
+resolve_deps() {
+    local plugin="$1" seen="$2" out="" dep
+    for dep in $(python3 -c "import json,sys;d=json.load(open('$PLUGINS/$plugin/extension.json'));print(' '.join(d.get('dependencies',[])))" 2>/dev/null); do
+        case " $seen " in *" $dep "*) continue ;; esac
+        seen="$seen $dep"
+        out="$out $dep $(resolve_deps "$dep" "$seen")"
+        seen="$seen $out"
+    done
+    echo "$out"
+}
+
+DEPS="$(resolve_deps "$PLUGIN" "$PLUGIN" | tr ' ' '\n' | awk 'NF' | awk '!seen[$0]++' | tr '\n' ' ')"
 RUNTIME_VERSION="$(python3 -c "import json;print(json.load(open('$FRAMEWORK/version.json'))['version'])" 2>/dev/null || echo '0.0.0')"
 
 STAGE="$(mktemp -d)"
@@ -78,8 +95,16 @@ if [ -f "$SRC/database/install.sql" ]; then
         | grep -oiE '[a-z_]+`?$' | tr -d '`' | sort -u | sed 's/^/    /')"
 fi
 
+# Enable order: dependencies deepest first.
+#
+# resolve_deps discovers direct dependencies before transitive ones, so its output
+# is in the reverse of the order they must be enabled. Printed as discovered, the
+# instructions told a Seadragon installer to enable ahgIiifPlugin before
+# ahgCorePlugin, which is precisely backwards - IIIF depends on core.
 INSTALL_ORDER="ahgRuntimePlugin"
-for dep in $DEPS; do INSTALL_ORDER="$INSTALL_ORDER $dep"; done
+for dep in $(echo "$DEPS" | tr ' ' '\n' | awk 'NF' | tac); do
+    INSTALL_ORDER="$INSTALL_ORDER $dep"
+done
 INSTALL_ORDER="$INSTALL_ORDER $PLUGIN"
 
 # ------------------------------------------------------------------ instructions
