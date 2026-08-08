@@ -222,8 +222,12 @@ EOF
 INLINE=0
 INLINE_FILES=""
 if [ -d "$STAGE/$PLUGIN/modules" ]; then
+    # Every grep needs "|| true": it exits 1 when it finds nothing, and under
+    # set -euo pipefail that aborts the build. Without this the check failed the
+    # clean plugins and passed nothing - the opposite of its purpose - and it
+    # published stale zips before anyone noticed.
     INLINE_FILES="$(grep -rlE 'style="[^"]*"' "$STAGE/$PLUGIN"/modules/*/templates --include='*.php' 2>/dev/null || true)"
-    INLINE="$(grep -rhoE 'style="[^"]*"' "$STAGE/$PLUGIN"/modules/*/templates --include='*.php' 2>/dev/null | wc -l | tr -d ' ')"
+    INLINE="$( { grep -rhoE 'style="[^"]*"' "$STAGE/$PLUGIN"/modules/*/templates --include='*.php' 2>/dev/null || true; } | wc -l | tr -d ' ')"
 fi
 
 if [ "${INLINE:-0}" -gt 0 ]; then
