@@ -191,7 +191,29 @@ paths in /etc/systemd/system/php8.3-fpm.service.d/<site>-storage.conf:
 
 Then systemctl daemon-reload && systemctl restart php8.3-fpm.
 
+$( [ -d "$SRC/config/cantaloupe" ] && cat <<'CANTALOUPE'
+## The IIIF image server
+
+Deep zoom and image tiling need an IIIF image server. Cantaloupe is the usual
+choice. Manifests, the viewer and OCR export work without one; tiled images do not.
+
+**Install the delegate.** `config/cantaloupe/delegates.rb` ships with this plugin.
+Copy it to the Cantaloupe installation and point `delegate_script.pathname` at it.
+
+Without the delegate the image server reads files straight off disk and knows
+nothing about AtoM's access control, so every master under `uploads/r/` is
+retrievable through the IIIF endpoint by anyone who can form the path - and those
+paths appear in every manifest. The nginx rules protecting `/uploads/r/` do not
+help here: it is a different route to the same bytes.
+
+`config/cantaloupe/README.md` covers the three things that are easy to get wrong,
+each of which leaves the check inert while appearing to be configured, and gives
+the commands to prove it is actually running. Read it before going live.
+
 ## Uninstall
+CANTALOUPE
+) 
+$( [ -d "$SRC/config/cantaloupe" ] || echo "## Uninstall" )
 
 Disable in Admin > Plugins, in reverse order, then remove the directories and
 clear the cache. The tables are left in place; drop them by hand if the data is
