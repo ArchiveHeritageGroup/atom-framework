@@ -57,6 +57,22 @@ resolve_deps() {
 }
 
 DEPS="$(resolve_deps "$PLUGIN" "$PLUGIN" | tr ' ' '\n' | awk 'NF' | awk '!seen[$0]++' | tr '\n' ' ')"
+
+# Does anything in this bundle need an image server?
+#
+# Tested across every plugin going into the zip, not just the named one. The
+# viewers carry ahgIiifPlugin as a dependency, so a bundle can ship the Cantaloupe
+# delegate while its own directory has no config/cantaloupe - which is exactly what
+# happened: ahgSeadragonPlugin and ahgMiradorPlugin shipped the delegate and said
+# nothing about it, so someone installing a viewer had the authorisation hook on
+# disk and no reason to know it existed.
+NEEDS_IMAGE_SERVER=""
+for p in $PLUGIN $DEPS; do
+    if [ -d "$PLUGINS/$p/config/cantaloupe" ]; then
+        NEEDS_IMAGE_SERVER="yes"
+        break
+    fi
+done
 RUNTIME_VERSION="$(python3 -c "import json;print(json.load(open('$FRAMEWORK/version.json'))['version'])" 2>/dev/null || echo '0.0.0')"
 
 STAGE="$(mktemp -d)"
@@ -191,81 +207,39 @@ paths in /etc/systemd/system/php8.3-fpm.service.d/<site>-storage.conf:
 
 Then systemctl daemon-reload && systemctl restart php8.3-fpm.
 
-$( [ -d "$SRC/config/cantaloupe" ] && cat <<'CANTALOUPE'
-## The IIIF image server
+$( [ -n "$NEEDS_IMAGE_SERVER" ] && cat <<'CANTALOUPE'
+## Optional: an IIIF image server
 
-Deep zoom and image tiling need an IIIF image server. Cantaloupe is the usual
-choice. Manifests, the viewer and OCR export work without one; tiled images do not.
+The plugin does not install or configure one, and does not assume you are without
+one. Manifests, the viewer and OCR export all work as they are. Deep zoom and image
+tiling are what an image server adds.
 
-### 1. Install Cantaloupe
+If you already run Cantaloupe, IIPImage or anything else that speaks IIIF, point it
+at your uploads and you are done - nothing here needs to change.
 
-Download a release from https://cantaloupe-project.github.io and run it on
-127.0.0.1:8182. It should not be reachable from outside the host: everything goes
-through nginx, which is where authorisation happens.
+If you do not, there is a standalone guide in the repository. It is deliberately
+separate from this file: the web server and the image server are yours, and a plugin
+has no business rewriting them.
 
-In `cantaloupe.properties`:
+    docs/infrastructure/iiif-image-server.md
+    docs/infrastructure/nginx.md
 
-    source.static = FilesystemSource
-    FilesystemSource.lookup_strategy = ScriptLookupStrategy
-    delegate_script.enabled = true
-    delegate_script.pathname = /path/to/delegates.rb
-    http.host = 127.0.0.1
-    http.port = 8182
-    endpoint.api.enabled = false
+**One thing to carry across whichever server you use.** An image server reads files
+straight off disk and knows nothing about AtoM's access control. Left open, every
+master under `uploads/r/` is retrievable through the IIIF endpoint by anyone who can
+form the path, and those paths appear in every manifest. The nginx rules protecting
+`/uploads/r/` do not help - it is a different route to the same bytes.
 
-### 2. Install the delegate
-
-`config/cantaloupe/delegates.rb` ships with this plugin. Copy it beside
-Cantaloupe and point `delegate_script.pathname` at it.
-
-Edit `INSTANCE_PATHS` at the top. The key is each site's hostname, the value the
-directory `uploads/` sits inside, with a trailing slash. One image server usually
-fronts several AtoM sites and the same identifier means a different file on each,
-which is why it is a map rather than one path.
-
-**This is the part that matters.** Without the delegate the image server reads
-files straight off disk and knows nothing about AtoM's access control, so every
-master under `uploads/r/` is retrievable through the IIIF endpoint by anyone who
-can form the path - and those paths appear in every manifest. The nginx rules
-protecting `/uploads/r/` do not help: it is a different route to the same bytes.
-
-### 3. Proxy it from nginx
-
-In the AtoM server block, before the main PHP handler:
-
-    location /iiif/ {
-        proxy_pass http://127.0.0.1:8182/iiif/;
-        proxy_set_header Host              $host;
-        proxy_set_header X-Real-IP         $remote_addr;
-        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        add_header Access-Control-Allow-Origin "*" always;
-    }
-
-The `Host` header is not optional. The delegate asks AtoM whether a file may be
-served, and it needs to know which site is asking; without it the check lands on
-whichever vhost answers by default, which knows nothing about the file and allows
-it.
-
-A ready-made snippet is in the runtime at `config/nginx/extensions.conf`.
-
-### 4. Prove it is actually refusing
-
-    curl -sk -H "Host: <your-site>" \
-      "https://127.0.0.1/iiif/auth/cantaloupe-check?identifier=<url-encoded-path>"
-
-A master must answer `{"allowed": false}`. Then request the same master through
-`/iiif/2/<identifier>/full/max/0/default.jpg` anonymously and confirm a 403.
-Restart Cantaloupe first, because the delegate caches its verdicts.
-
-`config/cantaloupe/README.md` covers three ways this can appear configured while
-doing nothing at all - each failed silently and independently in practice. Read it
-before putting an image server in front of a live collection.
+For Cantaloupe, the authorisation hook that closes this ships in this bundle at
+`config/cantaloupe/delegates.rb`, with `config/cantaloupe/README.md` covering three
+ways it can look configured while doing nothing at all. For any other server, the
+equivalent check is yours to write; the endpoint it should call is documented in the
+guide.
 
 ## Uninstall
 CANTALOUPE
-) 
-$( [ -d "$SRC/config/cantaloupe" ] || echo "## Uninstall" )
+)
+$( [ -n "$NEEDS_IMAGE_SERVER" ] || echo "## Uninstall" )
 
 Disable in Admin > Plugins, in reverse order, then remove the directories and
 clear the cache. The tables are left in place; drop them by hand if the data is
