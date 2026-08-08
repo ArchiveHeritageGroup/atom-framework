@@ -200,6 +200,51 @@ $LICENCE. The Archive and Heritage Group (Pty) Ltd.
 EOF
 } > "$STAGE/INSTALL.md"
 
+# ------------------------------------------------------------------ CSP check
+#
+# Style attributes are dropped outright by an enforcing Content Security Policy.
+# AtoM ships style-src with a nonce and no 'unsafe-hashes', and a nonce cannot
+# rescue an attribute - only <style> and <script> elements can carry one. So every
+# style="..." in a template is a rule that will not apply on any site running the
+# enforcing header, silently, with nothing logged.
+#
+# This is checked at build time because the alternative is finding out after
+# publication, which is how it went: four plugins shipped before a run against an
+# enforcing instance found them. The development instance sent
+# Content-Security-Policy-Report-Only, which applies the styles anyway and reports
+# nothing useful, so the test suite had been green throughout.
+#
+# Set AHG_ALLOW_INLINE_STYLES=1 to package anyway.
+# Scoped to templates rendered inside AtoM. Export and report services generate
+# standalone HTML or PDF that is never served under the site's policy, so style
+# attributes there are legitimate and flagging them would only teach people to
+# pass the override.
+INLINE=0
+INLINE_FILES=""
+if [ -d "$STAGE/$PLUGIN/modules" ]; then
+    INLINE_FILES="$(grep -rlE 'style="[^"]*"' "$STAGE/$PLUGIN"/modules/*/templates --include='*.php' 2>/dev/null || true)"
+    INLINE="$(grep -rhoE 'style="[^"]*"' "$STAGE/$PLUGIN"/modules/*/templates --include='*.php' 2>/dev/null | wc -l | tr -d ' ')"
+fi
+
+if [ "${INLINE:-0}" -gt 0 ]; then
+    echo "" >&2
+    echo "  REFUSING to package $PLUGIN: $INLINE inline style attribute(s)." >&2
+    echo "" >&2
+    echo "$INLINE_FILES" | sed "s|$STAGE/|    |" | head -10 >&2
+    echo "" >&2
+    echo "  A CSP nonce covers <style> and <script> elements, never a style" >&2
+    echo "  attribute, so these are dropped on any site running the enforcing" >&2
+    echo "  header. Use a class, or ahg_style_block() from ahgCorePlugin, or set" >&2
+    echo "  the property through the CSSOM for a computed value." >&2
+    echo "" >&2
+    echo "  AHG_ALLOW_INLINE_STYLES=1 to package anyway." >&2
+    echo "" >&2
+
+    if [ "${AHG_ALLOW_INLINE_STYLES:-0}" != "1" ]; then
+        exit 1
+    fi
+fi
+
 # ------------------------------------------------------------------ package
 ZIP="$OUTDIR/$PLUGIN-$VERSION.zip"
 rm -f "$ZIP"
