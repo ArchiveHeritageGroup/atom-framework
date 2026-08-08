@@ -91,8 +91,11 @@ fi
 # ------------------------------------------------------------------ schema summary
 TABLES=""
 if [ -f "$SRC/database/install.sql" ]; then
-    TABLES="$(grep -ohiE 'CREATE TABLE (IF NOT EXISTS )?`?[a-z_]+`?' "$SRC/database/install.sql" \
-        | grep -oiE '[a-z_]+`?$' | tr -d '`' | sort -u | sed 's/^/    /')"
+    # Tolerates an install.sql that creates no tables - several plugins ship one
+    # that only seeds data. grep returns 1 on no match, and under pipefail that
+    # aborted the build for fifteen plugins with no message at all.
+    TABLES="$( { grep -ohiE 'CREATE TABLE (IF NOT EXISTS )?`?[a-z_]+`?' "$SRC/database/install.sql" 2>/dev/null || true; } \
+        | { grep -oiE '[a-z_]+`?$' || true; } | tr -d '`' | sort -u | sed 's/^/    /')"
 fi
 
 # Enable order: dependencies deepest first.
@@ -226,8 +229,11 @@ if [ -d "$STAGE/$PLUGIN/modules" ]; then
     # set -euo pipefail that aborts the build. Without this the check failed the
     # clean plugins and passed nothing - the opposite of its purpose - and it
     # published stale zips before anyone noticed.
-    INLINE_FILES="$(grep -rlE 'style="[^"]*"' "$STAGE/$PLUGIN"/modules/*/templates --include='*.php' 2>/dev/null || true)"
-    INLINE="$( { grep -rhoE 'style="[^"]*"' "$STAGE/$PLUGIN"/modules/*/templates --include='*.php' 2>/dev/null || true; } | wc -l | tr -d ' ')"
+    # The pattern excludes data-ahg-style="...", which legitimately carries a
+    # declaration for the CSSOM applier to set. Matching bare 'style="' caught
+    # those too and refused plugins that had already been fixed.
+    INLINE_FILES="$(grep -rlE '(^|[^-[:alnum:]])style="[^"]*"' "$STAGE/$PLUGIN"/modules/*/templates --include='*.php' 2>/dev/null || true)"
+    INLINE="$( { grep -rhoE '(^|[^-[:alnum:]])style="[^"]*"' "$STAGE/$PLUGIN"/modules/*/templates --include='*.php' 2>/dev/null || true; } | wc -l | tr -d ' ')"
 fi
 
 if [ "${INLINE:-0}" -gt 0 ]; then
