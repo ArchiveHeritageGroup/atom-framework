@@ -46,6 +46,15 @@ const PAGES = [
   // these are checked signed in and again anonymously further down.
   ['ahgIiifPlugin', '/index.php/iiif/settings', 'IIIF'],
   ['ahgIiifPlugin', '/index.php/mediaSettings', 'Media'],
+  // Pages whose templates carried inline style attributes. Added after a sweep
+  // moved 81 of them into nonced style blocks, because the suite had covered
+  // none of these and a fix nobody exercises is a fix nobody trusts.
+  ['ahgPreservationPlugin', '/index.php/admin/preservation/scheduler', 'Schedul'],
+  ['ahgPreservationPlugin', '/index.php/admin/preservation/identification', 'dentif'],
+  ['ahgPreservationPlugin', '/index.php/admin/preservation/conversion', 'onversi'],
+  ['ahgIiifPlugin', '/index.php/manifest-collections', 'ollection'],
+  ['ahgBackupPlugin', '/index.php/backup/upload', 'pload'],
+  ['ahgCorePlugin', '/index.php/settings/email', 'Email'],
   ['atom', '/index.php/informationobject/browse', 'Showing'],
   ['atom', '/index.php/informationobject/add', 'Identity area'],
   ['atom', '/index.php/actor/add', 'Identity area'],
