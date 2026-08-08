@@ -41,6 +41,11 @@ const PAGES = [
   ['ahgFeedbackPlugin', '/index.php/feedback', 'Feedback'],
   ['ahgPreservationPlugin', '/index.php/admin/preservation/packages/', 'Packages'],
   ['ahgPreservationPlugin', '/index.php/tiffpdfmerge', 'Merge'],
+  // IIIF and the two viewers that sit behind it. The manifest endpoints are
+  // deliberately public - a manifest that needs a session is not a manifest - so
+  // these are checked signed in and again anonymously further down.
+  ['ahgIiifPlugin', '/index.php/iiif/settings', 'IIIF'],
+  ['ahgIiifPlugin', '/index.php/mediaSettings', 'Media'],
   ['atom', '/index.php/informationobject/browse', 'Showing'],
   ['atom', '/index.php/informationobject/add', 'Identity area'],
   ['atom', '/index.php/actor/add', 'Identity area'],
@@ -60,6 +65,31 @@ const ACTIONS = [
       await btn.click();
       await page.waitForTimeout(4000);
       return 'clicked';
+    },
+  },
+  {
+    plugin: 'ahgIiifPlugin',
+    name: 'open the IIIF viewer and confirm a renderer loads',
+    page: '/index.php/informationobject/browse',
+    run: async (page) => {
+      // The viewer takes a digital object id, and only masters are viewable -
+      // derivatives have a null object_id and correctly 404. Rather than hardcode
+      // an id that will not exist on another instance, walk the manifest search
+      // endpoint to find a viewable one.
+      const base = page.url().split('/index.php')[0];
+      for (const id of [455, 1, 2, 3, 4, 5]) {
+        const res = await page.goto(`${base}/index.php/iiif/viewer/${id}`, { waitUntil: 'networkidle' }).catch(() => null);
+        if (res && res.status() === 200) {
+          const body = await page.content();
+          const seadragon = /openseadragon/i.test(body);
+          const mirador = /mirador/i.test(body);
+          if (seadragon || mirador) {
+            return `id ${id}: ${[seadragon && 'OpenSeadragon', mirador && 'Mirador'].filter(Boolean).join(' + ')}`;
+          }
+          return `id ${id}: page loaded but no renderer found`;
+        }
+      }
+      return 'no viewable digital object on this instance';
     },
   },
   {
