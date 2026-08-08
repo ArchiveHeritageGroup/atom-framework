@@ -1,0 +1,153 @@
+#!/usr/bin/env bash
+#
+# Regenerate the index release that sits at the top of the releases page.
+#
+# Why this exists: the index was written by hand, and GitHub orders releases by
+# date - so the next plugin published appears above it with the index still
+# claiming the old version. A catalogue that silently goes stale is worse than no
+# catalogue, because it looks authoritative.
+#
+# Everything is discovered rather than listed here. The set of plugins comes from
+# what is actually published (gh release list), the versions from the tags, and
+# the names and descriptions from each plugin's extension.json. Publish a new
+# plugin and it appears; publish a new version and the row updates. Nothing in
+# this file needs editing for either.
+#
+# Usage:
+#   bin/build-release-index            print the markdown
+#   bin/build-release-index --publish  update the index release on GitHub
+#
+set -euo pipefail
+
+FRAMEWORK="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ROOT="$(cd "$FRAMEWORK/.." && pwd)"
+PLUGINS="$ROOT/atom-ahg-plugins"
+REPO="ArchiveHeritageGroup/atom-ahg-plugins"
+INDEX_TAG="ahg-plugins-index"
+BASE="https://github.com/$REPO"
+
+command -v gh >/dev/null || { echo "gh is not available" >&2; exit 1; }
+
+# Published per-plugin releases, newest version of each.
+#
+# Tags look like ahgFeedbackPlugin-v1.0.5. The repository-wide v1.6.x and v1.7.x
+# tags predate per-plugin packaging and are deliberately excluded: they are not
+# installable downloads, and listing them as though they were is how the page
+# became confusing in the first place.
+TAGS="$(gh release list --repo "$REPO" --limit 200 2>/dev/null \
+        | awk -F'\t' '{print $3}' \
+        | grep -E '^ahg[A-Za-z0-9]+Plugin-v[0-9]+\.[0-9]+\.[0-9]+$' || true)"
+
+[ -n "$TAGS" ] || { echo "No per-plugin releases found" >&2; exit 1; }
+
+# Highest version per plugin. sort -V on the version part, last one wins.
+LATEST="$(echo "$TAGS" | sed 's/-v/ /' | sort -k1,1 -k2,2V | awk '{a[$1]=$2} END {for (p in a) print p, a[p]}' | sort)"
+
+meta() { # meta <plugin> <key>
+    python3 -c "
+import json,sys
+try: d=json.load(open('$PLUGINS/$1/extension.json'))
+except Exception: print(''); sys.exit()
+v=d.get('$2','')
+print(' '.join(v) if isinstance(v,list) else v)
+" 2>/dev/null
+}
+
+# 'AHG Favorites Plugin' reads badly in a table next to 'Provenance Tracking'.
+# Cosmetic only - the declared name is left alone in extension.json.
+tidy_name() { echo "$1" | sed -E 's/^AHG //; s/ Plugin$//'; }
+
+# First sentence, which is the part written to be read on its own. Cut at a word
+# boundary if it is still long - a hard character cut left cells ending "AJAX tog".
+summary() {
+    echo "$1" | sed -E 's/([^.]*\.).*/\1/; s/\.$//' \
+        | awk '{ if (length($0) <= 140) print; else { s=substr($0,1,140); sub(/ [^ ]*$/,"",s); print s "..." } }'
+}
+
+RUNTIME_VERSION="$(python3 -c "import json;print(json.load(open('$FRAMEWORK/version.json'))['version'])" 2>/dev/null || echo '')"
+RUNTIME_TAG="$(echo "$LATEST" | awk '$1=="ahgRuntimePlugin" {print $2}')"
+[ -n "$RUNTIME_TAG" ] && RUNTIME_VERSION="$RUNTIME_TAG"
+
+{
+cat <<EOF
+Every AHG plugin currently published for AtoM 2.9 and 2.10, newest version of each. This page is the index; the individual releases below carry the downloads.
+
+## Start here
+
+| | Version | Download |
+|---|---|---|
+| **AHG Runtime** - shared foundation, install this first | $RUNTIME_VERSION | [ahgRuntimePlugin-$RUNTIME_VERSION.zip]($BASE/releases/tag/ahgRuntimePlugin-v$RUNTIME_VERSION) |
+
+Every plugin below depends on it. It ships once, separately, because it is the large part and identical for all of them.
+
+## Plugins
+
+| Plugin | Version | What it does | Download |
+|---|---|---|---|
+EOF
+
+# Viewers are separated out: they depend on ahgIiifPlugin and contribute a
+# renderer rather than a feature of their own.
+VIEWERS=""
+while read -r plugin version; do
+    [ -n "$plugin" ] || continue
+    [ "$plugin" = "ahgRuntimePlugin" ] && continue
+
+    name="$(tidy_name "$(meta "$plugin" name)")"
+    [ -n "$name" ] || name="$plugin"
+    desc="$(summary "$(meta "$plugin" description)")"
+    row="| $name | $version | $desc | [download]($BASE/releases/tag/$plugin-v$version) |"
+
+    case " $(meta "$plugin" dependencies) " in
+        *" ahgIiifPlugin "*) VIEWERS="$VIEWERS$row"$'\n' ;;
+        *)                   echo "$row" ;;
+    esac
+done <<< "$LATEST"
+
+if [ -n "$VIEWERS" ]; then
+cat <<EOF
+
+## Viewers
+
+Both register with the IIIF renderer registry rather than being named by a theme. Install one, both or neither; removing one leaves the rest working. Each bundle carries IIIF, so you do not need to fetch it separately.
+
+| Viewer | Version | What it does | Download |
+|---|---|---|---|
+$VIEWERS
+EOF
+fi
+
+cat <<EOF
+## Requirements
+
+    AtoM     2.9 or 2.10
+    PHP      8.1 or later
+    MySQL    8.0
+
+AtoM 2.8 is not supported. It is the last release running on PHP 7.4, and the runtime is built on Laravel 10, which is PHP 8.1+ by construction.
+
+Nothing in base AtoM is modified. No file under \`apps/\`, \`lib/\`, \`vendor/\` or \`config/\` is touched, and \`ProjectConfiguration.class.php\` stays as upstream ships it. Each bundle carries its own dependencies and its own \`INSTALL.md\` with the enable order.
+
+## Guides
+
+Optional, and only if your infrastructure is not already set up the way you want it:
+
+- [Setting up an IIIF image server]($BASE/blob/main/docs/infrastructure/iiif-image-server.md) - requirements, Cantaloupe, authorisation, and how to prove it refuses
+- [nginx]($BASE/blob/main/docs/infrastructure/nginx.md) - proxying an image server, serving derivatives, the \`ProtectSystem=full\` trap, CSP
+- [Full plugin catalogue]($BASE/blob/main/docs/plugins/README.md)
+
+## About the older releases below
+
+Everything tagged \`v1.6.x\` and \`v1.7.x\` is repository-wide version history from before the plugins were packaged individually. They are not installable downloads. The per-plugin releases above are.
+
+Licence: AGPL-3.0-or-later.
+EOF
+} > /tmp/ahg-release-index.md
+
+if [ "${1:-}" = "--publish" ]; then
+    gh release edit "$INDEX_TAG" --repo "$REPO" --notes-file /tmp/ahg-release-index.md >/dev/null
+    echo "Updated $BASE/releases/tag/$INDEX_TAG"
+    echo "  plugins listed: $(echo "$LATEST" | awk 'NF' | wc -l)"
+else
+    cat /tmp/ahg-release-index.md
+fi
