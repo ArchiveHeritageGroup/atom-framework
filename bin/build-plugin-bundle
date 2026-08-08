@@ -197,18 +197,70 @@ $( [ -d "$SRC/config/cantaloupe" ] && cat <<'CANTALOUPE'
 Deep zoom and image tiling need an IIIF image server. Cantaloupe is the usual
 choice. Manifests, the viewer and OCR export work without one; tiled images do not.
 
-**Install the delegate.** `config/cantaloupe/delegates.rb` ships with this plugin.
-Copy it to the Cantaloupe installation and point `delegate_script.pathname` at it.
+### 1. Install Cantaloupe
 
-Without the delegate the image server reads files straight off disk and knows
-nothing about AtoM's access control, so every master under `uploads/r/` is
-retrievable through the IIIF endpoint by anyone who can form the path - and those
-paths appear in every manifest. The nginx rules protecting `/uploads/r/` do not
-help here: it is a different route to the same bytes.
+Download a release from https://cantaloupe-project.github.io and run it on
+127.0.0.1:8182. It should not be reachable from outside the host: everything goes
+through nginx, which is where authorisation happens.
 
-`config/cantaloupe/README.md` covers the three things that are easy to get wrong,
-each of which leaves the check inert while appearing to be configured, and gives
-the commands to prove it is actually running. Read it before going live.
+In `cantaloupe.properties`:
+
+    source.static = FilesystemSource
+    FilesystemSource.lookup_strategy = ScriptLookupStrategy
+    delegate_script.enabled = true
+    delegate_script.pathname = /path/to/delegates.rb
+    http.host = 127.0.0.1
+    http.port = 8182
+    endpoint.api.enabled = false
+
+### 2. Install the delegate
+
+`config/cantaloupe/delegates.rb` ships with this plugin. Copy it beside
+Cantaloupe and point `delegate_script.pathname` at it.
+
+Edit `INSTANCE_PATHS` at the top. The key is each site's hostname, the value the
+directory `uploads/` sits inside, with a trailing slash. One image server usually
+fronts several AtoM sites and the same identifier means a different file on each,
+which is why it is a map rather than one path.
+
+**This is the part that matters.** Without the delegate the image server reads
+files straight off disk and knows nothing about AtoM's access control, so every
+master under `uploads/r/` is retrievable through the IIIF endpoint by anyone who
+can form the path - and those paths appear in every manifest. The nginx rules
+protecting `/uploads/r/` do not help: it is a different route to the same bytes.
+
+### 3. Proxy it from nginx
+
+In the AtoM server block, before the main PHP handler:
+
+    location /iiif/ {
+        proxy_pass http://127.0.0.1:8182/iiif/;
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        add_header Access-Control-Allow-Origin "*" always;
+    }
+
+The `Host` header is not optional. The delegate asks AtoM whether a file may be
+served, and it needs to know which site is asking; without it the check lands on
+whichever vhost answers by default, which knows nothing about the file and allows
+it.
+
+A ready-made snippet is in the runtime at `config/nginx/extensions.conf`.
+
+### 4. Prove it is actually refusing
+
+    curl -sk -H "Host: <your-site>" \
+      "https://127.0.0.1/iiif/auth/cantaloupe-check?identifier=<url-encoded-path>"
+
+A master must answer `{"allowed": false}`. Then request the same master through
+`/iiif/2/<identifier>/full/max/0/default.jpg` anonymously and confirm a 403.
+Restart Cantaloupe first, because the delegate caches its verdicts.
+
+`config/cantaloupe/README.md` covers three ways this can appear configured while
+doing nothing at all - each failed silently and independently in practice. Read it
+before putting an image server in front of a live collection.
 
 ## Uninstall
 CANTALOUPE
