@@ -81,24 +81,61 @@ const ACTIONS = [
     name: 'open the IIIF viewer and confirm a renderer loads',
     page: '/index.php/informationobject/browse',
     run: async (page) => {
-      // The viewer takes a digital object id, and only masters are viewable -
-      // derivatives have a null object_id and correctly 404. Rather than hardcode
-      // an id that will not exist on another instance, walk the manifest search
-      // endpoint to find a viewable one.
+      // Walk from browse to a record and look for the viewer the injector puts
+      // on the page. That is the path a reader takes, and it needs no ids.
+      //
+      // This used to try digital object ids [455, 1, 2, 3, 4, 5] in turn. 455 was
+      // whatever happened to be viewable on the instance the check was written
+      // against; the rest were hopeful. A database rebuild made every one of them
+      // 404, and the check then reported a plugin failure for months when what it
+      // had actually found was its own stale fixture.
       const base = page.url().split('/index.php')[0];
-      for (const id of [455, 1, 2, 3, 4, 5]) {
-        const res = await page.goto(`${base}/index.php/iiif/viewer/${id}`, { waitUntil: 'networkidle' }).catch(() => null);
-        if (res && res.status() === 200) {
-          const body = await page.content();
-          const seadragon = /openseadragon/i.test(body);
-          const mirador = /mirador/i.test(body);
-          if (seadragon || mirador) {
-            return `id ${id}: ${[seadragon && 'OpenSeadragon', mirador && 'Mirador'].filter(Boolean).join(' + ')}`;
-          }
-          return `id ${id}: page loaded but no renderer found`;
+
+      // Read every href in one evaluate rather than locator-by-locator: a
+      // locator that matches nothing makes getAttribute wait for the full
+      // timeout, which is how this check came to throw instead of answering.
+      // Result links first. Reading every anchor on the page meant walking the
+      // navigation, the language switcher and the footer before ever reaching a
+      // record, and on a small catalogue the loop ran out first.
+      const hrefs = await page.evaluate(() => {
+        const pick = (sel) => Array.from(document.querySelectorAll(sel)).map((a) => a.getAttribute('href'));
+        const results = pick('.search-result a[href], article a[href]');
+
+        return (results.length ? results : pick('#main-column a[href]')).filter(Boolean);
+      });
+      const count = hrefs.length;
+
+      if (!count) {
+        // An empty catalogue is not a plugin fault, and should not read as one.
+        return 'no descriptions on this instance - nothing to view';
+      }
+
+      let opened = false;
+
+      for (const href of hrefs.slice(0, 40)) {
+        if (!href || !/\/index\.php\//.test(href)) continue;
+        if (/\/(browse|search|add|edit|login|logout|settings|admin)/.test(href)) continue;
+
+        await page.goto(href.startsWith('http') ? href : base + href, { waitUntil: 'networkidle' }).catch(() => {});
+        opened = true;
+
+        const container = page.locator('[data-viewer]');
+        if (await container.count()) {
+          const which = await container.first().getAttribute('data-viewer');
+          const by = await container.first().getAttribute('data-rendered-by');
+
+          // Give the viewer a moment to boot, then confirm it actually painted
+          // rather than merely being present in the markup.
+          await page.waitForTimeout(6000);
+          const painted = await container.first().locator('canvas, iframe').count();
+
+          return `${which} via ${by}, ${painted ? 'rendered' : 'container present but nothing painted'}`;
         }
       }
-      return 'no viewable digital object on this instance';
+
+      return opened
+        ? 'records exist but none carry a digital object'
+        : 'no record links found on browse';
     },
   },
   {
@@ -176,12 +213,18 @@ const ACTIONS = [
     netFailures = [];
     await page.goto(BASE + act.page, { waitUntil: 'networkidle' }).catch(() => {});
     let outcome;
+    let threw = false;
     try {
       outcome = await act.run(page);
     } catch (e) {
-      outcome = 'threw: ' + String(e.message).slice(0, 90);
+      // A check that throws is a check that did not run. This was counted as a
+      // pass, so a timeout inside an interaction reported green - the worst
+      // possible outcome for a suite whose job is to notice things.
+      threw = true;
+      outcome = 'threw: ' + String(e.message).split('\n')[0].slice(0, 90);
     }
     const problems = [];
+    if (threw) problems.push('check threw');
     if (consoleErrors.length) problems.push(`${consoleErrors.length} console error(s)`);
     if (netFailures.length) problems.push(`${netFailures.length} failed request(s)`);
     console.log(`    ${problems.length ? 'FAIL' : 'ok  '} ${act.name.padEnd(30)} ${outcome}  ${problems.join('; ')}`);
