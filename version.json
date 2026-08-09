@@ -1,14 +1,14 @@
 {
-    "name": "atom-ahg-framework",
-    "version": "2.14.0",
-    "release_date": "2026-08-04",
-    "min_atom_version": "2.8",
-    "max_atom_version": "2.10",
-    "min_php_version": "8.1",
-    "framework": "atom-framework",
-    "description": "AtoM AHG Framework - Extension system for Access to Memory",
-    "author": "The Archive and Heritage Group (Pty) Ltd",
-    "license": "GPL-3.0",
-    "homepage": "https://github.com/ArchiveHeritageGroup/atom-framework",
-    "updated": "2026-01-22"
+  "name": "atom-ahg-framework",
+  "version": "2.14.1",
+  "release_date": "2026-08-04",
+  "min_atom_version": "2.8",
+  "max_atom_version": "2.10",
+  "min_php_version": "8.1",
+  "framework": "atom-framework",
+  "description": "AtoM AHG Framework - Extension system for Access to Memory",
+  "author": "The Archive and Heritage Group (Pty) Ltd",
+  "license": "GPL-3.0",
+  "homepage": "https://github.com/ArchiveHeritageGroup/atom-framework",
+  "updated": "2026-01-22"
 }
