@@ -46,6 +46,26 @@ if [ -d "$FRAMEWORK/scripts" ]; then
 fi
 [ -f "$FRAMEWORK/bootstrap.php" ] && cp "$FRAMEWORK/bootstrap.php" "$OUT/bootstrap.php"
 
+# The CLI entry point for plugin tasks.
+#
+# symfony builds its task list from ProjectConfiguration's plugin list, and on a
+# packaged install that is stock AtoM - the base ten and nothing else. The AHG
+# plugins are enabled from the database by sfPluginAdminPlugin, which only runs
+# for a web request. So every plugin worked in the browser and none of their
+# tasks existed at the command line: ten preservation tasks shipped in the bundle
+# and `php symfony preservation:fixity` answered "no tasks defined in the
+# preservation namespace". Fixity and virus scanning are scheduled jobs by
+# nature, so that is most of the point of the plugin.
+#
+# bin/ahg reads the same setting the web request does and enables those plugins
+# before symfony builds its task list. Base AtoM is untouched; this sits beside
+# `symfony` rather than replacing it.
+if [ -f "$FRAMEWORK/bin/ahg-cli.php" ]; then
+    mkdir -p "$OUT/bin"
+    cp "$FRAMEWORK/bin/ahg-cli.php" "$OUT/bin/ahg"
+    chmod +x "$OUT/bin/ahg"
+fi
+
 # ---------------------------------------------------------------- schema
 # ONLY the runtime's own tables. The framework's install.sql creates all 273 tables in
 # the estate regardless of which plugins are installed (issue #269); carrying that into
