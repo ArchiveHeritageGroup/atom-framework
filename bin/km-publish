@@ -1,0 +1,132 @@
+#!/usr/bin/env bash
+#
+# Publish a session log to KM and confirm it actually arrived.
+#
+# Why this exists: dropping a file into /var/spool/km-ingest/ always "succeeds".
+# The copy works, the JSON is valid, and the publisher learns nothing about
+# whether KM accepted it. Between 2026-07-04 and 2026-07-31, 37 payloads from
+# this project were rejected with HTTP 400 and nobody found out for four weeks,
+# because the only evidence was a file landing in a folder nobody opens
+# (issue #265).
+#
+# So this does the one thing the drop-folder cannot: it waits for the watcher to
+# pick the file up, then reports which folder it landed in. archive/ is success.
+# failed/ is not, and the .err says why.
+#
+# Markdown is preferred over JSON deliberately. The watcher accepts JSON only
+# with BOTH `title` and `body`, and the obvious richer payload - title, summary,
+# tags, releases - is refused for lacking the one key named `body`. A markdown
+# file with a `#` heading cannot fail that way, and is byte-identical to the
+# in-repo session log, so the two cannot drift.
+#
+# Usage:
+#   bin/km-publish docs/sessions/2026-08-10-thing.md
+#   bin/km-publish --timeout 60 docs/sessions/*.md
+#
+set -uo pipefail
+
+SPOOL="${KM_INGEST_SPOOL:-/var/spool/km-ingest}"
+TIMEOUT=45
+FILES=()
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --timeout) TIMEOUT="$2"; shift 2 ;;
+        --spool)   SPOOL="$2"; shift 2 ;;
+        -h|--help)
+            sed -n '3,26p' "$0" | sed 's/^# \{0,1\}//'
+            exit 0 ;;
+        *) FILES+=("$1"); shift ;;
+    esac
+done
+
+if [ ${#FILES[@]} -eq 0 ]; then
+    echo "Usage: $(basename "$0") [--timeout N] <file.md> [file.md ...]" >&2
+    exit 2
+fi
+
+[ -d "$SPOOL" ] || { echo "No spool directory at $SPOOL" >&2; exit 1; }
+
+rc=0
+
+for src in "${FILES[@]}"; do
+    if [ ! -f "$src" ]; then
+        echo "  MISSING  $src"
+        rc=1
+        continue
+    fi
+
+    name="$(basename "$src")"
+
+    case "$name" in
+        *.md)
+            # A markdown payload with no heading gets no title, and the watcher
+            # rejects it for exactly the reason this script exists to catch.
+            if ! grep -qE '^#[[:space:]]+\S' "$src"; then
+                echo "  NO TITLE $name - needs a '# heading' line; KM will reject it"
+                rc=1
+                continue
+            fi
+            ;;
+        *.json)
+            if ! python3 -c "
+import json,sys
+d = json.load(open('$src'))
+missing = [k for k in ('title','body') if not d.get(k)]
+sys.exit(1 if missing else 0)
+" 2>/dev/null; then
+                echo "  BAD JSON $name - needs BOTH 'title' and 'body'; prefer markdown"
+                rc=1
+                continue
+            fi
+            ;;
+    esac
+
+    cp -f "$src" "$SPOOL/$name" || { echo "  COPY FAIL $name"; rc=1; continue; }
+
+    # Wait for the watcher rather than trusting the copy.
+    landed=""
+    waited=0
+
+    while [ "$waited" -lt "$TIMEOUT" ]; do
+        if [ -n "$(find "$SPOOL/archive" -name "$name" -newermt '-10 minutes' 2>/dev/null | head -1)" ]; then
+            landed="archive"
+            break
+        fi
+
+        if [ -f "$SPOOL/failed/$name" ]; then
+            landed="failed"
+            break
+        fi
+
+        sleep 3
+        waited=$((waited + 3))
+    done
+
+    case "$landed" in
+        archive)
+            where="$(find "$SPOOL/archive" -name "$name" -newermt '-10 minutes' 2>/dev/null | head -1)"
+            echo "  OK       $name -> ${where#$SPOOL/}"
+            ;;
+        failed)
+            echo "  REJECTED $name"
+            if [ -f "$SPOOL/failed/$name.err" ]; then
+                sed 's/^/             /' "$SPOOL/failed/$name.err"
+            fi
+            rc=1
+            ;;
+        *)
+            # Still sitting in the spool root: the watcher is not running, or is
+            # slower than the timeout. Either way it has NOT been published, and
+            # saying so is the whole point.
+            if [ -f "$SPOOL/$name" ]; then
+                echo "  PENDING  $name - still queued after ${TIMEOUT}s; is km-spool-watcher running?"
+            else
+                echo "  UNKNOWN  $name - left the spool but landed in neither archive/ nor failed/"
+            fi
+            rc=1
+            ;;
+    esac
+done
+
+exit $rc
