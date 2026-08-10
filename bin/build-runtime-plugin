@@ -66,6 +66,18 @@ if [ -f "$FRAMEWORK/bin/ahg-cli.php" ]; then
     chmod +x "$OUT/bin/ahg"
 fi
 
+# patches-verify: reports whether base AtoM patches are still applied.
+#
+# An operator tool, so it has to reach the operator. It was written into the
+# framework and not copied here, which meant it existed for us and for nobody
+# running a packaged install - the people most likely to upgrade AtoM underneath
+# it and silently lose the security fixes those patches carry.
+if [ -f "$FRAMEWORK/bin/patches-verify" ]; then
+    mkdir -p "$OUT/bin"
+    cp "$FRAMEWORK/bin/patches-verify" "$OUT/bin/patches-verify"
+    chmod +x "$OUT/bin/patches-verify"
+fi
+
 # ---------------------------------------------------------------- schema
 # ONLY the runtime's own tables. The framework's install.sql creates all 273 tables in
 # the estate regardless of which plugins are installed (issue #269); carrying that into
