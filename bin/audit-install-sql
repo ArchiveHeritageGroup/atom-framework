@@ -1,0 +1,127 @@
+#!/usr/bin/env python3
+"""
+Refuse plugin SQL that does things a plugin's schema has no business doing.
+
+Checks, in order of how much damage they cause:
+
+  atom_plugin writes   A plugin that registers itself becomes *statically
+                       enabled*, and sfPluginAdminPlugin drops statically-enabled
+                       plugins from its list (pluginsAction.class.php:44-46). The
+                       plugin then cannot be managed in the one screen an
+                       operator would use. Worse when the row carries
+                       is_enabled = 1, which switches the plugin on without
+                       anyone choosing to.
+
+  DROP TABLE           Installers are re-run. A DROP in one destroys live client
+                       data on the second run.
+
+  ENUM columns         House rule: VARCHAR(n) with a COMMENT listing the values,
+                       because an ENUM cannot take a value nobody predicted and
+                       migrations around it are miserable.
+
+WHY THIS SCRIPT EXISTS AT ALL, AND WHY IT PARSES RATHER THAN GREPS
+
+Issue #272 reported 25 plugins self-registering. The real number was two. The
+other matches were comment lines reading "DO NOT include INSERT INTO
+atom_plugin" - the rule being quoted, counted as violations of itself.
+
+So this strips comments and string literals before matching. A checker that
+cannot tell an instruction from its own documentation produces exactly the kind
+of confident wrong number that sends someone off to fix 25 files that were
+already correct.
+
+Usage:
+    atom-framework/bin/audit-install-sql              # all plugins
+    atom-framework/bin/audit-install-sql ahgFooPlugin # one plugin
+"""
+
+import re
+import sys
+from pathlib import Path
+
+# Lives in the framework alongside the other tooling; the plugins repo keeps its
+# bin/ untracked (.gitignore: /bin/*), so a checked-in script cannot live there.
+ROOT = Path(__file__).resolve().parent.parent.parent / "atom-ahg-plugins"
+
+
+def strip_noise(sql: str) -> str:
+    """Remove comments and string literals so only executable SQL is matched."""
+    sql = re.sub(r"/\*.*?\*/", " ", sql, flags=re.S)      # block comments
+    sql = re.sub(r"--[^\n]*", " ", sql)                    # line comments
+    sql = re.sub(r"#[^\n]*", " ", sql)                     # MySQL # comments
+    sql = re.sub(r"'(?:[^'\\]|\\.|'')*'", "''", sql)       # single-quoted
+    sql = re.sub(r'"(?:[^"\\]|\\.|"")*"', '""', sql)       # double-quoted
+    return sql
+
+
+CHECKS = (
+    (
+        "atom_plugin write",
+        re.compile(r"\b(INSERT|UPDATE|DELETE|REPLACE)\b[^;]*?\batom_plugin\b", re.I | re.S),
+        "enablement is the operator's decision, not a side effect of installing schema",
+    ),
+    (
+        "DROP TABLE",
+        re.compile(r"\bDROP\s+TABLE\b", re.I),
+        "installers get re-run; this destroys live data the second time",
+    ),
+    (
+        "ENUM column",
+        re.compile(r"\bENUM\s*\(", re.I),
+        "use VARCHAR(n) with a COMMENT listing the valid values",
+    ),
+)
+
+# atom_plugin_audit is a different table with a legitimate reason to be written.
+AUDIT_TABLE = re.compile(r"\batom_plugin_audit\b", re.I)
+
+
+def audit(paths) -> int:
+    findings = 0
+    scanned = 0
+
+    for sql_file in sorted(paths):
+        try:
+            raw = sql_file.read_text(encoding="utf-8", errors="replace")
+        except OSError as exc:
+            print(f"  UNREADABLE {sql_file}: {exc}")
+            findings += 1
+            continue
+
+        scanned += 1
+        cleaned = strip_noise(raw)
+
+        for label, pattern, why in CHECKS:
+            for match in pattern.finditer(cleaned):
+                text = match.group(0)
+
+                if label == "atom_plugin write" and AUDIT_TABLE.search(text):
+                    continue
+
+                line = cleaned[: match.start()].count("\n") + 1
+                rel = sql_file.relative_to(ROOT)
+                print(f"  {label:<18} {rel}:{line}")
+                print(f"  {'':<18} {why}")
+                findings += 1
+
+    print(f"\n  scanned {scanned} SQL file(s), {findings} finding(s)")
+    return 1 if findings else 0
+
+
+def main() -> int:
+    if len(sys.argv) > 1:
+        paths = []
+        for name in sys.argv[1:]:
+            plugin = ROOT / name
+            if not plugin.is_dir():
+                print(f"  no such plugin: {name}")
+                return 2
+            paths.extend(plugin.rglob("*.sql"))
+    else:
+        paths = [p for p in ROOT.rglob("*.sql") if "node_modules" not in p.parts]
+
+    return audit(paths)
+
+
+if __name__ == "__main__":
+    sys.exit(main())
