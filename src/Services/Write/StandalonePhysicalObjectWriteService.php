@@ -17,8 +17,29 @@ class StandalonePhysicalObjectWriteService implements PhysicalObjectWriteService
 
     private const I18N_FIELDS = ['name', 'description', 'location'];
 
+    /**
+     * A blank physical object for an edit form.
+     *
+     * Returns a QubitPhysicalObject where AtoM is present, and only falls back
+     * to stdClass in a standalone context where that class does not exist.
+     *
+     * It returned stdClass unconditionally, and that made creating a physical
+     * object impossible on every install. The edit form hands the resource to
+     * base AtoM's own helpers, which call __get() on it - undefined on stdClass,
+     * so the render died mid-page. Because the fatal happened after headers were
+     * sent, /physicalobject/add answered HTTP 200 with a 39-byte body: no error
+     * page, no 500, a blank screen and nothing in the AtoM log. The only trace
+     * was "Call to undefined method stdClass::__get()" in nginx's error log.
+     *
+     * A blank object of the right class is what every caller was already
+     * assuming it had.
+     */
     public function newPhysicalObject(): object
     {
+        if (class_exists('\QubitPhysicalObject')) {
+            return new \QubitPhysicalObject();
+        }
+
         return new \stdClass();
     }
 
