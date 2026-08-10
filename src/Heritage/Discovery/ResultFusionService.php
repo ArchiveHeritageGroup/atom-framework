@@ -207,22 +207,65 @@ class ResultFusionService
      */
     public function deduplicate(Collection $results, float $threshold = 0.9): Collection
     {
-        $seen = [];
         $unique = collect();
+
+        // Exact matches, including the empty title. The old code reached these
+        // through similarity()'s `$a === $b` short-circuit, so keeping them here
+        // preserves that behaviour exactly - the first empty-titled result is
+        // kept and later ones are dropped, as before.
+        $exact = [];
+
+        // Remaining titles bucketed by length, so a candidate is only compared
+        // against lengths that could possibly clear the threshold. See below.
+        $byLength = [];
+
+        // similar_text() reports 2 * matched / (len(a) + len(b)). Since matched
+        // can never exceed the shorter string, a pair can only clear $threshold
+        // when 2 * min / (min + max) > $threshold, which rearranges to
+        //
+        //     max < min * (2 - threshold) / threshold
+        //
+        // That is a necessary condition, not a heuristic: any pair outside these
+        // bounds cannot score above the threshold, so skipping it cannot change
+        // the result. At the default 0.9 it means only lengths within ~1.22x of
+        // each other are ever compared.
+        $ratio = $threshold > 0 ? (2 - $threshold) / $threshold : PHP_FLOAT_MAX;
 
         foreach ($results as $item) {
             $title = strtolower($item->title ?? '');
+
+            if (isset($exact[$title])) {
+                continue;
+            }
+
             $isDuplicate = false;
 
-            foreach ($seen as $seenTitle) {
-                if ($this->similarity($title, $seenTitle) > $threshold) {
-                    $isDuplicate = true;
-                    break;
+            if ('' !== $title) {
+                $len = strlen($title);
+                $lo = (int) floor($len / $ratio);
+                $hi = (int) ceil($len * $ratio);
+
+                for ($l = $lo; $l <= $hi && !$isDuplicate; ++$l) {
+                    if (!isset($byLength[$l])) {
+                        continue;
+                    }
+
+                    foreach ($byLength[$l] as $seenTitle) {
+                        if ($this->similarity($title, $seenTitle) > $threshold) {
+                            $isDuplicate = true;
+                            break;
+                        }
+                    }
                 }
             }
 
             if (!$isDuplicate) {
-                $seen[] = $title;
+                $exact[$title] = true;
+
+                if ('' !== $title) {
+                    $byLength[strlen($title)][] = $title;
+                }
+
                 $unique->push($item);
             }
         }
