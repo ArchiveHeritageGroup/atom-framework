@@ -1,0 +1,97 @@
+#!/usr/bin/env bash
+#
+# Report which base AtoM patches are still applied, and which have been reverted.
+#
+# THE PROBLEM
+#
+# patches/ holds files that overwrite base AtoM - the account lockout on login,
+# the password policy on password change, the ACL role check, the settings
+# filter. Several carry security fixes.
+#
+# They are applied by copying over the base file. Nothing records that this was
+# done, and nothing checks afterwards. An AtoM upgrade, a `git checkout` in the
+# AtoM tree, an rsync from another instance - any of these restores the upstream
+# file and takes the fix with it. The site keeps working, so nobody looks.
+#
+# That is the whole failure mode: a security fix that silently stops existing.
+# This makes it visible.
+#
+# WHAT IT DOES NOT DO
+#
+# It does not reapply anything. Deciding to overwrite base AtoM is a decision,
+# and a script that quietly re-patched a tree during an upgrade would be a worse
+# version of the same problem. It reports; you choose.
+#
+# Usage:
+#   bin/patches-verify              report
+#   bin/patches-verify --quiet      print nothing unless something is reverted
+#
+# Exit codes:
+#   0  every patch is applied, or none were ever applied
+#   1  at least one patch was applied and has since been reverted
+#   2  cannot find the AtoM root
+#
+set -uo pipefail
+
+FRAMEWORK="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ROOT="$(cd "$FRAMEWORK/.." && pwd)"
+PATCHES="$FRAMEWORK/patches"
+QUIET=0
+[ "${1:-}" = "--quiet" ] && QUIET=1
+
+[ -f "$ROOT/config/ProjectConfiguration.class.php" ] || { echo "Cannot find the AtoM root from $FRAMEWORK" >&2; exit 2; }
+[ -d "$PATCHES" ] || { echo "No patches directory at $PATCHES" >&2; exit 2; }
+
+applied=0
+reverted=0
+absent=0
+REVERTED_LIST=""
+
+while IFS= read -r patch; do
+    rel="${patch#"$PATCHES"/}"
+
+    # Not a patch of a base file: the README, and the standalone Zend snippet
+    # which edits vendor code in place rather than replacing a file.
+    case "$rel" in
+        README.md|*.md|zend-acl-duplicate-role.php) continue ;;
+    esac
+
+    target="$ROOT/$rel"
+
+    if [ ! -f "$target" ]; then
+        absent=$((absent + 1))
+        continue
+    fi
+
+    if cmp -s "$patch" "$target"; then
+        applied=$((applied + 1))
+    else
+        # The base file exists and differs. Either the patch was never applied,
+        # or it was and an upgrade has since replaced it. Those look identical
+        # from here, which is exactly why this is worth printing rather than
+        # deciding: only the operator knows which.
+        reverted=$((reverted + 1))
+        REVERTED_LIST="$REVERTED_LIST  $rel"$'\n'
+    fi
+done < <(find "$PATCHES" -type f | sort)
+
+if [ "$reverted" -eq 0 ]; then
+    [ "$QUIET" -eq 1 ] || echo "All $applied base patches are applied. Nothing reverted."
+    exit 0
+fi
+
+echo "Base AtoM patches NOT matching patches/ - $reverted of $((applied + reverted)):"
+echo
+printf '%s' "$REVERTED_LIST"
+echo
+echo "Each is either a patch that was never applied, or one that was applied and"
+echo "has since been overwritten - by an AtoM upgrade, a checkout, or an rsync."
+echo "Several of these files carry security fixes: the login lockout, the password"
+echo "policy, the ACL role check."
+echo
+echo "To reapply, knowing it overwrites base AtoM:"
+echo "  bin/install --with-base-patches"
+echo
+[ "$absent" -gt 0 ] && echo "($absent patch target(s) do not exist in this AtoM at all.)"
+
+exit 1

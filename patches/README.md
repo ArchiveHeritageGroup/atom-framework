@@ -1,7 +1,28 @@
 # AtoM Patches
 
-These patches fix issues in base AtoM or vendor code.
-Applied automatically by the install script (`bin/install` Step 11).
+These patches overwrite base AtoM. Several carry security fixes - the login
+lockout, the password policy, the ACL role check.
+
+**They are opt-in.** `bin/install` does not apply them unless given
+`--with-base-patches`. The AHG plugins do not need them; our own instances use
+them.
+
+## Check whether they are still applied
+
+    bin/patches-verify           report
+    bin/patches-verify --quiet   silent unless something is reverted
+
+Applying a patch leaves no record, and nothing checks afterwards. An AtoM
+upgrade, a `git checkout` in the AtoM tree or an rsync from another instance
+restores the upstream file and takes the fix with it. The site keeps working, so
+nobody looks - which is how a security fix silently stops existing.
+
+Run it after every AtoM upgrade. Exit code 1 means at least one patch is no
+longer in place.
+
+It reports and does not reapply: overwriting base AtoM is a decision, and a
+script that quietly re-patched a tree mid-upgrade would be a worse version of the
+same problem.
 
 ## qbAclPlugin/lib/QubitAcl.class.php
 Fixes Role 99 in_array check.
