@@ -145,7 +145,11 @@ EOF
 } > /tmp/ahg-release-index.md
 
 if [ "${1:-}" = "--publish" ]; then
-    gh release edit "$INDEX_TAG" --repo "$REPO" --notes-file /tmp/ahg-release-index.md >/dev/null
+    # --latest as well as the notes. GitHub moves the badge to whatever was
+    # published most recently, so every plugin release quietly takes it off the
+    # catalogue and /releases/latest starts landing on a single zip. Reasserting
+    # it here keeps the badge on the index rather than the last thing shipped.
+    gh release edit "$INDEX_TAG" --repo "$REPO" --notes-file /tmp/ahg-release-index.md --latest >/dev/null
     echo "Updated $BASE/releases/tag/$INDEX_TAG"
     echo "  plugins listed: $(echo "$LATEST" | awk 'NF' | wc -l)"
 else
