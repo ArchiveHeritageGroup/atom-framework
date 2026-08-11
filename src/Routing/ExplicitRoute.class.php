@@ -41,18 +41,30 @@
  *
  * THE FIX
  *
- * Require the caller to have named the module and action explicitly. Incoming
- * request matching is untouched (that goes through matchesUrl, not this method),
- * generation by route name is untouched (sfPatternRouting::generate short-circuits
- * on a name), and a deliberate url_for(['module' => 'embargo', ...]) still works.
- * Only the implicit, unnamed call - the one that had no business landing here -
- * stops matching.
+ * Require the caller to have named the module. Once module is present, the
+ * defaults comparison in the parent does real work - a call naming
+ * informationobject cannot satisfy a route defaulting to embargo - so the route
+ * only volunteers for calls that actually meant it.
+ *
+ * Incoming request matching is untouched (that goes through matchesUrl, not this
+ * method) and generation by route name is untouched (sfPatternRouting::generate
+ * short-circuits on a name).
+ *
+ * MODULE ONLY, NOT MODULE AND ACTION
+ *
+ * Requiring action as well was the first version of this, and it would have
+ * changed behaviour on live instances. url_for([$resource, 'module' => 'accession'])
+ * - module named, action left to the route's own default - is a normal AtoM idiom,
+ * and an audit found 263 action-less call sites in the plugins, 5 of them aimed at
+ * modules that RouteLoader registers. Demanding action would have stopped those
+ * resolving to the plugin route they were written for. Module alone is enough:
+ * the failure being fixed here passed neither.
  */
 class ExplicitRoute extends sfRoute
 {
     public function matchesParameters($params, $context = [])
     {
-        if (!is_array($params) || !isset($params['module'], $params['action'])) {
+        if (!is_array($params) || !isset($params['module'])) {
             return false;
         }
 

@@ -12,7 +12,7 @@ class ExplicitRequestRoute extends SafeRequestRoute
 {
     public function matchesParameters($params, $context = [])
     {
-        if (!is_array($params) || !isset($params['module'], $params['action'])) {
+        if (!is_array($params) || !isset($params['module'])) {
             return false;
         }
 
