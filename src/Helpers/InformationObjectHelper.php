@@ -110,19 +110,46 @@ class InformationObjectHelper
     /**
      * Render 3D model viewer
      */
+    /**
+     * A nonce-carrying <style> element sizing one viewer container.
+     *
+     * The height varies per call, so it cannot be a static utility class. It
+     * must not be a style attribute either: a CSP nonce covers <style> and
+     * <script> ELEMENTS and never an attribute, so an inline height attribute is
+     * dropped on any site running the enforcing header and the viewer collapses
+     * to zero height with nothing in the console naming it.
+     *
+     * Scoping the rule by element id keeps it to the one container.
+     */
+    protected static function frameHeightStyle(string $elementId, string $height): string
+    {
+        // Only a length - never interpolate a caller's string into CSS.
+        if (!preg_match('/^\d+(\.\d+)?(px|rem|em|vh|%)$/', trim($height))) {
+            $height = '400px';
+        }
+
+        $nonce = function_exists('csp_nonce_attr') ? csp_nonce_attr() : '';
+        $id = preg_replace('/[^A-Za-z0-9_-]/', '', $elementId);
+
+        return '<style'.($nonce ? ' '.$nonce : '').'>#'.$id.'{height:'.$height.'}</style>';
+    }
+
     protected static function render3DViewer(int $objectId, array $options = []): string
     {
         $height = $options['height'] ?? '400px';
         
+        $sizing = self::frameHeightStyle("3d-viewer-{$objectId}", $height);
+
         return <<<HTML
-<div id="3d-viewer-{$objectId}" style="width:100%;height:{$height};background:#1a1a1a;">
+{$sizing}
+<div id="3d-viewer-{$objectId}" class="ahg-media-frame">
     <model-viewer 
         src="/uploads/3d/{$objectId}/model.glb"
         alt="3D Model"
         auto-rotate
         camera-controls
         ar
-        style="width:100%;height:100%;">
+        class="ahg-media-fill">
     </model-viewer>
 </div>
 HTML;
@@ -136,8 +163,11 @@ HTML;
         $viewer = DigitalObjectViewerHelper::getPreferredIiifViewer();
         $height = $options['height'] ?? '400px';
 
+        $sizing = self::frameHeightStyle("image-viewer-{$objectId}", $height);
+
         return <<<HTML
-<div id="image-viewer-{$objectId}" style="width:100%;height:{$height};background:#1a1a1a;"></div>
+{$sizing}
+<div id="image-viewer-{$objectId}" class="ahg-media-frame"></div>
 HTML;
     }
 
@@ -153,7 +183,7 @@ HTML;
         $outputType = $needsStreaming ? 'video/mp4' : $mimeType;
 
         return <<<HTML
-<video id="video-{$objectId}" controls style="width:100%;max-height:500px;">
+<video id="video-{$objectId}" controls class="ahg-media-video">
     <source src="{$src}" type="{$outputType}">
     Your browser does not support the video tag.
 </video>
@@ -172,7 +202,7 @@ HTML;
         $outputType = $needsStreaming ? 'audio/mpeg' : $mimeType;
 
         return <<<HTML
-<audio id="audio-{$objectId}" controls style="width:100%;">
+<audio id="audio-{$objectId}" controls class="ahg-media-audio">
     <source src="{$src}" type="{$outputType}">
     Your browser does not support the audio tag.
 </audio>
@@ -187,8 +217,11 @@ HTML;
         $height = $options['height'] ?? '600px';
         $src = "/uploads/r/{$objectId}/original";
 
+        $sizing = self::frameHeightStyle("pdf-{$objectId}", $height);
+
         return <<<HTML
-<iframe id="pdf-{$objectId}" src="{$src}" style="width:100%;height:{$height};border:none;"></iframe>
+{$sizing}
+<iframe id="pdf-{$objectId}" src="{$src}" class="ahg-media-frame ahg-media-embed"></iframe>
 HTML;
     }
 

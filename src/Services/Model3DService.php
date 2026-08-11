@@ -664,6 +664,44 @@ class Model3DService
     /**
      * Get HTML for model-viewer component (Google's WebXR viewer)
      */
+
+    /**
+     * A nonce-carrying <style> element for the values that vary per model.
+     *
+     * Height, background colour and per-hotspot colour are all data, so they
+     * cannot be static classes. They must not be style attributes either: a CSP
+     * nonce covers <style> and <script> elements and never an attribute, so an
+     * inline declaration is dropped on any site running the enforcing header -
+     * the viewer collapses to zero height and every hotspot loses its colour,
+     * with nothing in the console naming the cause.
+     *
+     * Rules are scoped by the container id so one model cannot restyle another.
+     */
+    protected function viewerStyle(string $containerId, string $css): string
+    {
+        $nonce = function_exists('csp_nonce_attr') ? csp_nonce_attr() : '';
+
+        return '<style'.($nonce ? ' '.$nonce : '').'>'.$css.'</style>';
+    }
+
+    /**
+     * A CSS length, or a safe default. Never interpolate stored text into CSS.
+     */
+    protected static function cssLength(?string $value, string $fallback = '400px'): string
+    {
+        return preg_match('/^\d+(\.\d+)?(px|rem|em|vh|%)$/', trim((string) $value))
+            ? trim((string) $value) : $fallback;
+    }
+
+    /**
+     * A CSS colour, or a safe default.
+     */
+    protected static function cssColour(?string $value, string $fallback = '#000000'): string
+    {
+        return preg_match('/^#[0-9a-fA-F]{3,8}$/', trim((string) $value))
+            ? trim((string) $value) : $fallback;
+    }
+
     public function getModelViewerHtml(int $modelId, array $options = []): string
     {
         $model = $this->getModel($modelId);
@@ -682,8 +720,19 @@ class Model3DService
         $arAttrs = $model->ar_enabled ? 'ar ar-modes="webxr scene-viewer quick-look"' : '';
         $autoRotateAttr = $model->auto_rotate ? 'auto-rotate' : '';
         
+
+        // Height and background are per-model data, so they travel in a nonced
+        // <style> element rather than an attribute the CSP would drop.
+        $viewerCss = $this->viewerStyle($containerId, sprintf(
+            '#frame-%s{height:%s}#%s{background-color:%s}',
+            $containerId,
+            self::cssLength($height, '500px'),
+            $containerId,
+            self::cssColour($model->background_color ?? null, '#000000')
+        ));
         $html = <<<HTML
-<div class="model-viewer-container" style="width:100%; height:{$height}; position:relative;">
+{$viewerCss}
+<div class="model-viewer-container ahg-model-frame" id="frame-{$containerId}">
     <model-viewer
         id="{$containerId}"
         src="{$modelUrl}"
@@ -699,7 +748,7 @@ class Model3DService
         exposure="{$model->exposure}"
         shadow-intensity="{$model->shadow_intensity}"
         shadow-softness="{$model->shadow_softness}"
-        style="width:100%; height:100%; background-color:{$model->background_color};"
+        class="ahg-model-fill"
     >
 HTML;
         
@@ -713,12 +762,20 @@ HTML;
                 $dataAttrs = "data-link=\"{$hotspot->link_url}\" data-target=\"{$hotspot->link_target}\"";
             }
             
+                // Per-hotspot colour, scoped to that slot.
+                $hotspotColour = self::cssColour($hotspot->color ?? null, '#ffffff');
+                $html .= $this->viewerStyle($containerId, sprintf(
+                    '[slot="hotspot-%s"]{--hotspot-color:%s}',
+                    preg_replace('/[^A-Za-z0-9_-]/', '', (string) $hotspot->id),
+                    $hotspotColour
+                ));
+
             $html .= <<<HTML
         <button class="hotspot" slot="hotspot-{$hotspot->id}" 
                 data-position="{$position}" 
                 data-normal="{$normal}"
                 data-type="{$hotspot->hotspot_type}"
-                style="--hotspot-color: {$hotspot->color};"
+                data-hotspot-colour="{$hotspotColour}"
                 {$dataAttrs}>
             <div class="hotspot-annotation">
                 <strong>{$hotspot->title}</strong>
@@ -884,9 +941,16 @@ HTML;
         $containerId = 'threejs-viewer-' . $modelId;
         $bgColor = ltrim($model->background_color, '#');
         
+        $viewerCss = $this->viewerStyle($containerId, sprintf(
+            '#%s{height:%s}',
+            $containerId,
+            self::cssLength($height, '500px')
+        ));
+
         return <<<HTML
-<div id="{$containerId}" class="threejs-viewer" style="width:100%; height:{$height}; background:#000; position:relative;">
-    <div class="loading-spinner" style="position:absolute; top:50%; left:50%; transform:translate(-50%, -50%); color:white;">
+{$viewerCss}
+<div id="{$containerId}" class="threejs-viewer ahg-model-frame">
+    <div class="loading-spinner ahg-model-spinner">
         <i class="fas fa-spinner fa-spin fa-2x"></i>
         <p>Loading 3D model...</p>
     </div>

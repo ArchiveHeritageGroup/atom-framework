@@ -65,7 +65,7 @@ HTML;
         $manifestUrl = "{$baseUrl}/iiif-manifest.php?id={$objId}";
 
         return <<<HTML
-<div id="{$viewerId}" style="width:100%;height:400px;background:#1a1a1a;"></div>
+<div id="{$viewerId}" class="ahg-media-frame ahg-media-frame-400"></div>
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     if (typeof Mirador !== 'undefined') {
@@ -95,7 +95,7 @@ HTML;
         $infoUrl = "{$cantaloupeUrl}/{$iiifIdentifier}/info.json";
 
         return <<<HTML
-<div id="{$viewerId}" style="width:100%;height:400px;background:#1a1a1a;"></div>
+<div id="{$viewerId}" class="ahg-media-frame ahg-media-frame-400"></div>
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     if (typeof OpenSeadragon !== 'undefined') {

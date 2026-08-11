@@ -424,7 +424,7 @@ class StandaloneViewerController
                 $mime = $do->mime_type ?? '';
                 if ($path && str_starts_with($mime, 'image/')) {
                     $html .= '<div class="mb-2"><img src="/uploads/' . htmlspecialchars($path . $name)
-                        . '" alt="' . htmlspecialchars($name) . '" class="img-fluid rounded" style="max-height:400px"></div>';
+                        . '" alt="' . htmlspecialchars($name) . '" class="img-fluid rounded ahg-media-preview"></div>';
                 } elseif ($path) {
                     $html .= '<div class="mb-2"><a href="/uploads/' . htmlspecialchars($path . $name)
                         . '" class="btn btn-sm btn-outline-secondary"><i class="fas fa-file me-1"></i>'
