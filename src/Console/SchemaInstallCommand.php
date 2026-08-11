@@ -134,7 +134,75 @@ final class SchemaInstallCommand
             return 0;
         }
 
-        return $this->execute($statements);
+        $status = $this->execute($statements);
+
+        return max($status, $this->migrate());
+    }
+
+    /**
+     * Run outstanding migrations after the CREATE statements.
+     *
+     * WHY THIS IS HERE
+     *
+     * install.sql creates a table; database/migrations then reshapes it as the
+     * code moves on. This command only ever globbed database/*.sql, so the 52
+     * migrations in 18 plugins' database/migrations/ were invisible to it, and
+     * nothing else runs them on a fresh install either - MigrationRunner is
+     * reachable only from "atom migrate up", which an operator has to know to
+     * type.
+     *
+     * The result is a fresh install that stops one design short of the code.
+     * ahgHeritageAccountingPlugin is the worked example: 005 renames entry_date
+     * to journal_date, every query orders by journal_date, and on a clean
+     * AtoM 2.10 opening any heritage asset returned "Unknown column
+     * 'journal_date' in 'order clause'". The same instance upgraded from an
+     * older one was fine. CREATE TABLE IF NOT EXISTS cannot close that gap,
+     * because the table already exists - only the migration can.
+     *
+     * Failures here are reported, not fatal to the schema pass that preceded
+     * them, and MigrationRunner records what it applied so a second run is a
+     * no-op.
+     */
+    private function migrate(): int
+    {
+        if (!class_exists(\AtomFramework\Database\MigrationRunner::class)) {
+            echo "\nMigration runner unavailable - database/migrations not applied.\n";
+
+            return 1;
+        }
+
+        echo "\nMigrations:\n";
+
+        try {
+            $runner = new \AtomFramework\Database\MigrationRunner();
+            $results = $runner->migrate();
+        } catch (\Throwable $e) {
+            printf("  migrations failed: %s\n", $e->getMessage());
+
+            return 1;
+        }
+
+        if ($results === []) {
+            echo "  nothing outstanding.\n";
+
+            return 0;
+        }
+
+        $failed = array_values(array_filter(
+            $results,
+            static fn (array $r): bool => 'success' !== ($r['status'] ?? '')
+        ));
+
+        printf("  %d applied, %d failed.\n", count($results) - count($failed), count($failed));
+
+        // Named individually. A migration that did not apply leaves the schema
+        // one step behind the code, and that surfaces later as a column-not-found
+        // on a page nobody connects back to installation.
+        foreach ($failed as $r) {
+            printf("    %s: %s\n", $r['migration'], substr((string) ($r['error'] ?? ''), 0, 140));
+        }
+
+        return $failed === [] ? 0 : 1;
     }
 
     private int $fileCount = 0;

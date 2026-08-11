@@ -6,17 +6,72 @@ class MigrationRunner
 {
     protected string $frameworkMigrationsPath;
     protected string $pluginsPath;
+
+    /** @var string[] every plugins root to scan - see resolvePluginsPaths() */
+    protected array $pluginsPaths = [];
     protected string $migrationsTable = 'atom_framework_migrations';
 
     public function __construct()
     {
         $this->frameworkMigrationsPath = dirname(__DIR__, 2) . '/database/migrations';
-        $atomRoot = dirname(__DIR__, 3);
-        if (is_dir($atomRoot . '/atom-ahg-plugins')) {
-            $this->pluginsPath = $atomRoot . '/atom-ahg-plugins';
-        } else {
-            $this->pluginsPath = '';
+        $this->pluginsPaths = $this->resolvePluginsPaths();
+        // Retained for anything reading it; the first resolved root, or ''.
+        $this->pluginsPath = $this->pluginsPaths[0] ?? '';
+    }
+
+    /**
+     * Every directory that may hold plugins, for either deployment layout.
+     *
+     * WHY THIS IS NOT dirname(__DIR__, 3)
+     *
+     * That walk assumes this file lives at atom-framework/src/Database, which is
+     * true on a development checkout and false wherever the generated
+     * ahgRuntimePlugin is used. There the same class sits at
+     * plugins/ahgRuntimePlugin/src/Database, so the walk lands on plugins/,
+     * plugins/atom-ahg-plugins does not exist, and pluginsPath was set to ''.
+     *
+     * The runner then found zero plugin migrations and reported "Nothing
+     * outstanding" - not an error, not a warning, the same sentence it prints
+     * when everything really has been applied. Measured 2026-08-11 on a clean
+     * AtoM 2.10 whose atom_framework_migrations table did not exist at all: the
+     * heritage journal table was still pre-005 and /heritage/<id> returned
+     * "Unknown column 'journal_date' in 'order clause'".
+     *
+     * So: prefer sf_root_dir, which is what the application itself considers
+     * the root, and fall back to the directory walk when running outside a
+     * Symfony context. Both layouts are then checked, because an instance may
+     * carry a checkout and installed plugins at once.
+     */
+    protected function resolvePluginsPaths(): array
+    {
+        $roots = [];
+
+        if (class_exists('\sfConfig')) {
+            $configured = (string) \sfConfig::get('sf_root_dir', '');
+
+            if ('' !== $configured) {
+                $roots[] = rtrim($configured, '/');
+            }
         }
+
+        // dirname(__DIR__, 3) for a checkout; dirname(__DIR__, 4) for the
+        // runtime plugin, which is two directories deeper.
+        $roots[] = dirname(__DIR__, 3);
+        $roots[] = dirname(__DIR__, 4);
+
+        $paths = [];
+
+        foreach (array_unique($roots) as $root) {
+            foreach (['/atom-ahg-plugins', '/plugins'] as $sub) {
+                $candidate = $root . $sub;
+
+                if (is_dir($candidate) && !in_array($candidate, $paths, true)) {
+                    $paths[] = $candidate;
+                }
+            }
+        }
+
+        return $paths;
     }
 
     /**
@@ -125,10 +180,24 @@ class MigrationRunner
             ];
         }
 
-        // Plugin migrations
-        if (!empty($this->pluginsPath) && is_dir($this->pluginsPath)) {
-            foreach (glob($this->pluginsPath . '/ahg*Plugin', GLOB_ONLYDIR) as $pluginDir) {
+        // Plugin migrations, across every layout this instance uses.
+        //
+        // A plugin can appear in more than one root - a checkout in
+        // atom-ahg-plugins and the same plugin symlinked or installed under
+        // plugins/. Keyed by "plugin:migration" so it is collected once; the
+        // name is also what gets recorded, so a duplicate would otherwise run
+        // twice on first pass and be skipped for the wrong reason afterwards.
+        $seen = [];
+
+        foreach ($this->pluginsPaths as $pluginsRoot) {
+            foreach (glob($pluginsRoot . '/ahg*Plugin', GLOB_ONLYDIR) as $pluginDir) {
                 $pluginName = basename($pluginDir);
+
+                if (isset($seen[$pluginName])) {
+                    continue;
+                }
+
+                $seen[$pluginName] = true;
                 // Plugins keep migrations in database/migrations (all 18 do; none
                 // use data/migrations). This path was wrong, so NO plugin migration
                 // was ever discovered by `bin/atom migrate run`.
