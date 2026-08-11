@@ -56,6 +56,21 @@ class RouteLoader
      */
     public function register(\sfRouting $routing): void
     {
+        // Required here, from this file's own directory, rather than relying on
+        // the require_once in config/ProjectConfiguration.class.php: that one
+        // names atom-framework/src/Routing explicitly, which does not exist on an
+        // instance running the packaged ahgRuntimePlugin. Loading them relative to
+        // __DIR__ works in both layouts, and every route below depends on them.
+        foreach (['SafeRequestRoute', 'ExplicitRoute', 'ExplicitRequestRoute'] as $routeClassName) {
+            if (!class_exists($routeClassName, false)) {
+                $file = __DIR__.'/'.$routeClassName.'.class.php';
+
+                if (file_exists($file)) {
+                    require_once $file;
+                }
+            }
+        }
+
         foreach ($this->routes as $route) {
             // sf_method must live in the route REQUIREMENTS (not defaults) for
             // sfRoute to actually filter by HTTP method — otherwise same-path
@@ -80,7 +95,11 @@ class RouteLoader
             // safely probed during URL generation from a model object — the base
             // class's isset($params['sf_method']) throws on Qubit objects and 500s
             // pages like /accession/add that generate URLs from an unsaved resource.
-            $routeClass = !empty($route['methods']) ? \SafeRequestRoute::class : \sfRoute::class;
+            // ExplicitRoute/ExplicitRequestRoute rather than sfRoute/SafeRequestRoute:
+            // these are prepended, and a prepended variable-free route otherwise
+            // matches any unnamed url_for() and captures the site's links. See
+            // ExplicitRoute for the mechanism.
+            $routeClass = !empty($route['methods']) ? \ExplicitRequestRoute::class : \ExplicitRoute::class;
 
             $routing->prependRoute($route['name'], new $routeClass(
                 $route['url'],
