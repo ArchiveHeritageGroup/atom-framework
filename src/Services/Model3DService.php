@@ -681,7 +681,34 @@ class Model3DService
     {
         $nonce = function_exists('csp_nonce_attr') ? csp_nonce_attr() : '';
 
-        return '<style'.($nonce ? ' '.$nonce : '').'>'.$css.'</style>';
+        return self::baseStyles()
+            .'<style'.($nonce ? ' '.$nonce : '').'>'.$css.'</style>';
+    }
+
+    /**
+     * The static rules the 3D containers need, emitted once per request.
+     *
+     * Carried here rather than in an external stylesheet: registered assets are
+     * dropped by the theme in this codebase, so a service that returns HTML
+     * cannot depend on a <link> it did not emit itself.
+     */
+    protected static function baseStyles(): string
+    {
+        static $emitted = false;
+
+        if ($emitted) {
+            return '';
+        }
+
+        $emitted = true;
+        $nonce = function_exists('csp_nonce_attr') ? csp_nonce_attr() : '';
+
+        return '<style'.($nonce ? ' '.$nonce : '').'>'
+            .'.ahg-model-frame{width:100%;position:relative;background:#000}'
+            .'.ahg-model-fill{width:100%;height:100%}'
+            .'.ahg-model-spinner{position:absolute;top:50%;left:50%;'
+            .'transform:translate(-50%,-50%);color:#fff}'
+            .'</style>';
     }
 
     /**

@@ -121,6 +121,40 @@ class InformationObjectHelper
      *
      * Scoping the rule by element id keeps it to the one container.
      */
+    /**
+     * The static rules these containers need, emitted once per request.
+     *
+     * Deliberately not an external stylesheet. A <link> has to be registered
+     * with the response, and this codebase has already learned that the theme
+     * never calls include_stylesheets() - registered assets are silently
+     * dropped. A helper that returns HTML cannot rely on an asset pipeline it
+     * does not control, so it carries its own rules in a nonced <style> element
+     * and works wherever it is called from.
+     *
+     * Emitted once: several viewers on one page would otherwise repeat it.
+     */
+    public static function mediaBaseStyles(): string
+    {
+        static $emitted = false;
+
+        if ($emitted) {
+            return '';
+        }
+
+        $emitted = true;
+        $nonce = function_exists('csp_nonce_attr') ? csp_nonce_attr() : '';
+
+        return '<style'.($nonce ? ' '.$nonce : '').'>'
+            .'.ahg-media-frame{width:100%;background:#1a1a1a}'
+            .'.ahg-media-frame-400{height:400px}'
+            .'.ahg-media-fill{width:100%;height:100%}'
+            .'.ahg-media-embed{border:none}'
+            .'.ahg-media-video{width:100%;max-height:500px}'
+            .'.ahg-media-audio{width:100%}'
+            .'.ahg-media-preview{max-height:400px}'
+            .'</style>';
+    }
+
     protected static function frameHeightStyle(string $elementId, string $height): string
     {
         // Only a length - never interpolate a caller's string into CSS.
@@ -131,7 +165,8 @@ class InformationObjectHelper
         $nonce = function_exists('csp_nonce_attr') ? csp_nonce_attr() : '';
         $id = preg_replace('/[^A-Za-z0-9_-]/', '', $elementId);
 
-        return '<style'.($nonce ? ' '.$nonce : '').'>#'.$id.'{height:'.$height.'}</style>';
+        return self::mediaBaseStyles()
+            .'<style'.($nonce ? ' '.$nonce : '').'>#'.$id.'{height:'.$height.'}</style>';
     }
 
     protected static function render3DViewer(int $objectId, array $options = []): string

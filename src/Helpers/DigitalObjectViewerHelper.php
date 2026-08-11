@@ -64,7 +64,10 @@ HTML;
         $baseUrl = rtrim($siteBaseUrl, '/') . $root;
         $manifestUrl = "{$baseUrl}/iiif-manifest.php?id={$objId}";
 
+        $frameCss = \AtomFramework\Helpers\InformationObjectHelper::mediaBaseStyles();
+
         return <<<HTML
+{$frameCss}
 <div id="{$viewerId}" class="ahg-media-frame ahg-media-frame-400"></div>
 <script>
 document.addEventListener('DOMContentLoaded', function() {
@@ -94,7 +97,10 @@ HTML;
         $viewerId = "osd-viewer-{$objId}";
         $infoUrl = "{$cantaloupeUrl}/{$iiifIdentifier}/info.json";
 
+        $frameCss = \AtomFramework\Helpers\InformationObjectHelper::mediaBaseStyles();
+
         return <<<HTML
+{$frameCss}
 <div id="{$viewerId}" class="ahg-media-frame ahg-media-frame-400"></div>
 <script>
 document.addEventListener('DOMContentLoaded', function() {
