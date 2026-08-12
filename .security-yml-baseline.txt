@@ -31,7 +31,6 @@ ahgThemeB5Plugin/menu
 ahgThemeB5Plugin/physicalobject
 ahgThemeB5Plugin/savedSearch
 ahgThemeB5Plugin/sfIsaarPlugin
-ahgThemeB5Plugin/user
 ahgUiOverridesPlugin/sfIsaarPlugin
 apps/qubit/modules/admin
 apps/qubit/modules/browse
