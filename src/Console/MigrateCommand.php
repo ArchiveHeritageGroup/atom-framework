@@ -17,7 +17,15 @@ class MigrateCommand
     {
         $action = $args[0] ?? 'run';
         switch ($action) {
+            // 'up' is what bin/atom actually passes - all three of its call sites
+            // do $migrate->run(['up']) - while only 'run' was handled here, so it
+            // fell through to the usage text and exited 1. `migrate:up`, the
+            // command the CLI advertises for running pending migrations, has never
+            // run one: it printed usage and returned, silently doing nothing.
+            //
+            // 'run' is kept as an alias so any script calling it still works.
             case 'run':
+            case 'up':
                 return $this->migrate();
             case 'status':
                 return $this->status();
