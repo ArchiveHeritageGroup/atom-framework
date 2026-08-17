@@ -99,6 +99,21 @@ done
 
 [ -f "$PLUGINS/LICENSE" ] && cp "$PLUGINS/LICENSE" "$STAGE/LICENSE"
 
+# The schema installer travels with every bundle.
+#
+# INSTALL.md used to say "mysql < install.sql". The mysql client stops at the
+# first error, so one statement that cannot run yet silently abandons every
+# statement after it - ahgProvenancePlugin installed 7 of its 9 tables that way,
+# reporting one line most people would not read. This installer runs statements
+# individually, retries dependency failures across passes, treats "already
+# exists" as success and then verifies the tables extension.json declares.
+if [ -f "$FRAMEWORK/bin/install-plugin-schema.php" ]; then
+    mkdir -p "$STAGE/$PLUGIN/bin"
+    cp "$FRAMEWORK/bin/install-plugin-schema.php" "$STAGE/$PLUGIN/bin/"
+else
+    echo "  WARNING: install-plugin-schema.php not found; bundle will have no installer" >&2
+fi
+
 # Screenshots, if any have been captured for this plugin.
 if [ -d "$ROOT/stuff/screenshots/$PLUGIN" ]; then
     cp -r "$ROOT/stuff/screenshots/$PLUGIN" "$STAGE/screenshots"
@@ -160,10 +175,21 @@ From the AtoM root:
 
 Load the schema. Each plugin owns its own tables:
 
+    php plugins/$PLUGIN/bin/install-plugin-schema.php \\
+        --database=<database> --user=<user> --password=<password>
+
+That installs every plugin in this bundle, in whatever order their tables
+actually depend on each other, and then confirms the tables each plugin declares
+really exist. It is safe to run more than once.
+
+Do NOT use \`mysql < install.sql\`. The mysql client stops at the first error, so
+a statement that cannot run yet abandons every statement after it and leaves the
+schema half built without saying so.
+
+If the installer reports anything unresolved, the schema is incomplete - the
+exit status is non-zero and the message names the statement.
+
 EOF
-for p in $DEPS $PLUGIN; do
-    [ -f "$PLUGINS/$p/database/install.sql" ] && echo "    mysql -u <user> -p <database> < plugins/$p/database/install.sql"
-done
 cat <<EOF
 
 Enable in this order, in Admin > Plugins:
