@@ -128,13 +128,52 @@ $root = dirname(__DIR__);                    // the plugin directory, once shipp
 $pluginsDir = dirname($root);                // plugins/
 $targets = [];
 
+/**
+ * Where plugins live, depending on how this script was reached.
+ *
+ * Shipped inside a bundle it sits at plugins/<plugin>/bin/, so dirname twice is
+ * plugins/ and the original single guess was right. Run from the development
+ * checkout at atom-framework/bin/ it is not: dirname twice lands on the AtoM
+ * root, and plugins/<name> was never looked for at all.
+ *
+ * That cost an install on 2026-08-17. `--plugin=ahgSiteRecordPlugin` resolved to
+ * <root>/ahgSiteRecordPlugin, which does not exist, and the run printed "Schema
+ * loaded." having created nothing - the exact silent half-install this script
+ * was written to stop. Both candidate layouts are searched now, and a name that
+ * matches neither is a hard error rather than a quiet success.
+ */
+$candidateRoots = array_values(array_unique(array_filter([
+    $pluginsDir,                          // shipped: plugins/<plugin>/bin/
+    dirname($root).'/plugins',            // checkout: <atom>/plugins/
+    dirname($root).'/atom-ahg-plugins',   // checkout: <atom>/atom-ahg-plugins/
+], 'is_dir')));
+
 if (!empty($opt['plugin'])) {
-    $targets[] = $pluginsDir.'/'.$opt['plugin'];
+    $found = null;
+    foreach ($candidateRoots as $base) {
+        if (is_file($base.'/'.$opt['plugin'].'/database/install.sql')) {
+            $found = $base.'/'.$opt['plugin'];
+
+            break;
+        }
+    }
+
+    if (null === $found) {
+        fwrite(STDERR, "plugin '{$opt['plugin']}' has no database/install.sql under any of:\n");
+        foreach ($candidateRoots as $base) {
+            fwrite(STDERR, '  '.$base."/{$opt['plugin']}/database/install.sql\n");
+        }
+        exit(2);
+    }
+
+    $targets[] = $found;
 } elseif (is_file($root.'/database/install.sql')) {
     $targets[] = $root;
 } else {
-    foreach (glob($pluginsDir.'/*/database/install.sql') as $f) {
-        $targets[] = dirname(dirname($f));
+    foreach ($candidateRoots as $base) {
+        foreach (glob($base.'/*/database/install.sql') as $f) {
+            $targets[] = dirname(dirname($f));
+        }
     }
 }
 
@@ -157,13 +196,24 @@ try {
 
 $exit = 0;
 
+// Counted so a run that applied nothing cannot end on a success message.
+$applied = 0;
+
 foreach ($targets as $dir) {
     $name = basename($dir);
     $file = $dir.'/database/install.sql';
 
     if (!is_file($file)) {
+        // Not "nothing to do" - something was asked for and was not there.
+        // Skipping quietly is how a run creates no tables and still reports
+        // success.
+        fwrite(STDERR, "{$name}: no database/install.sql at {$file}\n");
+        $exit = 2;
+
         continue;
     }
+
+    ++$applied;
 
     say("\n{$name}");
 
@@ -272,6 +322,15 @@ foreach ($targets as $dir) {
     }
 }
 
-say($exit === 0 ? "\nSchema loaded." : "\nSchema INCOMPLETE - see the errors above.");
+if (0 === $applied) {
+    // "Schema loaded" after loading nothing is the worst outcome this script
+    // can produce: the operator moves on believing the install happened.
+    fwrite(STDERR, "\nNothing was applied - no schema file was read.\n");
+    exit(2);
+}
+
+say($exit === 0
+    ? sprintf("\nSchema loaded (%d plugin%s).", $applied, 1 === $applied ? '' : 's')
+    : "\nSchema INCOMPLETE - see the errors above.");
 
 exit($exit);
