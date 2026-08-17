@@ -39,7 +39,7 @@
  * With no --plugin it installs every plugin directory that sits beside it.
  */
 
-$opt = getopt('', ['database:', 'user:', 'password::', 'password-file::', 'host::', 'plugin::', 'dry-run', 'quiet']);
+$opt = getopt('', ['database:', 'user:', 'password::', 'password-file::', 'host::', 'socket::', 'plugin::', 'dry-run', 'quiet']);
 
 foreach (['database', 'user'] as $required) {
     if (empty($opt[$required])) {
@@ -182,15 +182,49 @@ if (!$targets) {
     exit(2);
 }
 
+/**
+ * Connect over a socket when asked, and never hang while trying.
+ *
+ * `--socket=/path/to/mysqld.sock`, or `--host=` with an empty value, builds a
+ * DSN with no host in it, which is how PDO is told to use the unix socket.
+ *
+ * This is not a niche case. RARI's own AtoM configuration reads
+ * `mysql:dbname=atom;port=3306` - no host at all - and on that server a DSN
+ * containing host=localhost does not fail, it HANGS. On 2026-08-17 that took
+ * two attempts to install a plugin and looked like a broken script rather than
+ * a connection problem, because nothing was printed either way.
+ *
+ * ATTR_TIMEOUT means the worst case is now a message after ten seconds. An
+ * installer that stops responding is harder to diagnose than one that says it
+ * cannot connect - especially for whoever runs this once, on a production
+ * server, having never seen it before.
+ */
+$socket = $opt['socket'] ?? null;
+$hostGiven = array_key_exists('host', $opt) && '' !== (string) $opt['host'];
+
+if (null !== $socket && '' !== $socket) {
+    $dsn = "mysql:unix_socket={$socket};dbname={$opt['database']};charset=utf8mb4";
+} elseif (!$hostGiven && array_key_exists('host', $opt)) {
+    // --host= given deliberately empty: let PDO fall back to its socket.
+    $dsn = "mysql:dbname={$opt['database']};charset=utf8mb4";
+} else {
+    $dsn = "mysql:host={$host};dbname={$opt['database']};charset=utf8mb4";
+}
+
 try {
     $pdo = new PDO(
-        "mysql:host={$host};dbname={$opt['database']};charset=utf8mb4",
+        $dsn,
         $opt['user'],
         $password,
-        [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]
+        [
+            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+            PDO::ATTR_TIMEOUT => 10,
+        ]
     );
 } catch (PDOException $e) {
     fwrite(STDERR, 'cannot connect: '.$e->getMessage()."\n");
+    fwrite(STDERR, "dsn: {$dsn}\n");
+    fwrite(STDERR, "If the server has no TCP listener, pass --socket=/var/run/mysqld/mysqld.sock or --host= (empty).\n");
     exit(2);
 }
 
