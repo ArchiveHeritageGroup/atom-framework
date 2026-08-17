@@ -33,18 +33,89 @@ FORMAT="${1:-text}"   # text | list | scopes
 declare -a MISSING=()
 declare -a SCOPES=()
 
+GUARD_RE="isAdministrator|isAuthenticated|forward\('admin', *'secure'\)|AclService::|hasGroup|checkAdminAccess|requireAuth"
+
 scan_module() {
     local dir="$1" label="$2"
     [ -d "$dir/actions" ] || return 0
+
+    # A security.yml covers every action in the module, including ones added
+    # later. Nothing more to check.
     [ -f "$dir/config/security.yml" ] && return 0
 
-    # A code-level guard counts as a declared posture.
-    if grep -qE "isAdministrator|isAuthenticated|forward\('admin', *'secure'\)|AclService::|hasGroup|checkAdminAccess|requireAuth" \
-        "$dir"/actions/*.php 2>/dev/null; then
-        return 0
-    fi
+    # Per ACTION, not per module.
+    #
+    # This used to grep every action file at once and pass the module if ANY of
+    # them mentioned a guard. That is the wrong shape: a module where most
+    # actions check themselves and one does not looks identical to a module where
+    # all of them do. It missed two real holes on 2026-08-17 -
+    # ahgConditionPlugin's `template` action, served to anyone, and
+    # ahgRequestToPublishPlugin's `submit` and `receipt` in the camelCase module -
+    # because their neighbours were guarded.
+    #
+    # Report the unguarded actions individually so the gap is visible and can be
+    # closed one file at a time.
+    local f base parent unguarded=()
+    for f in "$dir"/actions/*.php; do
+        [ -f "$f" ] || continue
+        base="$(basename "$f")"
 
-    MISSING+=("$label")
+        # Components and helpers are not routable entry points.
+        case "$base" in
+            components.class.php|*Component.class.php|*Form.class.php) continue ;;
+        esac
+
+        grep -qE "$GUARD_RE" "$f" 2>/dev/null && continue
+
+        # A guard inherited from the base class counts.
+        #
+        # Without this the audit is worse than useless on APIs: ahgAPIPlugin's 62
+        # apiv2 actions all extend AhgApiController, which checks an API key and
+        # answers 401/403 in preExecute. Reporting them as unguarded buries the
+        # handful of real gaps in false positives, and an audit nobody trusts
+        # gets ignored.
+        parent="$(grep -oE 'extends[[:space:]]+[A-Za-z_\\]+' "$f" 2>/dev/null | head -1 | awk '{print $2}')"
+        if [ -n "$parent" ]; then
+            parent="${parent##*\\}"
+
+            # Search base AtoM too, not only our own code.
+            #
+            # Most add/edit/delete actions in the sector plugins are thin stubs
+            # over base AtoM's - museumDeleteAction is 28 lines extending
+            # InformationObjectDeleteAction, which carries the ACL check. Looking
+            # only in atom-ahg-plugins reports every one of them as unguarded,
+            # which is how this audit produced a delete action that looked
+            # anonymously reachable and was not.
+            # A CURATED list, not a grep of the parent's source.
+            #
+            # Searching the parent file for guard keywords was tried and is
+            # useless in both directions: nearly every action extends
+            # AhgController or sfAction, whose sources mention isAuthenticated
+            # somewhere, so everything passed and the audit reported ZERO
+            # unguarded actions. A silent audit is worse than a noisy one.
+            #
+            # Only classes verified to ENFORCE - not merely mention - belong here.
+            # Add to it when you have checked the parent actually refuses.
+            case "$parent" in
+                AhgApiController|AhgApiAction)
+                    # preExecute checks an API key and answers 401/403.
+                    continue ;;
+                InformationObjectDeleteAction|InformationObjectEditAction)
+                    # Base AtoM's own actions, which carry the ACL check. The
+                    # sector plugins subclass them as thin stubs.
+                    continue ;;
+            esac
+        fi
+
+        unguarded+=("$base")
+    done
+
+    [ ${#unguarded[@]} -eq 0 ] && return 0
+
+    local a
+    for a in "${unguarded[@]}"; do
+        MISSING+=("$label/$a")
+    done
 }
 
 # Base application modules
