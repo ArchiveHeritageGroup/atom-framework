@@ -834,6 +834,84 @@ class DiscoveryService
     }
 
     /**
+     * Curated stories, for administration rather than display.
+     *
+     * getStories() elsewhere returns only what the landing page should show -
+     * enabled, in date, ordered. An administrator has to see the disabled and the
+     * expired too, or there is no way to re-enable one.
+     */
+    public function getAllStories(?int $institutionId = null): array
+    {
+        return DB::table('heritage_curated_story')
+            ->where(function ($q) use ($institutionId) {
+                $q->whereNull('institution_id')
+                    ->orWhere('institution_id', $institutionId);
+            })
+            ->orderByDesc('is_featured')
+            ->orderBy('display_order')
+            ->orderBy('id')
+            ->get()
+            ->map(fn ($s) => (array) $s)
+            ->toArray();
+    }
+
+    public function getStory(int $id): ?array
+    {
+        $row = DB::table('heritage_curated_story')->where('id', $id)->first();
+
+        return $row ? (array) $row : null;
+    }
+
+    public function saveStory(array $data): int
+    {
+        return DB::table('heritage_curated_story')->insertGetId($this->storyColumns($data) + [
+            'created_at' => date('Y-m-d H:i:s'),
+            'updated_at' => date('Y-m-d H:i:s'),
+        ]);
+    }
+
+    public function updateStory(int $id, array $data): bool
+    {
+        return DB::table('heritage_curated_story')
+            ->where('id', $id)
+            ->update($this->storyColumns($data) + ['updated_at' => date('Y-m-d H:i:s')]) >= 0;
+    }
+
+    public function deleteStory(int $id): bool
+    {
+        return DB::table('heritage_curated_story')
+            ->where('id', $id)
+            ->delete() > 0;
+    }
+
+    /**
+     * Only the columns a story actually has.
+     *
+     * Built explicitly rather than from the request array so an unexpected field
+     * cannot reach the update - an "Unknown column" from a stray form input would
+     * surface as a failed save with no useful message.
+     */
+    private function storyColumns(array $d): array
+    {
+        return [
+            'institution_id' => $d['institution_id'] ?? null,
+            'title' => $d['title'],
+            'subtitle' => $d['subtitle'] ?? null,
+            'description' => $d['description'] ?? null,
+            'cover_image' => $d['cover_image'] ?? null,
+            'story_type' => $d['story_type'] ?? 'collection',
+            'link_type' => $d['link_type'] ?? 'search',
+            'link_reference' => $d['link_reference'] ?? null,
+            'item_count' => isset($d['item_count']) ? (int) $d['item_count'] : null,
+            'is_featured' => !empty($d['is_featured']) ? 1 : 0,
+            'display_order' => (int) ($d['display_order'] ?? 100),
+            'is_enabled' => !empty($d['is_enabled']) ? 1 : 0,
+            'start_date' => $d['start_date'] ?? null,
+            'end_date' => $d['end_date'] ?? null,
+        ];
+    }
+
+    /**
      * Update item counts for a featured collection.
      */
     public function updateCollectionCounts(int $id): bool
