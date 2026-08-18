@@ -276,6 +276,28 @@ class AccessFilterService
      */
     private function checkDonorRestrictions(int $objectId, array $userContext, string $action): array
     {
+        // These tables belong to other plugins.
+        //
+        // object_rights_holder ships with ahgExtendedRightsPlugin, donor_agreement
+        // and donor_agreement_restriction with ahgDonorAgreementPlugin. The runtime
+        // depends on neither, so on an instance without them this query threw and
+        // EVERY archival description page returned HTTP 500 - reproduced on a clean
+        // install, 2026-08-18.
+        //
+        // No donor restriction tables means no donor restrictions, which is access
+        // granted. Failing open here is correct: the classification check above has
+        // already run and is what actually restricts access. A missing optional
+        // plugin must not deny access, and must certainly not take the page down.
+        foreach (['object_rights_holder', 'donor_agreement', 'donor_agreement_restriction'] as $table) {
+            if (!DB::schema()->hasTable($table)) {
+                return [
+                    'granted' => true,
+                    'level' => self::ACCESS_FULL,
+                    'restrictions' => [],
+                ];
+            }
+        }
+
         $restrictions = DB::table('object_rights_holder as orh')
             ->leftJoin('actor_i18n as ai', function ($join) {
                 $join->on('ai.id', '=', 'orh.donor_id')
@@ -391,6 +413,14 @@ class AccessFilterService
      */
     private function checkEmbargo(int $objectId): array
     {
+        // extended_rights ships with ahgExtendedRightsPlugin, which the runtime does
+        // not depend on. Without it this threw and took every description page down
+        // with a 500 - the same fault as checkDonorRestrictions above. No embargo
+        // table means nothing is embargoed.
+        if (!DB::schema()->hasTable('extended_rights')) {
+            return ['granted' => true, 'level' => self::ACCESS_FULL, 'restrictions' => []];
+        }
+
         $today = $this->today();
         
         // extended_rights table has: object_id, expiry_date (no object_type column)
@@ -449,6 +479,15 @@ class AccessFilterService
 
     private function applyDonorRestrictionFilter(Builder $query, array $userContext): Builder
     {
+        // Same reasoning as checkDonorRestrictions: these tables belong to
+        // ahgExtendedRightsPlugin and ahgDonorAgreementPlugin. Absent means there is
+        // nothing to filter on, not that everything should be hidden.
+        foreach (['object_rights_holder', 'donor_agreement', 'donor_agreement_restriction'] as $table) {
+            if (!DB::schema()->hasTable($table)) {
+                return $query;
+            }
+        }
+
         $today = $this->today();
 
         return $query->where(function ($q) use ($today) {
@@ -473,6 +512,13 @@ class AccessFilterService
 
     private function applyEmbargoFilter(Builder $query): Builder
     {
+        // Nothing to filter when ahgExtendedRightsPlugin is absent - see checkEmbargo.
+        // This one is a query builder, so an unguarded reference fails at execution
+        // time somewhere else entirely, which is harder to trace than a direct throw.
+        if (!DB::schema()->hasTable('extended_rights')) {
+            return $query;
+        }
+
         $today = $this->today();
         
         return $query->where(function ($q) use ($today) {

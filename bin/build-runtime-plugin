@@ -121,6 +121,21 @@ class ahgRuntimePluginConfiguration extends sfPluginConfiguration
 }
 PHP
 
+# Tables the generated install.sql actually creates.
+#
+# The manifest used to omit "tables" entirely, so install-plugin-schema.php had
+# nothing to verify against and reported success without checking anything - the
+# same stale-manifest problem that hid a missing table in every other plugin
+# until 2026-08-18. Derive it from the SQL so it cannot drift.
+#
+# Backticks are optional in the SQL and comments are stripped first, because a
+# line reading "-- CREATE TABLE IF NOT EXISTS, safe to re-run" otherwise matches.
+RUNTIME_TABLES=$(sed -e 's/--.*$//' "$OUT/database/install.sql" 2>/dev/null \
+  | grep -oiE 'CREATE[[:space:]]+TABLE([[:space:]]+IF[[:space:]]+NOT[[:space:]]+EXISTS)?[[:space:]]+`?[a-z0-9_]+`?[[:space:]]*\(' \
+  | sed -E 's/.*[[:space:]]`?([a-z0-9_]+)`?[[:space:]]*\(/\1/' \
+  | sort -u \
+  | awk 'BEGIN{ORS=""} {printf "%s\"%s\"", (NR>1 ? ", " : ""), $0}')
+
 cat > "$OUT/extension.json" <<JSON
 {
   "name": "ahgRuntimePlugin",
@@ -130,6 +145,7 @@ cat > "$OUT/extension.json" <<JSON
   "license": "AGPL-3.0-or-later",
   "dependencies": [],
   "generated_from": "atom-framework",
+  "tables": [$RUNTIME_TABLES],
   "display_panels": []
 }
 JSON
