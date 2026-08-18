@@ -39,11 +39,11 @@
  * With no --plugin it installs every plugin directory that sits beside it.
  */
 
-$opt = getopt('', ['database:', 'user:', 'password::', 'password-file::', 'host::', 'socket::', 'plugin::', 'dry-run', 'quiet']);
+$opt = getopt('', ['database:', 'user:', 'password::', 'password-file::', 'host::', 'socket::', 'plugin::', 'dry-run', 'quiet', 'force']);
 
 foreach (['database', 'user'] as $required) {
     if (empty($opt[$required])) {
-        fwrite(STDERR, "usage: php install-plugin-schema.php --database=DB --user=USER [--password=PW] [--plugin=NAME] [--dry-run]\n");
+        fwrite(STDERR, "usage: php install-plugin-schema.php --database=DB --user=USER [--password=PW] [--plugin=NAME] [--dry-run] [--force]\n");
         exit(2);
     }
 }
@@ -124,6 +124,105 @@ function statements(string $sql): array
     return $out;
 }
 
+/**
+ * Tables a plugin claims in extension.json.
+ */
+function declaredTables(string $dir): array
+{
+    $manifest = $dir.'/extension.json';
+
+    if (!is_file($manifest)) {
+        return [];
+    }
+
+    $json = json_decode((string) file_get_contents($manifest), true);
+
+    return is_array($json['tables'] ?? null) ? $json['tables'] : [];
+}
+
+/**
+ * Dependencies named in extension.json that are not installed, or null if all are.
+ *
+ * "Installed" is judged on the database, not the filesystem: a plugin directory
+ * sitting on disk unenabled and with no tables is not a dependency being met.
+ * Where a dependency owns no tables at all - a template or helper plugin - its
+ * presence on disk is the only thing that can be checked, so that is what is
+ * used.
+ */
+function unmetDependencies(string $dir, array $roots, PDO $pdo): ?array
+{
+    $manifest = $dir.'/extension.json';
+
+    if (!is_file($manifest)) {
+        return null;
+    }
+
+    $json = json_decode((string) file_get_contents($manifest), true);
+    $deps = is_array($json['dependencies'] ?? null) ? $json['dependencies'] : [];
+
+    if (!$deps) {
+        return null;
+    }
+
+    $missing = [];
+
+    foreach ($deps as $dep) {
+        $depDir = null;
+
+        foreach ($roots as $base) {
+            if (is_dir($base.'/'.$dep)) {
+                $depDir = $base.'/'.$dep;
+
+                break;
+            }
+        }
+
+        if (null === $depDir) {
+            $missing[] = $dep.' (not present)';
+
+            continue;
+        }
+
+        $depTables = declaredTables($depDir);
+
+        if (!$depTables) {
+            continue;   // nothing to verify against; presence is all there is
+        }
+
+        // Every declared table, not merely one of them.
+        //
+        // Accepting "at least one exists" was the first version and it is too
+        // lenient to be useful: ahgCorePlugin declares five tables, and with
+        // three of them dropped the dependency still counted as satisfied. A
+        // half-installed dependency is precisely the state that produces a
+        // missing-table 500 later, so it has to fail here.
+        $absent = [];
+
+        foreach ($depTables as $t) {
+            $st = $pdo->prepare('SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = ?');
+            $st->execute([$t]);
+            $exists = (int) $st->fetchColumn();
+            $st->closeCursor();
+
+            if (0 === $exists) {
+                $absent[] = $t;
+            }
+        }
+
+        if ($absent) {
+            $missing[] = sprintf(
+                '%s (schema incomplete: %d of %d tables absent, e.g. %s)',
+                $dep,
+                count($absent),
+                count($depTables),
+                implode(', ', array_slice($absent, 0, 3))
+            );
+        }
+    }
+
+    return $missing ?: null;
+}
+
 $root = dirname(__DIR__);                    // the plugin directory, once shipped
 $pluginsDir = dirname($root);                // plugins/
 $targets = [];
@@ -199,6 +298,11 @@ if (!$targets) {
  * cannot connect - especially for whoever runs this once, on a production
  * server, having never seen it before.
  */
+// --force installs regardless of unmet dependencies. Deliberately explicit:
+// the default is to refuse, because a half-installed stack fails later and
+// further from the cause.
+$force = array_key_exists('force', $opt);
+
 $socket = $opt['socket'] ?? null;
 $hostGiven = array_key_exists('host', $opt) && '' !== (string) $opt['host'];
 
@@ -237,12 +341,40 @@ foreach ($targets as $dir) {
     $name = basename($dir);
     $file = $dir.'/database/install.sql';
 
-    if (!is_file($file)) {
-        // Not "nothing to do" - something was asked for and was not there.
-        // Skipping quietly is how a run creates no tables and still reports
-        // success.
-        fwrite(STDERR, "{$name}: no database/install.sql at {$file}\n");
+    // Refuse rather than half-install when a declared dependency is absent.
+    //
+    // Every AHG plugin names what it needs in extension.json. Nothing checked,
+    // so installing a plugin whose dependency was missing loaded its schema
+    // quite happily and then failed at first use - a missing table, or a
+    // missing service class, somewhere far from the install that caused it.
+    //
+    // Failing here means the operator learns at the moment they can still act
+    // on it, with the name of the thing to install first.
+    if (!$force && null !== ($unmet = unmetDependencies($dir, $candidateRoots, $pdo))) {
+        fwrite(STDERR, "{$name}: not installed - missing dependencies: ".implode(', ', $unmet)."\n");
+        fwrite(STDERR, "  install ".implode(' and ', $unmet)." first, or pass --force to override.\n");
         $exit = 2;
+
+        continue;
+    }
+
+    if (!is_file($file)) {
+        // A plugin with no tables is a normal thing - ahgUiOverridesPlugin and
+        // ahgThemeB5Plugin are templates and helpers, and neither owns any
+        // schema. Reporting that as a failure made a clean run look broken and
+        // trained people to ignore the exit status, which is the opposite of
+        // what this script is for.
+        //
+        // It is only a failure when the plugin CLAIMS tables and ships no SQL
+        // to create them.
+        $declared = declaredTables($dir);
+
+        if ($declared) {
+            fwrite(STDERR, "{$name}: declares ".count($declared)." tables but has no database/install.sql\n");
+            $exit = 2;
+        } else {
+            say("\n{$name}\n  no schema - nothing to install");
+        }
 
         continue;
     }
