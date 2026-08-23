@@ -324,6 +324,29 @@ class DerivativeWatermarkService
             if ($returnCode === 0) {
                 // Apply watermark to the regenerated derivative
                 self::applyWatermark($derivativePath, $objectId);
+
+                // `convert` copies EXIF into the resized output, so a derivative
+                // inherits the master's coordinate. A served derivative therefore
+                // publishes the exact position of a site whose record may only be
+                // showing a coarsened one. Strip it here, where we control the file.
+                //
+                // Defaults to ON. `photo_exif_strip` previously existed as a
+                // setting that NOTHING read, defaulting to 'false' - a control that
+                // appears in the admin UI and does nothing is worse than no control,
+                // because someone will rely on it. It is now honoured, and an
+                // instance must opt OUT of the protection rather than into it.
+                $scrub = AhgSettingsService::getBool('photo_exif_strip', true)
+                    ? ImageMetadataScrubber::scrub($derivativePath)
+                    : ['ok' => true, 'method' => 'disabled', 'reason' => null];
+
+                if (!$scrub['ok']) {
+                    error_log(sprintf(
+                        'DerivativeWatermark: location metadata NOT removed from %s (%s: %s)',
+                        $derivativePath,
+                        $scrub['method'],
+                        $scrub['reason'] ?? 'unknown'
+                    ));
+                }
             } else {
                 error_log("DerivativeWatermark: Failed to regenerate: " . implode("\n", $output));
             }
