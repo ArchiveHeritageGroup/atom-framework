@@ -645,7 +645,15 @@ class ExtensionManager implements ExtensionManagerContract
                     ->first();
 
                 if ($existing) {
-                    $this->recordMenuOwnership($machineName, (int) $existing->id, $entry);
+                    // Adopted, NOT created. The distinction is load-bearing: a
+                    // manifest entry can match a row base AtoM shipped (browse,
+                    // add, import, the admin entries), and claiming those as the
+                    // plugin's own meant a later disable deleted base navigation
+                    // outright - 42 rows on one instance, recoverable only from
+                    // the binlog. Ownership is still recorded so the row is not
+                    // duplicated on re-enable, but it is flagged so that
+                    // releaseMenuRow() will never delete it.
+                    $this->recordMenuOwnership($machineName, (int) $existing->id, $entry, false);
 
                     continue;
                 }
@@ -668,23 +676,63 @@ class ExtensionManager implements ExtensionManagerContract
     {
         $node = DB::table('menu')->where('id', $record->menu_id)->first();
 
-        if ($node) {
+        // Only a row this plugin actually created may be deleted. Anything it
+        // merely adopted - above all a base AtoM entry that happened to match on
+        // name and path - is released by forgetting it, never by removing it.
+        // A record predating the column cannot prove authorship, so it is left
+        // alone too.
+        $mayDelete = self::ownershipTracksAuthorship()
+            && 1 === (int) ($record->created_by_plugin ?? 0);
+
+        if ($node && $mayDelete) {
             $this->removeMenuNode($node);
         }
 
         DB::table('atom_plugin_menu')->where('id', $record->id)->delete();
     }
 
-    protected function recordMenuOwnership(string $machineName, int $menuId, array $entry): void
+    protected function recordMenuOwnership(string $machineName, int $menuId, array $entry, bool $createdByPlugin = true): void
     {
+        $values = [
+            'menu_name' => $entry['name'],
+            'menu_path' => $entry['path'],
+            'created_at' => date('Y-m-d H:i:s'),
+        ];
+
+        // Written only where the column exists, so an instance that has not taken
+        // the migration keeps working. releaseMenuRow() treats a missing column as
+        // "cannot prove authorship" and declines to delete, which is the safe way
+        // round: a stray menu entry is a cosmetic annoyance, a deleted base menu
+        // is an outage.
+        if (self::ownershipTracksAuthorship()) {
+            $values['created_by_plugin'] = $createdByPlugin ? 1 : 0;
+        }
+
         DB::table('atom_plugin_menu')->updateOrInsert(
             ['plugin_name' => $machineName, 'menu_id' => $menuId],
-            [
-                'menu_name' => $entry['name'],
-                'menu_path' => $entry['path'],
-                'created_at' => date('Y-m-d H:i:s'),
-            ]
+            $values
         );
+    }
+
+    /**
+     * Whether atom_plugin_menu can say who created a row.
+     *
+     * Cached per request: this is consulted once per menu entry per enable, and
+     * an information_schema round trip for each would be needless.
+     */
+    protected static function ownershipTracksAuthorship(): bool
+    {
+        static $has = null;
+
+        if (null === $has) {
+            try {
+                $has = DB::schema()->hasColumn('atom_plugin_menu', 'created_by_plugin');
+            } catch (\Exception $e) {
+                $has = false;
+            }
+        }
+
+        return $has;
     }
 
     /**

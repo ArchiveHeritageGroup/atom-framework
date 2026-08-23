@@ -456,15 +456,23 @@ CREATE TABLE IF NOT EXISTS ahg_settings (
 -- row behind for good. Ownership is recorded when the row is created, so disabling
 -- a plugin removes exactly what it added regardless of what the manifest says now.
 --
+-- created_by_plugin separates the two ways a plugin comes to own a row. It may have
+-- created it, in which case removing it on disable is right. Or the row already
+-- existed and was adopted so that re-enabling would not duplicate it - and adopting
+-- is not authorship. Base AtoM's own entries match plugin manifests on name and
+-- path often enough that treating adoption as ownership deleted the browse and add
+-- menus wholesale on a live instance.
+--
 -- Deliberately not atom_extension_menu: that is an unused parallel menu design with
 -- its own routes and permissions, keyed to atom_extension, and a plugin enabled
 -- through atom_plugin alone has no row there to reference.
 CREATE TABLE IF NOT EXISTS `atom_plugin_menu` (
   `id` int NOT NULL AUTO_INCREMENT,
   `plugin_name` varchar(255) NOT NULL,
-  `menu_id` int NOT NULL COMMENT 'menu.id of the row this plugin created',
+  `menu_id` int NOT NULL COMMENT 'menu.id of the row this plugin created or adopted',
   `menu_name` varchar(255) NOT NULL COMMENT 'the name it was created with',
   `menu_path` varchar(255) NOT NULL COMMENT 'the path it was created with',
+  `created_by_plugin` tinyint(1) NOT NULL DEFAULT 0 COMMENT '1 = this plugin created the row and may delete it; 0 = adopted, never delete',
   `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_plugin_menu` (`plugin_name`, `menu_id`),
