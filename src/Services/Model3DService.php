@@ -216,7 +216,7 @@ class Model3DService
             $hash = md5($file['name'] . time());
             $filename = $hash . '.' . $extension;
             $relativePath = "3d/{$objectId}/{$filename}";
-            $fullPath = sfConfig::get('sf_upload_dir') . '/' . $relativePath;
+            $fullPath = \sfConfig::get('sf_upload_dir') . '/' . $relativePath;
             
             // Create directory
             $dir = dirname($fullPath);
@@ -359,14 +359,14 @@ class Model3DService
             }
             
             // Delete file
-            $fullPath = sfConfig::get('sf_upload_dir') . '/' . $model->file_path;
+            $fullPath = \sfConfig::get('sf_upload_dir') . '/' . $model->file_path;
             if (file_exists($fullPath)) {
                 unlink($fullPath);
             }
             
             // Delete poster/thumbnail
-            if ($model->poster_image && file_exists(sfConfig::get('sf_upload_dir') . '/' . $model->poster_image)) {
-                unlink(sfConfig::get('sf_upload_dir') . '/' . $model->poster_image);
+            if ($model->poster_image && file_exists(\sfConfig::get('sf_upload_dir') . '/' . $model->poster_image)) {
+                unlink(\sfConfig::get('sf_upload_dir') . '/' . $model->poster_image);
             }
             
             // Delete from database (cascades to i18n, hotspots, textures)

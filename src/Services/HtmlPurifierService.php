@@ -55,7 +55,7 @@ class HtmlPurifierService
         $config->set('URI.AllowedSchemes', ['http' => true, 'https' => true, 'mailto' => true]);
 
         // Cache configuration
-        $cacheDir = sfConfig::get('sf_cache_dir', '/tmp') . '/htmlpurifier';
+        $cacheDir = \sfConfig::get('sf_cache_dir', '/tmp') . '/htmlpurifier';
         if (!is_dir($cacheDir)) {
             @mkdir($cacheDir, 0755, true);
         }

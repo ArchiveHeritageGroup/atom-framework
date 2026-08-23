@@ -605,7 +605,7 @@ class PageIndexService
         }
 
         // Build the full file path
-        $uploadPath = sfConfig::get('sf_upload_dir', '/mnt/nas/heratio/archive');
+        $uploadPath = \sfConfig::get('sf_upload_dir', '/mnt/nas/heratio/archive');
         $filePath = rtrim($uploadPath, '/') . '/' . ltrim($digitalObject->path, '/');
 
         if (!file_exists($filePath)) {

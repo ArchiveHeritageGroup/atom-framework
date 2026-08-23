@@ -56,7 +56,7 @@ class WatermarkService
         if (!$config || !isset($config['image'])) {
             return false;
         }
-        $watermarkPath = sfConfig::get('sf_web_dir') . $config['image'];
+        $watermarkPath = \sfConfig::get('sf_web_dir') . $config['image'];
         if (!file_exists($watermarkPath)) {
             return false;
         }

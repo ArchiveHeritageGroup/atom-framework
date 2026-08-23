@@ -202,7 +202,7 @@ class ThreeDAutoConfigService
      */
     protected static function log(string $message): void
     {
-        $logFile = sfConfig::get('sf_log_dir', '/tmp') . '/3d_auto_config.log';
+        $logFile = \sfConfig::get('sf_log_dir', '/tmp') . '/3d_auto_config.log';
         $timestamp = date('Y-m-d H:i:s');
         @file_put_contents($logFile, "[{$timestamp}] {$message}\n", FILE_APPEND);
     }

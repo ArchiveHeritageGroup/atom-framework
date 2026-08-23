@@ -11,8 +11,8 @@ class MigrateCommand
 
     public function __construct()
     {
-        $this->frameworkPath = sfConfig::get('sf_root_dir') . '/atom-framework';
-        $this->pluginsPath = sfConfig::get('sf_root_dir') . '/atom-ahg-plugins';
+        $this->frameworkPath = \sfConfig::get('sf_root_dir') . '/atom-framework';
+        $this->pluginsPath = \sfConfig::get('sf_root_dir') . '/atom-ahg-plugins';
     }
 
     public function run(array $options = []): void
