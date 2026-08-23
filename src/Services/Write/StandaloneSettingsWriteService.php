@@ -23,14 +23,13 @@ class StandaloneSettingsWriteService implements SettingsWriteServiceInterface
                 ->where('culture', $culture)
                 ->update(['value' => $value]);
         } else {
-            $objectId = DB::table('object')->insertGetId([
-                'class_name' => 'QubitSetting',
-                'created_at' => date('Y-m-d H:i:s'),
-                'updated_at' => date('Y-m-d H:i:s'),
-            ]);
-
-            DB::table('setting')->insert([
-                'id' => $objectId,
+            // `setting` is standalone - no object inheritance in schema.yml, no
+            // foreign key on setting.id, and base AtoM writes no object row when
+            // saving a setting. Minting one here and reusing its id pushed setting
+            // ids into the 5000s while setting's own AUTO_INCREMENT stayed behind,
+            // which is what produced "Duplicate entry for key setting.PRIMARY", and
+            // it left stray object rows claiming to be QubitSetting.
+            $objectId = DB::table('setting')->insertGetId([
                 'name' => $name,
                 'scope' => $scope,
                 'editable' => 1,
@@ -75,8 +74,10 @@ class StandaloneSettingsWriteService implements SettingsWriteServiceInterface
 
         DB::table('setting_i18n')->where('id', $existing->id)->delete();
         DB::table('setting')->where('id', $existing->id)->delete();
-        DB::table('object')->where('id', $existing->id)->delete();
 
+        // Deliberately NOT deleting object: a setting has no object row, so an id
+        // that matches one belongs to a different record entirely - deleting it
+        // here would destroy an unrelated term, taxonomy or description.
         return true;
     }
 

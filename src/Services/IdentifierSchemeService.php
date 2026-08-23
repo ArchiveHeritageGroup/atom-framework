@@ -144,18 +144,9 @@ class IdentifierSchemeService
             ->first();
 
         if (!$setting) {
-            // QubitSetting is object-derived: the id must come from `object`.
-            // setting's own AUTO_INCREMENT is far behind the ids actually in use,
-            // so allocating from it collides on the primary key. `setting` also
-            // has no created_at/updated_at columns.
-            $id = DB::table('object')->insertGetId([
-                'class_name' => 'QubitSetting',
-                'created_at' => date('Y-m-d H:i:s'),
-                'updated_at' => date('Y-m-d H:i:s'),
-            ]);
-
-            DB::table('setting')->insert([
-                'id' => $id,
+            // `setting` is standalone and allocates its own id; it has no object
+            // row and no created_at/updated_at columns.
+            $id = DB::table('setting')->insertGetId([
                 'name' => $name,
                 'scope' => null,
                 'editable' => 1,

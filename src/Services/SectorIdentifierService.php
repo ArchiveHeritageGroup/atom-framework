@@ -205,19 +205,17 @@ class SectorIdentifierService
 
     /**
      * Insert the counter row when it doesn't exist yet.
-     * CTI: object('QubitSetting') -> setting -> setting_i18n.
+     *
+     * NOT class-table inheritance, despite what this used to claim: schema.yml
+     * gives `setting` no object parent, setting.id has no foreign key to object,
+     * and base AtoM writes no object row for a setting. Minting one and reusing
+     * its id is how setting ids here climbed into the 5000s while the table's own
+     * AUTO_INCREMENT stayed far behind - the collision that later surfaced as
+     * "Duplicate entry for key setting.PRIMARY" on the settings screens.
      */
     private static function bootstrapCounter(string $name, int $value): int
     {
-        $nowStr = date('Y-m-d H:i:s');
-        $objId = DB::table('object')->insertGetId([
-            'class_name' => 'QubitSetting',
-            'created_at' => $nowStr,
-            'updated_at' => $nowStr,
-            'serial_number' => 0,
-        ]);
-        DB::table('setting')->insert([
-            'id' => $objId,
+        $objId = DB::table('setting')->insertGetId([
             'name' => $name,
             'scope' => null,
             'editable' => 1,

@@ -115,31 +115,29 @@ class SettingService
     /**
      * Create the setting row and return its id.
      *
-     * QubitSetting is object-derived: the id comes from the `object` table, and
-     * `setting` merely reuses it. Letting `setting`'s own AUTO_INCREMENT allocate
-     * instead produced "Duplicate entry for key setting.PRIMARY" - its counter sat
-     * at 199 while ids in use ran past 5700, because every id ever assigned came
-     * from `object`. The same insert also wrote created_at/updated_at, which
-     * `setting` does not have.
+     * `setting` is a standalone table: schema.yml declares no object inheritance,
+     * BaseSetting does not extend the object base, setting.id carries no foreign
+     * key to object, and base AtoM never writes an object row when saving a
+     * setting. The id therefore comes from setting's own AUTO_INCREMENT.
+     *
+     * Do not be misled by object rows whose class_name is QubitSetting, or by
+     * settings whose id happens to match an object: nearly all of those are
+     * unrelated records that merely collide on number - 96 terms and 50
+     * taxonomies among them - and the handful that do say QubitSetting were
+     * manufactured by an earlier write path in this framework that invented them.
+     *
+     * `setting` has no created_at/updated_at columns; writing them here was a
+     * second fault in the same insert.
      */
     private static function createSettingRow(string $name, ?string $scope, string $culture, int $editable): int
     {
-        $id = DB::table('object')->insertGetId([
-            'class_name' => 'QubitSetting',
-            'created_at' => date('Y-m-d H:i:s'),
-            'updated_at' => date('Y-m-d H:i:s'),
-        ]);
-
-        DB::table('setting')->insert([
-            'id' => $id,
+        return (int) DB::table('setting')->insertGetId([
             'name' => $name,
             'scope' => $scope,
             'editable' => $editable,
             'deleteable' => 1,
             'source_culture' => $culture,
         ]);
-
-        return (int) $id;
     }
 
     /**
