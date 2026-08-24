@@ -1,0 +1,156 @@
+#!/usr/bin/env bash
+#
+# Post-deploy guard for an AtoM Heratio instance.
+#
+# Run it as the last step of every deploy. Each check exists because the thing it
+# checks has actually gone wrong on this estate, silently, in a way the deploy
+# itself reported as successful.
+#
+# Usage: bin/deploy-check [--fix] [--url https://host] [--mail-hours N]
+#
+#   --fix          rebuild ahgRuntimePlugin if it is stale (check 2)
+#   --url          smoke-test this base URL (default: skip)
+#   --mail-hours   how far back the mail check looks (default 24)
+#
+# Exit 0 = safe. Exit 1 = something shipped that is not running, or is not what
+# you think is running.
+
+set -uo pipefail
+
+FRAMEWORK="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ROOT="$(cd "$FRAMEWORK/.." && pwd)"
+PLUGINS="$ROOT/atom-ahg-plugins"
+
+FIX=0
+URL=""
+MAIL_HOURS=24
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --fix) FIX=1 ;;
+        --url) shift; URL="${1:-}" ;;
+        --mail-hours) shift; MAIL_HOURS="${1:-24}" ;;
+        *) echo "unknown argument: $1" >&2; exit 2 ;;
+    esac
+    shift
+done
+
+FAILED=0
+WARNED=0
+
+pass() { echo "OK"; }
+fail() { echo "FAIL"; echo "     $1"; FAILED=1; }
+warn() { echo "WARN"; echo "     $1"; WARNED=1; }
+
+echo "deploy-check  $ROOT"
+echo ""
+
+#-- 1. the repos are actually at what origin has ------------------------------
+# A deploy that fetched but did not reset, or that left local edits behind,
+# leaves the instance running something no release describes. On .131 the plugin
+# repo sat 11 files ahead of its own stale HEAD for weeks; only a diff against
+# origin/main showed every one of them was merely behind.
+echo -n "1. repos match origin/main ....... "
+repo_drift=""
+for repo in "$FRAMEWORK" "$PLUGINS"; do
+    [ -d "$repo/.git" ] || continue
+    name="$(basename "$repo")"
+    git -C "$repo" -c "safe.directory=$repo" fetch origin --quiet 2>/dev/null
+    local_head="$(git -C "$repo" -c "safe.directory=$repo" rev-parse HEAD 2>/dev/null)"
+    origin_head="$(git -C "$repo" -c "safe.directory=$repo" rev-parse origin/main 2>/dev/null)"
+    dirty="$(git -C "$repo" -c "safe.directory=$repo" status --porcelain 2>/dev/null | wc -l)"
+
+    if [ -n "$local_head" ] && [ "$local_head" != "$origin_head" ]; then
+        repo_drift="$repo_drift $name(behind/ahead)"
+    elif [ "$dirty" -gt 0 ]; then
+        repo_drift="$repo_drift $name($dirty uncommitted)"
+    fi
+done
+if [ -n "$repo_drift" ]; then
+    warn "not clean at origin/main:$repo_drift - diff against origin/main, not against HEAD, before resetting"
+else
+    pass
+fi
+
+#-- 2. ahgRuntimePlugin is not shadowing a newer framework --------------------
+# THE ONE THAT LOOKS LIKE SUCCESS. Where ahgRuntimePlugin is enabled, every
+# PSR-4 AtomFramework\* class loads from that plugin's GENERATED copy of src/,
+# not from atom-framework/src. The plugin is not in git, so no pull refreshes it.
+# Deploy the framework without rebuilding and the release reports clean, the tag
+# is right, the version is right, and the fix is not running.
+#
+# Measured 2026-08-24 on archaeology: framework v2.18.14 deployed, and
+# LanguageService::getAll() still returned the old empty result until rebuild.
+#
+# Worse, it is partial - classes pulled in by explicit require_once from
+# $ROOT/atom-framework (the routing classes) DO update. So on that same deploy
+# the new route class worked immediately while the service did not. A framework
+# fix appearing to work proves nothing about whether the framework deployed.
+echo -n "2. runtime plugin is current ..... "
+GENERATED="$PLUGINS/ahgRuntimePlugin"
+if [ ! -e "$ROOT/plugins/ahgRuntimePlugin" ]; then
+    echo "n/a (not enabled here)"
+elif [ ! -f "$GENERATED/.generated-by-build-runtime-plugin" ]; then
+    warn "$GENERATED exists but carries no generator marker - build-runtime-plugin will refuse to touch it"
+else
+    newest_framework="$(find "$FRAMEWORK/src" -type f -name '*.php' -printf '%T@\n' 2>/dev/null | sort -rn | head -1)"
+    newest_generated="$(find "$GENERATED/src" -type f -name '*.php' -printf '%T@\n' 2>/dev/null | sort -rn | head -1)"
+
+    if [ -z "$newest_framework" ] || [ -z "$newest_generated" ]; then
+        warn "could not compare framework src against the generated copy"
+    elif [ "$(echo "$newest_framework > $newest_generated" | bc -l 2>/dev/null)" = "1" ]; then
+        if [ "$FIX" = "1" ]; then
+            echo "STALE - rebuilding"
+            if sudo -u www-data "$FRAMEWORK/bin/build-runtime-plugin" >/dev/null 2>&1; then
+                echo "     rebuilt. Now: systemctl reload php8.3-fpm && sudo -u www-data php symfony cc"
+            else
+                fail "rebuild failed - run $FRAMEWORK/bin/build-runtime-plugin by hand"
+            fi
+        else
+            fail "atom-framework/src is NEWER than the generated copy: the framework you deployed is not the one running.
+     Fix: sudo -u www-data $FRAMEWORK/bin/build-runtime-plugin
+     Then: systemctl reload php8.3-fpm && sudo -u www-data php symfony cc
+     Verify: ReflectionClass on any AtomFramework\\\\ class and check getFileName()"
+        fi
+    else
+        pass
+    fi
+fi
+
+#-- 3. the site answers -------------------------------------------------------
+# Only meaningful with a URL. AtoM serves its login page as HTTP 200, so this is
+# a liveness check, not an access-control one.
+echo -n "3. site responds ................. "
+if [ -z "$URL" ]; then
+    echo "skipped (no --url)"
+else
+    code="$(curl -sL -o /dev/null -w '%{http_code}' --max-time 30 "$URL" 2>/dev/null)"
+    case "$code" in
+        200|302) pass ;;
+        *) fail "$URL returned $code" ;;
+    esac
+fi
+
+#-- 4. nothing is waiting in the mailbox -------------------------------------
+# Reports arrive faster than deploys. On 2026-08-24 four fault reports came in
+# over two hours while unrelated releases were going out; the first was read
+# only after the third had already been fixed. Reports, never blocks - a mail
+# outage must not be able to stop a release.
+echo "4. recent inbound mail ..........."
+if [ -x "$FRAMEWORK/bin/mail-check.cjs" ] && command -v node >/dev/null 2>&1; then
+    node "$FRAMEWORK/bin/mail-check.cjs" --hours "$MAIL_HOURS" 2>/dev/null || true
+else
+    echo "  SKIP - node or bin/mail-check.cjs not available"
+fi
+
+echo ""
+if [ "$FAILED" = "1" ]; then
+    echo "deploy-check: FAILED - what you deployed is not what is running."
+    exit 1
+fi
+if [ "$WARNED" = "1" ]; then
+    echo "deploy-check: passed with warnings."
+    exit 0
+fi
+echo "deploy-check: clean."
+exit 0
