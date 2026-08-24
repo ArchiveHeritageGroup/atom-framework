@@ -86,7 +86,7 @@ final class PluginLoader
             }
         }
 
-        foreach (['AhgMetadataRoute', 'AddActionRoute', 'SafeRequestRoute'] as $class) {
+        foreach (['AhgMetadataRoute', 'AhgSafeMetadataRoute', 'AddActionRoute', 'SafeRequestRoute'] as $class) {
             if (class_exists($class, false)) {
                 continue;
             }
