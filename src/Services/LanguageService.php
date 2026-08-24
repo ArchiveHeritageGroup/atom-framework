@@ -312,17 +312,46 @@ class LanguageService
     }
 
     /**
-     * Get all languages from database.
+     * Get all languages, as {id, name, culture} sorted by name.
+     *
+     * The `id` is the ISO 639-1 code, not a term id. AtoM does not hold
+     * languages as taxonomy terms at all: its own taxonomy ids begin at 30
+     * (QubitTaxonomy::ROOT_ID), so LANGUAGE_TAXONOMY_ID = 12 names a taxonomy
+     * that exists on no instance, and the query this replaces returned an empty
+     * collection everywhere - PSIS and archaeology both measured at zero rows on
+     * 2026-08-24. The visible symptom was the Language preference select on the
+     * authority record contact form offering nothing but "Select...", reported
+     * by Stefan du Toit.
+     *
+     * Codes also match what the consumers store: ahgContactPlugin's
+     * `contact_information_extended.language_preference` is varchar(16), and the
+     * one value in it on PSIS is an ISO code. The previous shape would have
+     * written a numeric term id into that column had it ever returned a row.
+     *
+     * ⚠️ findByCode(), findByName() and getTermIdFromCode() still query the same
+     * absent taxonomy and so always return null. Nothing calls them today; they
+     * need the same treatment before anything does.
+     *
+     * @param string $culture reserved - the ISO names are English for now, and
+     *                        an unknown culture must not empty the list
      */
     public static function getAll(string $culture = 'en'): Collection
     {
-        return DB::table('term as t')
-            ->join('term_i18n as ti', 't.id', '=', 'ti.id')
-            ->where('t.taxonomy_id', self::LANGUAGE_TAXONOMY_ID)
-            ->where('ti.culture', $culture)
-            ->orderBy('ti.name')
-            ->select(['t.id', 'ti.name', 'ti.culture'])
-            ->get();
+        $languages = [];
+
+        foreach (self::ISO_639_1_TO_NAME as $code => $name) {
+            $languages[] = (object) [
+                'id' => $code,
+                'name' => $name,
+                'culture' => $culture,
+            ];
+        }
+
+        usort($languages, static function ($a, $b) {
+            return strcasecmp($a->name, $b->name);
+        });
+
+        return new Collection($languages);
     }
 
     /**
