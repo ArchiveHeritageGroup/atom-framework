@@ -110,6 +110,8 @@ abstract class BaseCommand
             }
         }
 
+        $this->loadProjectConfiguration();
+
         try {
             return $this->handle();
         } catch (\Exception $e) {
@@ -118,6 +120,46 @@ abstract class BaseCommand
                 $this->line($e->getTraceAsString());
             }
             return 1;
+        }
+    }
+
+    /**
+     * Make AtoM's ProjectConfiguration class available to commands.
+     *
+     * Twelve commands - every csv:* and export:* one, plus tools:purge,
+     * tools:install, tools:sitemap and import:dip-objects - open handle() with
+     *
+     *     \ProjectConfiguration::getApplicationConfiguration('qubit', 'cli', false)
+     *
+     * and nothing ever loaded that class. bin/atom requires the framework's own
+     * bootstrap.php, which knows nothing about the symfony project, and the
+     * class lives in AtoM's config/ where PSR-4 does not reach it. So every one
+     * of those commands died with
+     *
+     *     Class "ProjectConfiguration" not found
+     *
+     * on both PSIS and archaeology - measured 2026-08-24, exporting a fonds.
+     *
+     * Only the class file is required here, not the configuration itself: this
+     * defines the class and boots nothing, so commands that never touch symfony
+     * pay a file include and no more. Each command still decides when to build
+     * the configuration and create a context.
+     *
+     * Fails open. If the file is not there - the framework used outside an AtoM
+     * tree - a command that does not need it still runs, and one that does gets
+     * the same error it got before rather than a new one about a missing file.
+     */
+    private function loadProjectConfiguration(): void
+    {
+        if (class_exists('ProjectConfiguration', false)) {
+            return;
+        }
+
+        $root = defined('ATOM_ROOT') ? ATOM_ROOT : dirname(__DIR__, 3);
+        $path = $root.'/config/ProjectConfiguration.class.php';
+
+        if (is_file($path)) {
+            require_once $path;
         }
     }
 
