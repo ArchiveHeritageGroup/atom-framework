@@ -1,4 +1,3 @@
-ahgAccessionManagePlugin/accession/relatedDonorAction.class.php
 ahgActorManagePlugin/sfIsaarPlugin/actorEventsAction.class.php
 ahgActorManagePlugin/sfIsaarPlugin/editAction.class.php
 ahgAiCompliancePlugin/aiCompliance/actions.class.php
