@@ -4,7 +4,6 @@ declare(strict_types=1);
 
 namespace AtomFramework\Services;
 
-use Illuminate\Database\Capsule\Manager as DB;
 use Illuminate\Support\Collection;
 
 /**
@@ -13,14 +12,23 @@ use Illuminate\Support\Collection;
  * Handles language code conversion between:
  * - ISO 639-1 (2-letter): Used by AtoM (en, af, zu)
  * - ISO 639-2 (3-letter): Used by book APIs (eng, afr, zul)
+ *
+ * Entirely table-driven, with no database access at all.
+ *
+ * Every lookup here used to query taxonomy 12 for language terms. AtoM has no
+ * language taxonomy - its own taxonomy ids start at 30, and nothing with id 12
+ * exists on any instance (measured on PSIS and archaeology, 2026-08-24: zero
+ * rows, no taxonomy of that name). So getAll() returned an empty collection and
+ * findByCode/findByName/getTermIdFromCode returned null for every input, on
+ * every install, since the class was written. The visible symptom was an empty
+ * Language preference select on the authority record contact form.
+ *
+ * Languages are identified here by ISO 639-1 code, which is also what the
+ * consumers store: ahgContactPlugin's
+ * contact_information_extended.language_preference is varchar(16).
  */
 class LanguageService
 {
-    /**
-     * AtoM Language taxonomy ID.
-     */
-    private const LANGUAGE_TAXONOMY_ID = 12;
-
     /**
      * ISO 639-2 (3-letter) to ISO 639-1 (2-letter) mapping.
      */
@@ -293,13 +301,14 @@ class LanguageService
             $code = self::iso639_2to1($code);
         }
 
-        // Try database first
-        $term = self::findByCode($code, $culture);
-        if ($term) {
-            return $term->name;
+        // findByCode resolves from the same ISO table this falls back to, so
+        // the two agree by construction; the call is kept so a future source of
+        // language data only has to be added there.
+        $language = self::findByCode($code, $culture);
+        if ($language) {
+            return $language->name;
         }
 
-        // Fallback to static mapping
         return self::ISO_639_1_TO_NAME[$code] ?? strtoupper($code);
     }
 
@@ -355,9 +364,17 @@ class LanguageService
     }
 
     /**
-     * Find language term by ISO 639-1 code.
+     * Find a language by ISO 639-1 (or 639-2) code.
      *
-     * AtoM stores languages with 2-letter codes in the term name or as the culture.
+     * Resolved from the ISO table, not the database. AtoM has no language
+     * taxonomy - its own taxonomy ids begin at 30, and the id 12 this class used
+     * to query exists on no instance - so the old query returned null for every
+     * code ever passed to it. Measured on PSIS and archaeology 2026-08-24: zero
+     * rows, no taxonomy of that name.
+     *
+     * `id` is the ISO code, matching getAll() and what the consumers store:
+     * ahgContactPlugin's contact_information_extended.language_preference is
+     * varchar(16).
      */
     public static function findByCode(string $code, string $culture = 'en'): ?object
     {
@@ -375,44 +392,66 @@ class LanguageService
             return null;
         }
 
-        return DB::table('term as t')
-            ->join('term_i18n as ti', 't.id', '=', 'ti.id')
-            ->where('t.taxonomy_id', self::LANGUAGE_TAXONOMY_ID)
-            ->where('ti.culture', $culture)
-            ->where(function ($query) use ($expectedName, $code) {
-                $query->where('ti.name', $expectedName)
-                    ->orWhere('ti.name', 'LIKE', $expectedName . '%')
-                    ->orWhere('ti.name', $code);
-            })
-            ->select(['t.id', 'ti.name'])
-            ->first();
+        return (object) [
+            'id' => $code,
+            'name' => $expectedName,
+            'culture' => $culture,
+        ];
     }
 
     /**
-     * Find language term by name.
+     * Find a language by name.
+     *
+     * Same story as findByCode: resolved from the ISO table, because the
+     * taxonomy it used to query does not exist. Exact match wins over a prefix
+     * match, which the old SQL did not guarantee.
      */
     public static function findByName(string $name, string $culture = 'en'): ?object
     {
-        return DB::table('term as t')
-            ->join('term_i18n as ti', 't.id', '=', 'ti.id')
-            ->where('t.taxonomy_id', self::LANGUAGE_TAXONOMY_ID)
-            ->where('ti.culture', $culture)
-            ->where(function ($query) use ($name) {
-                $query->where('ti.name', $name)
-                    ->orWhere('ti.name', 'LIKE', $name . '%');
-            })
-            ->select(['t.id', 'ti.name'])
-            ->first();
+        $needle = mb_strtolower(trim($name));
+
+        if ('' === $needle) {
+            return null;
+        }
+
+        // Exact match first, then the prefix match the old query allowed - so
+        // "Afrikaans" and "Afrik" both resolve, and "English" is not beaten to
+        // it by a longer name that merely starts the same way.
+        foreach ([true, false] as $exact) {
+            foreach (self::ISO_639_1_TO_NAME as $code => $langName) {
+                $candidate = mb_strtolower($langName);
+
+                if ($exact ? $candidate === $needle : 0 === mb_strpos($candidate, $needle)) {
+                    return (object) [
+                        'id' => $code,
+                        'name' => $langName,
+                        'culture' => $culture,
+                    ];
+                }
+            }
+        }
+
+        return null;
     }
 
     /**
      * Get term ID for a language code.
      */
-    public static function getTermIdFromCode(string $code, string $culture = 'en'): ?int
+    /**
+     * @deprecated There are no language terms in AtoM, so there is no term id.
+     *             Returns the ISO 639-1 code, which is what identifies a
+     *             language here and what the consumers store. Kept so existing
+     *             calls resolve rather than silently returning null.
+     *
+     * Return type changed from ?int to ?string with that: an ISO code cast to
+     * int is 0, which would have been worse than the null it replaced. Nothing
+     * in the plugin set or the framework called this at the time of the change.
+     */
+    public static function getTermIdFromCode(string $code, string $culture = 'en'): ?string
     {
-        $term = self::findByCode($code, $culture);
+        $language = self::findByCode($code, $culture);
 
-        return $term ? (int) $term->id : null;
+        return $language ? (string) $language->id : null;
     }
 
     /**
