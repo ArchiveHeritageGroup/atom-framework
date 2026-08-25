@@ -63,5 +63,12 @@ PREPARE stmt FROM @sql;
 EXECUTE stmt;
 DEALLOCATE PREPARE stmt;
 
+-- research_project_resource: uploaded documents alongside external links.
+-- Additive; without these the plugin still stores links, it just cannot hold a file.
+CALL add_column_if_missing('research_project_resource', 'file_path', 'VARCHAR(500) NULL COMMENT ''path under uploads/, set when resource_type = document''');
+CALL add_column_if_missing('research_project_resource', 'file_name', 'VARCHAR(255) NULL COMMENT ''original filename, for display and download''');
+CALL add_column_if_missing('research_project_resource', 'file_size', 'BIGINT NULL COMMENT ''bytes, as accepted''');
+CALL add_column_if_missing('research_project_resource', 'mime_type', 'VARCHAR(127) NULL COMMENT ''detected from magic bytes, not the browser claim''');
+
 -- Cleanup
 DROP PROCEDURE IF EXISTS add_column_if_missing;

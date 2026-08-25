@@ -1,7 +1,7 @@
 {
     "name": "atom-ahg-framework",
-    "version": "2.18.22",
-    "release_date": "2026-08-25",
+    "version": "2.18.23",
+    "release_date": "2026-08-26",
     "min_atom_version": "2.8",
     "max_atom_version": "2.10",
     "min_php_version": "8.1",
