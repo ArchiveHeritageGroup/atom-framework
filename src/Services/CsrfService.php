@@ -238,7 +238,7 @@ class CsrfService
             // admin error-log UI during the log-mode observation window (the PSIS
             // php-fpm pool discards raw error_log() output). Must never throw.
             try {
-                \Illuminate\Database\Capsule\Manager::table('ahg_error_log')->insert([
+                \AtomFramework\Services\ErrorLogWriter::record([
                     'level' => 'warning',
                     'status_code' => 'enforce' === $mode ? 403 : null,
                     'message' => sprintf('CSRF token %s (mode: %s)', $reason, $mode),
