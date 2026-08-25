@@ -548,6 +548,12 @@ SECFIX_FILES=(
     "apps/qubit/modules/digitalobject/actions/updateAction.class.php"
     "apps/qubit/modules/settings/actions/inventoryAction.class.php"
     "plugins/arRestApiPlugin/modules/api/actions/physicalobjectsCreateAction.class.php"
+    # ATOM-10 (AHG 2026-08-24, reported by a cataloguer): SKOS import fatals with
+    # "getValue() on null" when a skos:related names a concept the importer never
+    # imported - which a file declaring a ConceptScheme makes easy to hit. Kills
+    # the run after terms are already saved, so a retry duplicates them.
+    # Unchanged in 2.10.2; still open upstream.
+    "plugins/sfSkosPlugin/lib/sfSkosPlugin.class.php"
     # Artefactual official advisory (gist b7875f8): autocomplete access control -
     # unauthenticated user/actor/taxonomy/search autocomplete leaked user metadata
     # (usernames/emails/roles) + draft description titles. Route-level security.yml.
@@ -566,7 +572,7 @@ for _rel in "${SECFIX_FILES[@]}"; do
         SECFIX_APPLIED=$((SECFIX_APPLIED + 1))
     fi
 done
-echo "  ✓ Applied AtoM 2.10.1 security fixes (${SECFIX_APPLIED}/18 files, ATOM-1..9 + autocomplete advisory)"
+echo "  ✓ Applied AtoM 2.10.1 security fixes (${SECFIX_APPLIED}/19 files, ATOM-1..10 + autocomplete advisory)"
 
 fi   # end of APPLY_BASE_PATCHES
 
