@@ -78,13 +78,24 @@ class ErrorLogWriter
 
             $seconds = $window ?? self::$window;
 
-            // NOW() and INTERVAL are evaluated by MySQL rather than compared
-            // against a PHP timestamp on purpose: timestamps on these instances
-            // are written in the application timezone while the database clock
-            // is UTC, and mixing the two silently misses by hours.
+            // BOTH SIDES OF THIS COMPARISON MUST USE THE DATABASE CLOCK.
+            //
+            // last_seen_at is written with NOW() below, and compared against
+            // NOW() here. created_at is deliberately NOT used: it is written by
+            // PHP in the application timezone, which is not the database's.
+            //
+            // The first version of this compared COALESCE(last_seen_at,
+            // created_at) against NOW() and was wrong on every instance.
+            // Archaeology runs the AtoM default America/Vancouver against a UTC
+            // database, so a row written seconds ago carried a created_at seven
+            // hours in the past, the window matched nothing, and every repeat
+            // inserted a new row. PSIS runs Africa/Johannesburg, two hours the
+            // other way, so the window was always true and it would have
+            // collapsed errors hours apart into one count. It looked correct
+            // there for the wrong reason, which is worse than failing.
             $recent = DB::table('ahg_error_log')
                 ->where('signature', $signature)
-                ->whereRaw('COALESCE(last_seen_at, created_at) > NOW() - INTERVAL ? SECOND', [$seconds])
+                ->whereRaw('last_seen_at > NOW() - INTERVAL ? SECOND', [$seconds])
                 ->orderByDesc('id')
                 ->first();
 
@@ -101,6 +112,12 @@ class ErrorLogWriter
 
             $row['signature'] = $signature;
             $row['occurrences'] = 1;
+
+            // Stamped by the database, not by PHP, so the window comparison
+            // above has something on the same clock to compare against. A row
+            // whose last_seen_at is NULL can never match that window, which is
+            // what made the first version insert a new row every time.
+            $row['last_seen_at'] = DB::raw('NOW()');
 
             DB::table('ahg_error_log')->insert($row);
         } catch (\Throwable $e) {
