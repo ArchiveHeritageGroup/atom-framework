@@ -194,6 +194,26 @@ class ItemPhysicalLocationRepository
     }
 
     /**
+     * See PhysicalObjectExtendedRepository: the extended table ships with the
+     * optional ahgStorageManagePlugin, so its presence has to be checked rather
+     * than assumed.
+     */
+    private static function extendedTableExists(): bool
+    {
+        static $exists = null;
+
+        if (null === $exists) {
+            try {
+                $exists = DB::schema()->hasTable('physical_object_extended');
+            } catch (\Throwable $e) {
+                $exists = false;
+            }
+        }
+
+        return $exists;
+    }
+
+    /**
      * Get location with container details
      */
     public function getLocationWithContainer(int $informationObjectId): ?array
@@ -205,22 +225,28 @@ class ItemPhysicalLocationRepository
 
         // Get container details if linked
         if (!empty($location['physical_object_id'])) {
-            $container = DB::table('physical_object as po')
+            // physical_object_extended belongs to the optional
+            // ahgStorageManagePlugin. Join it only where it exists, otherwise
+            // this read takes the whole record view down on installs without
+            // that plugin.
+            $hasExtended = self::extendedTableExists();
+
+            $query = DB::table('physical_object as po')
                 ->leftJoin('physical_object_i18n as poi', function ($join) {
                     $join->on('poi.id', '=', 'po.id')
                          ->where('poi.culture', '=', \AtomExtensions\Helpers\CultureHelper::getCulture());
                 })
-                ->leftJoin('physical_object_extended as poe', 'poe.physical_object_id', '=', 'po.id')
                 ->leftJoin('slug as s', 's.object_id', '=', 'po.id')
-                ->where('po.id', $location['physical_object_id'])
-                ->select([
-                    'po.id',
-                    'poi.name',
-                    'poi.location',
-                    's.slug',
-                    'poe.*'
-                ])
-                ->first();
+                ->where('po.id', $location['physical_object_id']);
+
+            $columns = ['po.id', 'poi.name', 'poi.location', 's.slug'];
+
+            if ($hasExtended) {
+                $query->leftJoin('physical_object_extended as poe', 'poe.physical_object_id', '=', 'po.id');
+                $columns[] = 'poe.*';
+            }
+
+            $container = $query->select($columns)->first();
 
             $location['container'] = $container ? (array) $container : null;
         }

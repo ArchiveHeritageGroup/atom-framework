@@ -10,10 +10,54 @@ use Illuminate\Database\Capsule\Manager as DB;
 class PhysicalObjectExtendedRepository
 {
     /**
+     * physical_object_extended is created by ahgStorageManagePlugin, which is
+     * OPTIONAL. The framework is always loaded, so every method here has to cope
+     * with the table being absent - otherwise an install without that plugin
+     * takes a hard 500 on /physicalobject/add, which is what archaeology was
+     * doing. An absent table means "extended storage is not installed", which is
+     * a truthful answer rather than a swallowed fault.
+     */
+    private static function tableExists(): bool
+    {
+        static $exists = null;
+
+        if (null === $exists) {
+            try {
+                $exists = DB::schema()->hasTable('physical_object_extended');
+            } catch (\Throwable $e) {
+                $exists = false;
+            }
+        }
+
+        return $exists;
+    }
+
+    /**
+     * A write that cannot happen must not look like one that did. Reads can
+     * answer "nothing"; writes say so in the log, once per method, so a
+     * half-configured install is diagnosable instead of silently lossy.
+     */
+    private static function unavailable(string $method): void
+    {
+        static $warned = [];
+
+        if (!isset($warned[$method])) {
+            $warned[$method] = true;
+            error_log('PhysicalObjectExtendedRepository::' . $method
+                . '() called but physical_object_extended is absent'
+                . ' - ahgStorageManagePlugin is not installed on this instance.');
+        }
+    }
+
+    /**
      * Get extended data for a physical object
      */
     public function getExtendedData(int $physicalObjectId): ?array
     {
+        if (!self::tableExists()) {
+            return null;
+        }
+
         $row = DB::table('physical_object_extended')
             ->where('physical_object_id', $physicalObjectId)
             ->first();
@@ -26,6 +70,12 @@ class PhysicalObjectExtendedRepository
      */
     public function saveExtendedData(int $physicalObjectId, array $data): int
     {
+        if (!self::tableExists()) {
+            self::unavailable('saveExtendedData');
+
+            return 0;
+        }
+
         $data['physical_object_id'] = $physicalObjectId;
         $data['updated_at'] = date('Y-m-d H:i:s');
 
@@ -54,6 +104,12 @@ class PhysicalObjectExtendedRepository
      */
     public function updateCapacityUsage(int $physicalObjectId, int $usedCapacity, float $usedLinearMetres = null): bool
     {
+        if (!self::tableExists()) {
+            self::unavailable('updateCapacityUsage');
+
+            return false;
+        }
+
         $update = ['used_capacity' => $usedCapacity];
         if ($usedLinearMetres !== null) {
             $update['used_linear_metres'] = $usedLinearMetres;
@@ -69,6 +125,12 @@ class PhysicalObjectExtendedRepository
      */
     public function incrementUsage(int $physicalObjectId, int $count = 1, float $linearMetres = 0): bool
     {
+        if (!self::tableExists()) {
+            self::unavailable('incrementUsage');
+
+            return false;
+        }
+
         return DB::table('physical_object_extended')
             ->where('physical_object_id', $physicalObjectId)
             ->update([
@@ -82,6 +144,12 @@ class PhysicalObjectExtendedRepository
      */
     public function decrementUsage(int $physicalObjectId, int $count = 1, float $linearMetres = 0): bool
     {
+        if (!self::tableExists()) {
+            self::unavailable('decrementUsage');
+
+            return false;
+        }
+
         return DB::table('physical_object_extended')
             ->where('physical_object_id', $physicalObjectId)
             ->update([
@@ -95,6 +163,10 @@ class PhysicalObjectExtendedRepository
      */
     public function findAvailableLocations(int $minCapacity = 1, string $building = null): array
     {
+        if (!self::tableExists()) {
+            return [];
+        }
+
         $query = DB::table('physical_object_extended as poe')
             ->join('physical_object as po', 'po.id', '=', 'poe.physical_object_id')
             ->leftJoin('physical_object_i18n as poi', function ($join) {
@@ -126,6 +198,10 @@ class PhysicalObjectExtendedRepository
      */
     public function getCapacitySummaryByBuilding(): array
     {
+        if (!self::tableExists()) {
+            return [];
+        }
+
         return DB::table('physical_object_extended')
             ->select([
                 'building',
