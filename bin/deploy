@@ -82,8 +82,17 @@ fi
 #    php-fpm's own writes under ProtectSystem=full.
 for repo in "$FRAMEWORK" "$PLUGINS"; do
     [ -d "$repo" ] || continue
-    stray="$(find "$repo" ! -user "$(stat -c '%U' "$repo")" 2>/dev/null | wc -l)"
-    [ "$stray" = "0" ] || echo "  WARNING: $(basename "$repo") has $stray path(s) not owned by $(stat -c '%U' "$repo")"
+    # ROOT-owned specifically. www-data ownership is legitimate here - the
+    # generated runtime plugin is built as www-data and must stay writable by
+    # it. Flagging "anything not the tree owner" reported those as faults and
+    # buried the real signal in noise.
+    stray="$(find "$repo" -user root 2>/dev/null | wc -l)"
+    if [ "$stray" != "0" ]; then
+        echo "  WARNING: $(basename "$repo") has $stray root-owned path(s)."
+        echo "           Root-owned files here break the next release, the next runtime"
+        echo "           rebuild, and php-fpm's own writes under ProtectSystem=full."
+        echo "           Fix: chown -R $(stat -c '%U:%G' "$repo") $repo"
+    fi
 done
 
 # 5. Clear cache and reload PHP so the new code is what actually runs.
