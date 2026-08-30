@@ -274,16 +274,33 @@ class DigitalObjectService
      */
     protected function storeDigitalObjectFile(int $digitalObjectId, string $filename, string $contents): string
     {
+        $this->assertObjectStoreAvailable();
+
         $path = $this->generateStoragePath($digitalObjectId);
         $fullPath = $this->uploadDir . '/' . $path;
 
-        if (!is_dir($fullPath)) {
-            mkdir($fullPath, 0755, true);
+        if (!is_dir($fullPath) && !mkdir($fullPath, 0755, true) && !is_dir($fullPath)) {
+            throw new \RuntimeException(sprintf(
+                'Could not create the digital object directory %s. The object store may be unavailable.',
+                $fullPath
+            ));
         }
 
         $storedFilename = $digitalObjectId . '_' . $this->sanitizeFilename($filename);
         $fullFilePath = $fullPath . '/' . $storedFilename;
-        file_put_contents($fullFilePath, $contents);
+
+        // file_put_contents returning false was previously ignored, so a failed
+        // write updated the database row and reported success - the record then
+        // pointed at a file that was never created.
+        $written = file_put_contents($fullFilePath, $contents);
+        if (false === $written || $written !== strlen($contents)) {
+            throw new \RuntimeException(sprintf(
+                'Wrote %s of %d bytes to %s. The digital object was NOT stored.',
+                false === $written ? 'none' : $written,
+                strlen($contents),
+                $fullFilePath
+            ));
+        }
         chmod($fullFilePath, 0644);
 
         DB::table('digital_object')
@@ -291,6 +308,53 @@ class DigitalObjectService
             ->update(['path' => $path . '/' . $storedFilename]);
 
         return $fullFilePath;
+    }
+
+    /**
+     * Refuse to write when the object store is not actually there.
+     *
+     * Digital objects commonly live on network storage reached through a
+     * symlink or an on-demand mount. When that storage is absent the directory
+     * can still exist and still be writable, so an upload succeeds, the
+     * database row is updated, and the file is lost the moment the storage
+     * returns. The write reports success; nothing surfaces until someone opens
+     * the record.
+     *
+     * The check is a sentinel file inside the object store, named by
+     * `app_digital_object_store_sentinel` (a path relative to the upload
+     * directory). The sentinel lives ON the storage, so its absence means the
+     * storage is absent.
+     *
+     * OPT-IN BY DESIGN. With the setting unconfigured this does nothing, which
+     * is correct for installs whose objects sit on ordinary local disk - there
+     * is no mount to lose, and a check that cannot fail is only a cost. Guessing
+     * instead (comparing device ids, testing for a non-empty directory) would
+     * refuse legitimate writes on a fresh install.
+     *
+     * See issue #313.
+     */
+    protected function assertObjectStoreAvailable(): void
+    {
+        if (!class_exists('sfConfig')) {
+            return;
+        }
+
+        $sentinel = (string) \sfConfig::get('app_digital_object_store_sentinel', '');
+        if ('' === trim($sentinel)) {
+            return;
+        }
+
+        $path = $this->uploadDir . '/' . ltrim($sentinel, '/');
+        clearstatcache(true, $path);
+
+        if (!file_exists($path)) {
+            throw new \RuntimeException(sprintf(
+                'The digital object store is not available: the sentinel %s is missing. '
+                . 'Refusing to write, because a file written now would be lost when the '
+                . 'storage returns. Check that the object store is mounted.',
+                $path
+            ));
+        }
     }
 
     /**
