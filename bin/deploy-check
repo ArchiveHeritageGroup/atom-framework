@@ -93,10 +93,41 @@ if [ ! -e "$ROOT/plugins/ahgRuntimePlugin" ]; then
 elif [ ! -f "$GENERATED/.generated-by-build-runtime-plugin" ]; then
     warn "$GENERATED exists but carries no generator marker - build-runtime-plugin will refuse to touch it"
 else
-    newest_framework="$(find "$FRAMEWORK/src" -type f -name '*.php' -printf '%T@\n' 2>/dev/null | sort -rn | head -1)"
-    newest_generated="$(find "$GENERATED/src" -type f -name '*.php' -printf '%T@\n' 2>/dev/null | sort -rn | head -1)"
+    # Prefer the build stamp over mtimes. A plain `cp -r` does not preserve them
+    # and any `touch` invents them, so an mtime comparison answers a question
+    # next to the one being asked. The stamp records what this copy was built
+    # FROM, which is the actual question. Issue #301.
+    stamp="$GENERATED/.generated-by-build-runtime-plugin"
+    stamped_ver="$(python3 -c "import json;print(json.load(open('$stamp')).get('framework_version',''))" 2>/dev/null || true)"
+    stamped_commit="$(python3 -c "import json;print(json.load(open('$stamp')).get('framework_commit',''))" 2>/dev/null || true)"
+    current_ver="$(python3 -c "import json;print(json.load(open('$FRAMEWORK/version.json'))['version'])" 2>/dev/null || true)"
+    # -c safe.directory: run as www-data against a checkout owned by another user,
+    # git refuses and returns empty - which made the commit comparison below skip
+    # silently and report OK on a copy built from a different commit.
+    current_commit="$(git -C "$FRAMEWORK" -c safe.directory="$FRAMEWORK" rev-parse --short HEAD 2>/dev/null || true)"
+    newest_framework=""; newest_generated=""
 
-    if [ -z "$newest_framework" ] || [ -z "$newest_generated" ]; then
+    if [ -n "$stamped_ver" ] && [ -n "$current_ver" ] && [ "$stamped_ver" != "$current_ver" ]; then
+        fail "generated copy was built from framework $stamped_ver, but the framework on disk is $current_ver - the framework you deployed is NOT the one running.
+         Fix: sudo -u www-data $FRAMEWORK/bin/build-runtime-plugin
+         Then: systemctl reload php8.3-fpm && sudo -u www-data php symfony cc"
+    elif [ -n "$stamped_ver" ] && [ "$stamped_ver" = "$current_ver" ] && [ -n "$stamped_commit" ] && [ -n "$current_commit" ] && [ "$stamped_commit" != "$current_commit" ]; then
+        fail "same version ($current_ver) but a different commit: built from $stamped_commit, framework is at $current_commit.
+         A version that did not move does not mean the code did not.
+         Fix: sudo -u www-data $FRAMEWORK/bin/build-runtime-plugin"
+    elif [ -n "$stamped_ver" ] && [ "$stamped_ver" = "$current_ver" ]; then
+        echo "OK (built from $stamped_ver / ${stamped_commit:-no commit recorded})"
+    else
+        # No stamp: this copy predates the provenance change. Fall back to mtimes
+        # and SAY SO, rather than reporting a clean result that cannot be supported.
+        warn "generated copy carries no build stamp (built before #301) - falling back to mtimes; rebuild for a definitive answer"
+        newest_framework="$(find "$FRAMEWORK/src" -type f -name '*.php' -printf '%T@\n' 2>/dev/null | sort -rn | head -1)"
+        newest_generated="$(find "$GENERATED/src" -type f -name '*.php' -printf '%T@\n' 2>/dev/null | sort -rn | head -1)"
+    fi
+
+    if [ -z "$newest_framework" ] && [ -z "$newest_generated" ]; then
+        :   # the stamp comparison above already reported; no mtime fallback needed
+    elif [ -z "$newest_framework" ] || [ -z "$newest_generated" ]; then
         warn "could not compare framework src against the generated copy"
     elif [ "$(echo "$newest_framework > $newest_generated" | bc -l 2>/dev/null)" = "1" ]; then
         if [ "$FIX" = "1" ]; then
