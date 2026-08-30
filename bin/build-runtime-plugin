@@ -13,7 +13,24 @@
 set -euo pipefail
 
 FRAMEWORK="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-OUT="${1:-$(cd "$FRAMEWORK/.." && pwd)/atom-ahg-plugins/ahgRuntimePlugin}"
+
+# MODE. Issue #301: a copied src/ can go stale while every version indicator says
+# otherwise, because the copy is what PHP actually loads. Linking removes the
+# possibility rather than detecting it - there is only one src/ to be wrong.
+#
+# Copy mode still exists for the case the bundle was built for: an install that
+# has the plugin and NO framework checkout beside it. There, nothing can go stale
+# either, because there is no second copy to drift from.
+MODE="link"
+ARGS=()
+for a in "$@"; do
+    case "$a" in
+        --copy) MODE="copy" ;;
+        --link) MODE="link" ;;
+        *) ARGS+=("$a") ;;
+    esac
+done
+OUT="${ARGS[0]:-$(cd "$FRAMEWORK/.." && pwd)/atom-ahg-plugins/ahgRuntimePlugin}"
 # version.json is the framework's version of record (bin/release maintains it).
 VERSION="$(python3 -c "import json;print(json.load(open('$FRAMEWORK/version.json'))['version'])" 2>/dev/null || echo '0.0.0')"
 
@@ -21,6 +38,7 @@ echo "Building ahgRuntimePlugin"
 echo "  from : $FRAMEWORK"
 echo "  to   : $OUT"
 echo "  ver  : $VERSION"
+echo "  mode : $MODE"
 
 # Never delete a target that is not ours - a mistyped argument must not eat a directory.
 # An EMPTY directory is not someone's work - it is what an interrupted rebuild
@@ -41,8 +59,16 @@ mkdir -p "$OUT"/{config,database,lib}
 touch "$OUT/.generated-by-build-runtime-plugin"   # provenance is written at the end, once the copy is countable
 
 # ---------------------------------------------------------------- code + deps
-cp -r "$FRAMEWORK/src"    "$OUT/src"
-cp -r "$FRAMEWORK/vendor" "$OUT/vendor"
+# In link mode src/ and vendor/ are symlinks to the framework, so the plugin
+# cannot hold a different version of the code than the framework it was built
+# from. In copy mode they are real directories, for distribution.
+if [ "$MODE" = "link" ]; then
+    ln -s "$FRAMEWORK/src"    "$OUT/src"
+    ln -s "$FRAMEWORK/vendor" "$OUT/vendor"
+else
+    cp -r "$FRAMEWORK/src"    "$OUT/src"
+    cp -r "$FRAMEWORK/vendor" "$OUT/vendor"
+fi
 
 # Operator scripts - the backup and restore shell scripts that ahgBackupPlugin
 # tells administrators to schedule. They were never copied, so the cron line the
@@ -172,7 +198,7 @@ MD
 
 echo
 echo "Built: $(du -sh "$OUT" | cut -f1)"
-PHP_FILES="$(find "$OUT/src" -name '*.php' 2>/dev/null | wc -l)"
+PHP_FILES="$(find -L "$OUT/src" -name '*.php' 2>/dev/null | wc -l)"
 
 # Provenance. The marker used to be an empty touch file, so the only way to ask
 # "is this copy current?" was to compare mtimes - which a plain `cp -r` makes
@@ -185,6 +211,7 @@ FRAMEWORK_COMMIT="$(git -C "$FRAMEWORK" -c safe.directory="$FRAMEWORK" rev-parse
 cat > "$OUT/.generated-by-build-runtime-plugin" <<STAMP
 {
   "generated_at": "$(date -u '+%Y-%m-%dT%H:%M:%SZ')",
+  "mode": "$MODE",
   "framework_version": "$VERSION",
   "framework_commit": "$FRAMEWORK_COMMIT",
   "framework_path": "$FRAMEWORK",

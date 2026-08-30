@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+# Install the framework's git hooks. Hooks live in .git/hooks, which is not
+# versioned, so shipping them means shipping an installer too.
+set -euo pipefail
+FRAMEWORK="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+HOOKS="$(git -C "$FRAMEWORK" -c safe.directory="$FRAMEWORK" rev-parse --git-path hooks)"
+[ -d "$HOOKS" ] || { echo "no hooks directory at $HOOKS" >&2; exit 1; }
+for h in post-merge post-checkout; do
+    src="$FRAMEWORK/bin/hooks/$h"; dst="$HOOKS/$h"
+    if [ -e "$dst" ] && ! grep -q 'ahgRuntimePlugin' "$dst" 2>/dev/null; then
+        echo "  SKIP $h - a different hook is already installed; merge by hand"
+        continue
+    fi
+    install -m 0755 "$src" "$dst"
+    echo "  installed $h -> $dst"
+done

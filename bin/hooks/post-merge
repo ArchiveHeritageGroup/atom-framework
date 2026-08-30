@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+# Rebuild ahgRuntimePlugin after the framework moves. Issue #301, option 1.
+#
+# Covers `git pull` only: `git reset --hard`, which is what the deploy path uses,
+# fires NO hook at all. Use bin/deploy for that path - this hook exists so a
+# developer pulling by hand does not leave a stale runtime plugin behind.
+set -euo pipefail
+FRAMEWORK="$(git rev-parse --show-toplevel)"
+OUT="$(cd "$FRAMEWORK/.." && pwd)/atom-ahg-plugins/ahgRuntimePlugin"
+[ -d "$OUT" ] || exit 0
+
+STAMP="$OUT/.generated-by-build-runtime-plugin"
+MODE="$(python3 -c "import json;print(json.load(open('$STAMP')).get('mode','copy'))" 2>/dev/null || echo copy)"
+
+# Link mode cannot be stale - src/ IS the framework. Nothing to do.
+if [ "$MODE" = "link" ] && [ -L "$OUT/src" ]; then
+    exit 0
+fi
+
+echo "post-merge: framework moved - rebuilding ahgRuntimePlugin ($MODE mode)"
+if [ "$(id -u)" = "0" ] && id www-data >/dev/null 2>&1; then
+    sudo -u www-data "$FRAMEWORK/bin/build-runtime-plugin" >/dev/null \
+        || echo "  REBUILD FAILED - run $FRAMEWORK/bin/build-runtime-plugin by hand" >&2
+else
+    "$FRAMEWORK/bin/build-runtime-plugin" >/dev/null \
+        || echo "  REBUILD FAILED - run $FRAMEWORK/bin/build-runtime-plugin by hand" >&2
+fi

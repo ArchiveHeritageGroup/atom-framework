@@ -1,0 +1,92 @@
+#!/usr/bin/env bash
+#
+# Deploy the framework and plugins to THIS instance, in one path that cannot
+# forget the runtime plugin. Issue #301, option 1.
+#
+# The reason this exists: the deploy path is `git fetch && git reset --hard`,
+# which fires no git hook, so "rebuild the runtime plugin after the framework
+# moves" had to be remembered by every operator on every deploy. A forgotten
+# rebuild reproduces #301 silently - the tag is right, the file on disk is
+# right, and the running code is old.
+#
+# Usage: bin/deploy [--dry-run] [--no-reload]
+set -euo pipefail
+
+DRY=0; RELOAD=1
+for a in "$@"; do
+    case "$a" in
+        --dry-run) DRY=1 ;;
+        --no-reload) RELOAD=0 ;;
+        *) echo "unknown argument: $a" >&2; exit 2 ;;
+    esac
+done
+
+FRAMEWORK="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ROOT="$(cd "$FRAMEWORK/.." && pwd)"
+PLUGINS="$ROOT/atom-ahg-plugins"
+run() { if [ "$DRY" = "1" ]; then echo "    would run: $*"; else "$@"; fi; }
+
+echo "deploy  $ROOT"
+[ "$DRY" = "1" ] && echo "  (dry run - nothing will change)"
+
+# 1. Refuse to discard uncommitted work. Check as the OWNER of each tree: git
+#    answers differ by user, and root's excludesFile can hide a file that the
+#    owner would see. Reading the wrong answer here destroys work.
+for repo in "$FRAMEWORK" "$PLUGINS"; do
+    [ -d "$repo/.git" ] || continue
+    owner="$(stat -c '%U' "$repo")"
+    dirty="$(sudo -u "$owner" git -C "$repo" status --porcelain 2>/dev/null | wc -l)"
+    if [ "$dirty" != "0" ]; then
+        echo "  REFUSING: $(basename "$repo") has $dirty uncommitted change(s) as $owner." >&2
+        sudo -u "$owner" git -C "$repo" status --short | sed 's/^/    /' >&2
+        echo "  Commit, stash or discard them before deploying." >&2
+        exit 1
+    fi
+done
+
+# 2. Fetch and fast-forward each repo, reporting whether the tag ACTUALLY moved.
+#    A reset that returns 0 says nothing about whether the remote was reached.
+FRAMEWORK_MOVED=0
+for repo in "$FRAMEWORK" "$PLUGINS"; do
+    [ -d "$repo/.git" ] || continue
+    owner="$(stat -c '%U' "$repo")"
+    before="$(git -C "$repo" -c safe.directory="$repo" describe --tags 2>/dev/null || echo none)"
+    run sudo -u "$owner" git -C "$repo" fetch --tags -q origin
+    run sudo -u "$owner" git -C "$repo" reset --hard -q origin/main
+    after="$(git -C "$repo" -c safe.directory="$repo" describe --tags 2>/dev/null || echo none)"
+    if [ "$before" = "$after" ]; then
+        echo "  $(basename "$repo"): $after (unchanged)"
+    else
+        echo "  $(basename "$repo"): $before -> $after"
+        [ "$repo" = "$FRAMEWORK" ] && FRAMEWORK_MOVED=1
+    fi
+done
+
+# 3. Rebuild the runtime plugin if it exists and is a COPY. In link mode there is
+#    nothing to rebuild: src/ is the framework.
+OUT="$PLUGINS/ahgRuntimePlugin"
+if [ -d "$OUT" ]; then
+    MODE="$(python3 -c "import json;print(json.load(open('$OUT/.generated-by-build-runtime-plugin')).get('mode','copy'))" 2>/dev/null || echo copy)"
+    if [ "$MODE" = "link" ] && [ -L "$OUT/src" ]; then
+        echo "  runtime plugin: link mode - nothing to rebuild"
+    elif [ "$FRAMEWORK_MOVED" = "1" ] || [ "$DRY" = "1" ]; then
+        echo "  runtime plugin: $MODE mode and the framework moved - rebuilding"
+        run sudo -u www-data "$FRAMEWORK/bin/build-runtime-plugin"
+    else
+        echo "  runtime plugin: $MODE mode, framework unchanged - no rebuild needed"
+    fi
+fi
+
+# 4. Ownership. Root-owned files under a www-data tree are the estate's most
+#    frequent deploy failure: they break the next release, the next rebuild and
+#    php-fpm's own writes under ProtectSystem=full.
+for repo in "$FRAMEWORK" "$PLUGINS"; do
+    [ -d "$repo" ] || continue
+    stray="$(find "$repo" ! -user "$(stat -c '%U' "$repo")" 2>/dev/null | wc -l)"
+    [ "$stray" = "0" ] || echo "  WARNING: $(basename "$repo") has $stray path(s) not owned by $(stat -c '%U' "$repo")"
+done
+
+# 5. Clear cache and reload PHP so the new code is what actually runs.
+run sudo -u www-data php "$ROOT/symfony" cc
+[ "$RELOAD" = "1" ] && run systemctl reload php8.3-fpm
+echo "  done. Verify with: $FRAMEWORK/bin/deploy-check"
