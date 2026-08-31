@@ -56,8 +56,14 @@ class AclService
             }
         }
         
+        // No authenticated user means ANONYMOUS, not "denied". Returning false
+        // here refused every anonymous visitor in every module that calls this
+        // service, regardless of publication status and regardless of the
+        // anonymous group's own grants - a published record still 403'd.
+        // Base AtoM's QubitAcl evaluates the anonymous group; so must we, or the
+        // two disagree and only the pages routed through base AtoM work.
         if (!$user) {
-            return false;
+            return self::checkAnonymous($resource, $action);
         }
         
         $groups = self::getUserGroups($user->id ?? null);
@@ -122,11 +128,45 @@ class AclService
                 ->first();
             
             if ($perm) {
-                return $perm->grant_deny == self::GRANT;
+                return self::isGrant($perm->grant_deny);
             }
         }
         
         return false;
+    }
+
+    /**
+     * Is this acl_permission row a grant?
+     *
+     * The stored value is 0 = deny, 1 = grant - that is what base AtoM writes
+     * and what every row in the wild contains. AclConstants::GRANT is 2, so the
+     * previous comparison `grant_deny == self::GRANT` could never be true and
+     * every explicit permission row read as a denial. Both values are accepted
+     * so a deployment written against the constant still works.
+     */
+    private static function isGrant($grantDeny): bool
+    {
+        return in_array((int) $grantDeny, [1, self::GRANT], true);
+    }
+
+    /**
+     * Evaluate a permission for an unauthenticated visitor against the
+     * anonymous group, with the same object-specific-before-global precedence
+     * used for signed-in users.
+     */
+    private static function checkAnonymous(?object $resource, string $action): bool
+    {
+        $perm = DB::table('acl_permission')
+            ->where('group_id', AclConstants::ANONYMOUS_ID)
+            ->where('action', $action)
+            ->where(function ($q) use ($resource) {
+                $q->whereNull('object_id')
+                  ->orWhere('object_id', $resource->id ?? null);
+            })
+            ->orderByRaw('object_id IS NULL')
+            ->first();
+
+        return $perm ? self::isGrant($perm->grant_deny) : false;
     }
 
     public static function getUserGroups(?int $userId): array
