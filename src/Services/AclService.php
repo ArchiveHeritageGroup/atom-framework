@@ -63,7 +63,21 @@ class AclService
         // Base AtoM's QubitAcl evaluates the anonymous group; so must we, or the
         // two disagree and only the pages routed through base AtoM work.
         if (!$user) {
-            return self::checkAnonymous($resource, $action);
+            // $action may be a single action or a list of them - the array
+            // branch below runs AFTER this point, so the list has to be
+            // handled here too. Passing an array into a string parameter
+            // threw a TypeError on live record views.
+            if (is_array($action)) {
+                foreach ($action as $single) {
+                    if (self::checkAnonymous($resource, (string) $single)) {
+                        return true;
+                    }
+                }
+
+                return false;
+            }
+
+            return self::checkAnonymous($resource, (string) $action);
         }
         
         $groups = self::getUserGroups($user->id ?? null);
