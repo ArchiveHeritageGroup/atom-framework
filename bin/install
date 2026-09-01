@@ -222,14 +222,80 @@ fi
 echo ""
 echo -e "${BLUE}Step 5: Enabling themes and plugins...${NC}"
 
-CURRENT_PLUGINS=$(mysql_cmd -N -e "SELECT value FROM setting_i18n WHERE id = 1;")
+# Merge the plugins this stack needs INTO the instance's existing list.
+#
+# This used to overwrite the whole list with a hardcoded 17-entry array whenever
+# one grep failed to find ahgThemeB5Plugin. Measured 2026-09-01 on a rehearsal of
+# a real client upgrade: a 35-plugin list became 17, silently, with no backup.
+# The plugin that owns informationobjectHelper.php was among the 18 dropped, so
+# every library, museum, gallery and DAM record page returned 500 while the
+# homepage, login and browse still answered 200 - a cutover smoke-tested on the
+# front page would have looked completely clean.
+#
+# Three rules follow, and each of them cost something to learn:
+#   1. MERGE, never replace. The instance's own plugins are not ours to discard.
+#   2. A read that FAILS is not the same as a list that lacks our plugins.
+#      mysql_cmd swallows stderr, so an auth or connection error returns empty
+#      and the old code read that as "needs the defaults". Abort instead.
+#   3. Back the row up before writing it.
+REQUIRED_PLUGINS="sfDcPlugin arDominionB5Plugin ahgCorePlugin ahgThemeB5Plugin \
+ahgSecurityClearancePlugin sfEacPlugin sfEadPlugin sfIsaarPlugin sfIsadPlugin \
+arDacsPlugin sfIsdfPlugin sfIsdiahPlugin sfModsPlugin sfRadPlugin sfSkosPlugin \
+ahgDisplayPlugin ahgSettingsPlugin"
 
-if echo "$CURRENT_PLUGINS" | grep -q "ahgThemeB5Plugin"; then
-    echo -e "  ${YELLOW}→${NC} Plugins already configured"
+# Read WITHOUT swallowing errors, so a failure is distinguishable from an empty list.
+# stderr, minus mysql's unavoidable "password on the command line" warning -
+# that is noise, not a failure, and treating it as one aborts every run.
+PLUGIN_READ_ERR=$(mysql -h "$DB_HOST" -u "$DB_USER" -p"$DB_PASS" "$DB_NAME" \
+    -N -e "SELECT value FROM setting_i18n WHERE id = 1 AND culture = 'en';" 2>&1 >/tmp/.ahg_plugins_cur \
+    | grep -v "Using a password on the command line" || true)
+CURRENT_PLUGINS=$(cat /tmp/.ahg_plugins_cur 2>/dev/null)
+
+if [ -n "$PLUGIN_READ_ERR" ]; then
+    echo -e "  ${RED}✗${NC} Could not read the plugin list - NOT modifying it."
+    echo "     ${PLUGIN_READ_ERR}"
+    echo "     Fix the database access and re-run. Overwriting here would discard"
+    echo "     every plugin this instance already runs."
+elif [ -z "$CURRENT_PLUGINS" ]; then
+    echo -e "  ${YELLOW}⚠${NC} setting_i18n id=1 (culture en) is empty - treating as a fresh install."
+    mkdir -p "${ATOM_ROOT}/data/plugin-list-backups"
+    php -r '
+        $want = preg_split("/\s+/", trim($argv[1]));
+        echo serialize(array_values(array_filter($want)));
+    ' "$REQUIRED_PLUGINS" > /tmp/.ahg_plugins_new
+    NEW_SER=$(cat /tmp/.ahg_plugins_new)
+    mysql_cmd -e "UPDATE setting_i18n SET value = '$(printf '%s' "$NEW_SER" | sed "s/'/''/g")' WHERE id = 1 AND culture = 'en';"
+    echo -e "  ${GREEN}✓${NC} Plugin list initialised"
 else
-    mysql_cmd -e "UPDATE setting_i18n SET value = 'a:17:{i:0;s:10:\"sfDcPlugin\";i:1;s:18:\"arDominionB5Plugin\";i:2;s:13:\"ahgCorePlugin\";i:3;s:16:\"ahgThemeB5Plugin\";i:4;s:26:\"ahgSecurityClearancePlugin\";i:5;s:11:\"sfEacPlugin\";i:6;s:11:\"sfEadPlugin\";i:7;s:13:\"sfIsaarPlugin\";i:8;s:12:\"sfIsadPlugin\";i:9;s:12:\"arDacsPlugin\";i:10;s:12:\"sfIsdfPlugin\";i:11;s:14:\"sfIsdiahPlugin\";i:12;s:12:\"sfModsPlugin\";i:13;s:11:\"sfRadPlugin\";i:14;s:12:\"sfSkosPlugin\";i:15;s:16:\"ahgDisplayPlugin\";i:16;s:17:\"ahgSettingsPlugin\";}' WHERE id = 1;"
-    echo -e "  ${GREEN}✓${NC} Enabled core plugins"
+    BK="${ATOM_ROOT}/data/plugin-list-backups/plugins-$(date +%Y%m%d-%H%M%S).ser"
+    mkdir -p "$(dirname "$BK")"
+    printf '%s' "$CURRENT_PLUGINS" > "$BK"
+
+    php -r '
+        $cur  = trim(file_get_contents("/tmp/.ahg_plugins_cur"));
+        $want = preg_split("/\s+/", trim($argv[1]));
+        $list = @unserialize($cur, ["allowed_classes" => false]);
+        if (!is_array($list)) { fwrite(STDERR, "UNPARSEABLE"); exit(2); }
+        $before = count($list);
+        $added  = [];
+        foreach ($want as $p) {
+            if ($p !== "" && !in_array($p, $list, true)) { $list[] = $p; $added[] = $p; }
+        }
+        file_put_contents("/tmp/.ahg_plugins_new", serialize(array_values($list)));
+        file_put_contents("/tmp/.ahg_plugins_msg", $before . " -> " . count($list)
+            . (count($added) ? " (added: " . implode(", ", $added) . ")" : " (nothing to add)"));
+    ' "$REQUIRED_PLUGINS" 2>/tmp/.ahg_plugins_php_err
+    if [ -s /tmp/.ahg_plugins_php_err ]; then
+        echo -e "  ${RED}✗${NC} Existing plugin list could not be parsed - NOT modifying it."
+        echo "     Backed up as-is: $BK"
+    else
+        NEW_SER=$(cat /tmp/.ahg_plugins_new)
+        mysql_cmd -e "UPDATE setting_i18n SET value = '$(printf '%s' "$NEW_SER" | sed "s/'/''/g")' WHERE id = 1 AND culture = 'en';"
+        echo -e "  ${GREEN}✓${NC} Plugin list merged: $(cat /tmp/.ahg_plugins_msg)"
+        echo -e "    Previous list backed up: $BK"
+    fi
 fi
+rm -f /tmp/.ahg_plugins_cur /tmp/.ahg_plugins_new /tmp/.ahg_plugins_msg /tmp/.ahg_plugins_php_err
 
 # =============================================================================
 # Step 6: Clear cache
