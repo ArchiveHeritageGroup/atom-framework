@@ -156,6 +156,45 @@ has three silent exits (no matching culture row, empty value, and a bare
 `catch (\Exception $e) {}`), any of which leaves `atom_plugin` updated, the load
 list untouched, and a success message on screen.
 
+## ⚠️ Reconcile the two plugin lists BEFORE cutover
+
+An AHG instance has **two** plugin lists and they can disagree while both look
+right. Measured on a client production instance 1 Sep 2026: `atom_plugin` said 35
+enabled, the serialized list said 35 - and **16 entries differed in each
+direction**.
+
+Only one of them governs, and which one depends on `ProjectConfiguration`. A fresh
+2.10.2 install is STOCK, so an upgrade that follows the documented
+install-fresh-and-restore path **silently swaps which list governs**. The stale
+list takes over.
+
+What that looked like on the rehearsal: the instance lost `ahgUiOverridesPlugin`,
+which owns `informationobjectHelper.php`, so every library, museum, gallery and
+DAM record page returned 500 - while the homepage, login and browse all answered
+200. A cutover smoke-tested on the front page would have looked completely clean.
+
+**Before cutover, diff them and decide which 35 is correct:**
+
+```bash
+mysql -u <u> -p <db> -N -e "SELECT name FROM atom_plugin WHERE is_enabled=1 ORDER BY name;" > /tmp/a.txt
+mysql -u <u> -p <db> -N --raw -e \
+  "SELECT si.value FROM setting s JOIN setting_i18n si ON si.id=s.id WHERE s.name='plugins' LIMIT 1;" \
+  | php -r '$l=unserialize(trim(file_get_contents("php://stdin"))); sort($l); echo implode("\n",$l);' > /tmp/b.txt
+diff /tmp/a.txt /tmp/b.txt
+```
+
+Then write the agreed set to **both**, and verify by loading a record of **each
+display standard in use** - not the homepage.
+
+```sql
+SELECT ti.name AS standard, COUNT(*) FROM information_object io
+JOIN term_i18n ti ON ti.id = io.display_standard_id AND ti.culture='en'
+GROUP BY ti.name;
+```
+
+Every standard in that result needs a record opened after cutover. A plugin whose
+helper is missing fails only on the pages that use it.
+
 ## Schema
 
 Plugin schema is applied with `CREATE TABLE IF NOT EXISTS`, which **never alters an
