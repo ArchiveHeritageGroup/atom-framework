@@ -134,16 +134,24 @@ EOF;
         // Write output CSV if specified
         $outputFile = $this->option('output');
         if ($outputFile) {
+            // fopen() returns false rather than throwing, and passing that to
+            // fputcsv() raises a TypeError that names the argument type instead of
+            // the unwritable path. The import has already succeeded by this point,
+            // so a lost timing report is a warning, not a failure.
             $fh = fopen($outputFile, 'w+');
-            fputcsv($fh, ['File', 'Time elapsed (secs)', 'Memory used']);
-            foreach ($rows as $row) {
-                fputcsv($fh, $row);
+            if (false === $fh) {
+                $this->warning(sprintf('Could not write the timing report to %s. The import itself completed.', $outputFile));
+            } else {
+                fputcsv($fh, ['File', 'Time elapsed (secs)', 'Memory used']);
+                foreach ($rows as $row) {
+                    fputcsv($fh, $row);
+                }
+                $elapsed = round(microtime(true) - $startTotal, 2);
+                fputcsv($fh, []);
+                fputcsv($fh, ['Total time elapsed:', $elapsed . 's']);
+                fputcsv($fh, ['Peak memory usage:', round(memory_get_peak_usage() / 1048576, 2) . 'MB']);
+                fclose($fh);
             }
-            $elapsed = round(microtime(true) - $startTotal, 2);
-            fputcsv($fh, []);
-            fputcsv($fh, ['Total time elapsed:', $elapsed . 's']);
-            fputcsv($fh, ['Peak memory usage:', round(memory_get_peak_usage() / 1048576, 2) . 'MB']);
-            fclose($fh);
         }
 
         // Optimize index if enabled

@@ -45,6 +45,15 @@ EOF;
         $filename = $this->argument('filename', 'affected-records.csv');
         $mode = $this->option('mode', 'report');
 
+        // The report path is user supplied, so check it before doing any work.
+        // On a large database the checks below take minutes, and discovering an
+        // unwritable path only at the end wastes all of it. Note this runs as the
+        // invoking user: `sudo -u www-data` makes www-data the writer, so a path
+        // under a personal home directory will usually fail here.
+        if (!$this->reportPathIsWritable($filename)) {
+            return 1;
+        }
+
         \QubitSearch::disable();
 
         $this->info("Adding missing object rows (except for descriptions):\n");
@@ -178,7 +187,11 @@ EOF;
             }
             $this->line(sprintf("  - Affected descriptions (including descendants): %d", count($affectedIosAndDescendantIds)));
 
-            $this->report($filename, $affectedIosById, $affectedIosAndDescendantIds, $invalidIos);
+            // Abort rather than fix or delete without a written report: in delete
+            // mode that CSV is the only record of what was removed.
+            if (!$this->report($filename, $affectedIosById, $affectedIosAndDescendantIds, $invalidIos)) {
+                return 1;
+            }
 
             switch ($mode) {
                 case 'fix':
@@ -228,9 +241,46 @@ EOF;
         $affectedIosAndDescendantIds[] = $id;
     }
 
-    private function report(string $filename, array $affectedIosById, array $affectedIosAndDescendantIds, array $invalidIos): void
+    /**
+     * Confirm the CSV report path can actually be written to.
+     *
+     * fopen() returns false rather than throwing, so an unwritable path used to
+     * flow straight into fputcsv() and surface as
+     * "fputcsv(): Argument #1 ($stream) must be of type resource, false given",
+     * which says nothing about the real problem being a permissions or path error.
+     */
+    private function reportPathIsWritable(string $filename): bool
+    {
+        $dir = \dirname($filename);
+
+        if (!is_dir($dir)) {
+            $this->error(sprintf('Report directory does not exist: %s', $dir));
+
+            return false;
+        }
+
+        if (file_exists($filename) ? !is_writable($filename) : !is_writable($dir)) {
+            $this->error(sprintf(
+                'Cannot write the report to %s. Check the path is writable by %s.',
+                $filename,
+                \get_current_user()
+            ));
+
+            return false;
+        }
+
+        return true;
+    }
+
+    private function report(string $filename, array $affectedIosById, array $affectedIosAndDescendantIds, array $invalidIos): bool
     {
         $csvFile = fopen($filename, 'w');
+        if (false === $csvFile) {
+            $this->error(sprintf('Could not open %s for writing.', $filename));
+
+            return false;
+        }
+
         fputcsv($csvFile, ['id', 'parent_id', 'slug', 'issue(s)']);
 
         if (count($invalidIos) > 0) {
