@@ -52,12 +52,19 @@ jobs:
       - name: Secrets pattern scan
         run: |
           echo "Scanning for potential secrets..."
-          PATTERNS='(password|secret|api_key|private_key|token)\s*[=:]\s*["\x27][^\s]{8,}'
+          # The quote class was ["\x27], meant as double-or-single quote. GNU grep
+          # ERE has no \xHH escape, so it meant the literal characters " \ x 2 7:
+          # it MISSED every single-quoted secret, which is the common style in PHP,
+          # and matched any backslash instead. The only thing it ever reported was a
+          # namespace separator. Now a plain ['"] class and POSIX [[:space:]], so it
+          # behaves identically under any grep.
+          PATTERNS="(password|secret|api_key|private_key|token)[[:space:]]*[=:][[:space:]]*['\"][^[:space:]]{8,}"
           FOUND=$(grep -rniE "$PATTERNS" --include="*.php" --include="*.env" --include="*.json" \
             --exclude-dir=vendor --exclude-dir=node_modules --exclude-dir=.git \
             --exclude="*.md" --exclude="CLAUDE.md" . 2>/dev/null | \
             grep -v 'sfConfig::get' | grep -v 'getParameter' | grep -v '// ' | \
-            grep -v 'EXAMPLE' | grep -v 'placeholder' || true)
+            grep -v 'EXAMPLE' | grep -v 'placeholder' | \
+            grep -viE '(^|[^_a-z])const[[:space:]]' || true)
           if [ -n "$FOUND" ]; then
             echo "::warning::Potential secrets found in source files:"
             echo "$FOUND"
