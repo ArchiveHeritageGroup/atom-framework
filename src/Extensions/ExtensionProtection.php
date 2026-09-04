@@ -98,6 +98,81 @@ class ExtensionProtection
     }
 
     /**
+     * Locate a plugin's directory, or null when it is not on this instance.
+     *
+     * Three roots, because plugins legitimately live in all of them: `plugins/`
+     * (base AtoM, and symlinks to the AHG set), `atom-ahg-plugins/` (the AHG
+     * checkout itself), and `vendor/symfony/lib/plugins/` (Symfony's own, such as
+     * sfPropelPlugin, which is enabled everywhere and lives nowhere else).
+     * Checking only the first two reports sfPropelPlugin as missing.
+     */
+    public function findPluginDirectory(string $pluginName): ?string
+    {
+        // This value reaches filesystem paths and, in the web UI, arrives from a
+        // request parameter. Plugin names are alphanumeric; anything else is
+        // rejected rather than resolved.
+        if (!preg_match('/^[A-Za-z0-9_]+$/', $pluginName)) {
+            return null;
+        }
+
+        $root = $this->getAtomRoot();
+        if (null === $root) {
+            return null;
+        }
+
+        foreach ([
+            $root . '/plugins/' . $pluginName,
+            $root . '/atom-ahg-plugins/' . $pluginName,
+            $root . '/vendor/symfony/lib/plugins/' . $pluginName,
+        ] as $candidate) {
+            if (is_dir($candidate)) {
+                return $candidate;
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * Check if a plugin can be enabled.
+     *
+     * Enabling a plugin whose files are absent is not a recoverable error: on the
+     * next request sfProjectConfiguration::getPluginPaths() throws
+     * "The plugin ... does not exist", which takes down the web application AND
+     * the CLI, leaving no route back except editing atom_plugin directly. That
+     * happened on this instance on 4 September 2026 and cost a full outage.
+     *
+     * @return array{can_enable: bool, reason: string|null}
+     */
+    public function canEnable(string $pluginName): array
+    {
+        if (null === $this->findPluginDirectory($pluginName)) {
+            return [
+                'can_enable' => false,
+                'reason' => sprintf(
+                    'Plugin files for "%s" are not present on this instance. Enabling it would stop Symfony booting and take the site down.',
+                    $pluginName
+                ),
+            ];
+        }
+
+        return ['can_enable' => true, 'reason' => null];
+    }
+
+    /** Filesystem root of the AtoM instance, or null if it cannot be determined. */
+    private function getAtomRoot(): ?string
+    {
+        $configFile = $this->findConfigFile();
+        if (null !== $configFile) {
+            return dirname($configFile, 2);
+        }
+
+        $atomRoot = getenv('ATOM_ROOT') ?: ($_SERVER['ATOM_ROOT'] ?? null);
+
+        return $atomRoot && is_dir($atomRoot) ? $atomRoot : null;
+    }
+
+    /**
      * Check if a plugin can be disabled.
      *
      * @param string $pluginName Plugin name

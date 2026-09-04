@@ -431,6 +431,13 @@ class ExtensionManager implements ExtensionManagerContract
      */
     public function enable(string $machineName, bool $enableDependencies = true): bool
     {
+        // Refuse before touching atom_plugin. A row enabled without files on disk
+        // stops Symfony booting on the next request, web and CLI alike.
+        $canEnable = (new ExtensionProtection())->canEnable($machineName);
+        if (!$canEnable['can_enable']) {
+            throw new \RuntimeException($canEnable['reason']);
+        }
+
         $extension = $this->repository->findByMachineName($machineName);
 
         if (!$extension) {
