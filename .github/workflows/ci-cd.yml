@@ -34,12 +34,6 @@ jobs:
       - run: composer install --prefer-dist --no-progress
       - run: find src lib -name "*.php" -print0 | xargs -0 -n1 php -l 2>/dev/null || true
 
-      # Pure-logic suites: no database, no framework bootstrap, no fixtures, so
-      # they need nothing beyond PHP itself. Deliberately without "|| true" - a
-      # failing test must fail the build, unlike the lint step above.
-      - name: Unit tests
-        run: php tests/extension_protection_test.php
-
   security:
     name: Security Scan
     runs-on: ubuntu-22.04

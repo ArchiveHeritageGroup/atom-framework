@@ -1,0 +1,40 @@
+name: Tests
+
+# Pure-logic test suites for the framework. No database, no Symfony bootstrap, no
+# composer install and no fixtures - each test file requires the class under test
+# and nothing else.
+#
+# Deliberately separate from "AtoM AHG Framework CI/CD". That workflow also builds
+# packages and Docker images and has a deploy job whose condition fires on any v*
+# tag, which every release pushes. Tests should not be coupled to a deploy pipeline,
+# and should keep running whether or not that workflow is enabled.
+#
+# No step carries "|| true": a failing assertion fails the build.
+
+on:
+  push:
+    branches: [main, develop]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  PHP_VERSION: '8.3'
+
+jobs:
+  extensions:
+    name: Extension protection
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ env.PHP_VERSION }}
+          extensions: mbstring, json
+
+      # Guards on the plugin manager: refuse to enable a plugin whose files are
+      # absent (which stops Symfony booting and takes the site down), and resolve
+      # plugin directories across all three legitimate roots.
+      - name: Extension protection
+        run: php tests/extension_protection_test.php

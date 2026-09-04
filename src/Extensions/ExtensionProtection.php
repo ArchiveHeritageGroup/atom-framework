@@ -100,13 +100,19 @@ class ExtensionProtection
     /**
      * Locate a plugin's directory, or null when it is not on this instance.
      *
+     * $root is injectable so this can be tested without a real AtoM install. It
+     * defaults to the detected root, so production behaviour is unchanged; only a
+     * test passes it. Without the seam the only way to assert a POSITIVE result was
+     * to depend on directories existing on the host, which passes on a live
+     * instance and fails everywhere else - as it did on first run in CI.
+     *
      * Three roots, because plugins legitimately live in all of them: `plugins/`
      * (base AtoM, and symlinks to the AHG set), `atom-ahg-plugins/` (the AHG
      * checkout itself), and `vendor/symfony/lib/plugins/` (Symfony's own, such as
      * sfPropelPlugin, which is enabled everywhere and lives nowhere else).
      * Checking only the first two reports sfPropelPlugin as missing.
      */
-    public function findPluginDirectory(string $pluginName): ?string
+    public function findPluginDirectory(string $pluginName, ?string $root = null): ?string
     {
         // This value reaches filesystem paths and, in the web UI, arrives from a
         // request parameter. Plugin names are alphanumeric; anything else is
@@ -115,7 +121,7 @@ class ExtensionProtection
             return null;
         }
 
-        $root = $this->getAtomRoot();
+        $root ??= $this->getAtomRoot();
         if (null === $root) {
             return null;
         }
@@ -144,9 +150,9 @@ class ExtensionProtection
      *
      * @return array{can_enable: bool, reason: string|null}
      */
-    public function canEnable(string $pluginName): array
+    public function canEnable(string $pluginName, ?string $root = null): array
     {
-        if (null === $this->findPluginDirectory($pluginName)) {
+        if (null === $this->findPluginDirectory($pluginName, $root)) {
             return [
                 'can_enable' => false,
                 'reason' => sprintf(
