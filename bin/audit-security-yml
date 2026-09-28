@@ -35,6 +35,18 @@ declare -a SCOPES=()
 
 GUARD_RE="isAdministrator|isAuthenticated|forward\('admin', *'secure'\)|AclService::|hasGroup|checkAdminAccess|requireAuth"
 
+# A preExecute counts as covering its whole class only if it actually REFUSES.
+# Mentioning isAuthenticated is not refusing - that is the same mistake the
+# parent-class note below warns about.
+# Parenthesis-free on purpose: this string is passed through `awk -v`, which
+# runs its own escape processing, so a literal \( needs escaping twice and got
+# eaten - awk then died with "invalid regexp" on every class with a preExecute
+# and the caller swallowed it. Silence, from the audit whose whole point is not
+# being silent. Match on the distinctive words instead.
+REFUSE_RE="forward403|forward404|'secure'|setStatusCode|throw new"
+
+
+
 scan_module() {
     local dir="$1" label="$2"
     [ -d "$dir/actions" ] || return 0
@@ -65,7 +77,24 @@ scan_module() {
             components.class.php|*Component.class.php|*Form.class.php) continue ;;
         esac
 
-        grep -qE "$GUARD_RE" "$f" 2>/dev/null && continue
+        # One guard anywhere in the file used to exempt the whole file, which is
+        # the per-module bug again one level down. A multi-action
+        # actions.class.php is not one action: ahgExhibitionPlugin's exhibition
+        # module holds 32 of them, and a single `isAuthenticated` in a preExecute
+        # that only covers writes meant all 32 passed. /index.php/exhibition
+        # served its management screen, New Exhibition button and statistics to
+        # anonymous visitors while this audit reported nothing, and the module was
+        # never once in the baseline. Found on 2026-09-28 by opening the page, not
+        # by reading the audit.
+        #
+        # So: a file defining several execute* methods is split and each one
+        # judged on its own body.
+        if [ "$(grep -cE 'function[ \t]+&?execute[A-Za-z0-9_]*[ \t]*\(' "$f" 2>/dev/null || true)" -le 1 ]; then
+            grep -qE "$GUARD_RE" "$f" 2>/dev/null && continue
+            MULTI=""
+        else
+            MULTI="yes"
+        fi
 
         # A guard inherited from the base class counts.
         #
@@ -107,7 +136,55 @@ scan_module() {
             esac
         fi
 
-        unguarded+=("$base")
+        if [ -z "$MULTI" ]; then
+            unguarded+=("$base")
+
+            continue
+        fi
+
+        # Per execute* method. A preExecute excuses the whole class only when it
+        # refuses UNCONDITIONALLY. ahgExhibitionPlugin's refuses for a hardcoded
+        # list of write actions and lets every read through, so treating it as
+        # covering the class is precisely the hole this is fixing. Where a
+        # preExecute conditions on the action name we cannot tell which actions it
+        # covers, so we report them all and let a security.yml settle it - noisy
+        # in the direction that gets looked at.
+        local acts
+        acts="$(awk -v guard="$GUARD_RE" -v refuse="$REFUSE_RE" '
+            function flush(   g) {
+                if (cur == "") return
+                g = (buf ~ guard) ? "guarded" : "open"
+                if (cur == "preExecute") {
+                    if (buf ~ refuse && buf !~ /getActionName|\$writeActions/) print "COVERS_ALL"
+                } else if (cur ~ /^execute/ && g == "open") {
+                    print cur
+                }
+                cur = ""; buf = ""
+            }
+            {
+                if (match($0, /function[ \t]+&?[A-Za-z_][A-Za-z0-9_]*[ \t]*\(/)) {
+                    flush()
+                    name = substr($0, RSTART, RLENGTH)
+                    sub(/^function[ \t]+&?/, "", name); sub(/[ \t]*\($/, "", name)
+                    cur = name
+                }
+                buf = buf "\n" $0
+            }
+            END { flush() }
+        ' "$f" 2>/dev/null)" || acts="AWK_FAILED"
+
+        # Fail closed. If the split could not be done, the file is reported
+        # whole rather than skipped - an audit that goes quiet when it cannot
+        # parse something is worse than one that over-reports.
+        case "$acts" in
+            *AWK_FAILED*) unguarded+=("$base"); continue ;;
+            *COVERS_ALL*) continue ;;
+        esac
+
+        local act
+        for act in $acts; do
+            unguarded+=("$base::$act")
+        done
     done
 
     [ ${#unguarded[@]} -eq 0 ] && return 0
