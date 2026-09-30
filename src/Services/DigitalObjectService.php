@@ -335,6 +335,18 @@ class DigitalObjectService
      */
     protected function assertObjectStoreAvailable(): void
     {
+        self::assertObjectStoreAvailableAt($this->uploadDir);
+    }
+
+    /**
+     * The same check for code that writes into the object store without going
+     * through this service. ahgIngestPlugin's commit copies files straight into
+     * uploads/r/, so it bypasses the check above (#313).
+     *
+     * @throws \RuntimeException when a sentinel is configured and missing
+     */
+    public static function assertObjectStoreAvailableAt(string $uploadDir): void
+    {
         if (!class_exists('sfConfig')) {
             return;
         }
@@ -344,7 +356,7 @@ class DigitalObjectService
             return;
         }
 
-        $path = $this->uploadDir . '/' . ltrim($sentinel, '/');
+        $path = rtrim($uploadDir, '/') . '/' . ltrim($sentinel, '/');
         clearstatcache(true, $path);
 
         if (!file_exists($path)) {

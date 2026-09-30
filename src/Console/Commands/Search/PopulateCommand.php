@@ -33,6 +33,7 @@ EOF;
         $this->addOption('exclude-types', null, 'Exclude document type(s) (comma-separated) from indexing');
         $this->addOption('show-types', null, 'Show available document type(s) that can be excluded');
         $this->addOption('update', null, 'Do not delete existing records before indexing');
+        $this->addOption('skip-integrity-check', null, 'Start even if descriptions the indexer cannot load are found');
     }
 
     protected function handle(): int
@@ -59,6 +60,22 @@ EOF;
             $logMessage = (false !== $this->attemptIndexBySlug($slug)) ? 'Slug indexed.' : 'Slug not found.';
             $this->line($logMessage);
         } else {
+            // One description missing its slug or status row aborts the whole
+            // run halfway, blaming parent_id (#311). Find them before the index
+            // is emptied, not after.
+            if (!$this->hasOption('skip-integrity-check')) {
+                $problems = (new \AtomFramework\Services\Search\DescriptionIntegrityService())->findProblems();
+                if ($problems) {
+                    $this->error('search:populate would abort on these descriptions - not starting.');
+                    foreach (IntegrityCommand::reportLines($problems) as $line) {
+                        $this->line($line);
+                    }
+                    $this->line('Or run with --skip-integrity-check to start anyway.');
+
+                    return 1;
+                }
+            }
+
             $populateOptions = [];
             $excludeTypes = $this->option('exclude-types');
             $populateOptions['excludeTypes'] = $excludeTypes ? explode(',', strtolower($excludeTypes)) : null;

@@ -46,12 +46,22 @@
  *                php plugins/ahgRuntimePlugin/bin/ahg preservation:fixity
  */
 
-// The AtoM root: three levels up from plugins/<plugin>/bin/.
-$root = dirname(__DIR__, 3);
+// The AtoM root. Packaged installs run this as plugins/ahgRuntimePlugin/bin/ahg,
+// three levels down; a framework checkout runs it as atom-framework/bin/ahg-cli.php,
+// two levels down. The working directory wins when it is an AtoM root, so cron
+// lines of the form `cd /path/to/atom && php .../ahg` work from either layout.
+$root = null;
+foreach ([getcwd(), dirname(__DIR__, 3), dirname(__DIR__, 2)] as $candidate) {
+    if ($candidate && file_exists($candidate.'/config/ProjectConfiguration.class.php')) {
+        $root = $candidate;
 
-if (!file_exists($root.'/config/ProjectConfiguration.class.php')) {
+        break;
+    }
+}
+
+if (null === $root) {
     fwrite(STDERR, "Cannot find the AtoM root from ".__DIR__."\n");
-    fwrite(STDERR, "Run this from inside a plugins/<plugin>/bin/ directory of an AtoM install.\n");
+    fwrite(STDERR, "Run this from the AtoM root, or as plugins/ahgRuntimePlugin/bin/ahg.\n");
     exit(1);
 }
 

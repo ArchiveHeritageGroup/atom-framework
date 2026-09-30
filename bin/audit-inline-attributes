@@ -1,0 +1,138 @@
+#!/usr/bin/env php
+<?php
+
+/*
+ * AtoM Heratio - inline style attributes and event handlers in templates
+ * (#298, #303)
+ *
+ * A CSP nonce authorises a <style> or <script> ELEMENT. It can never authorise
+ * an ATTRIBUTE - there is nowhere on the attribute to put the nonce. Under the
+ * enforcing policy every style="..." is dropped and every onclick="..." does
+ * nothing, silently: the layout is subtly wrong, or the button is dead.
+ *
+ * The replacements already exist in ahgCorePlugin:
+ *   style="..."              -> data-ahg-style="..."   (applied through the CSSOM)
+ *   onclick="return confirm" -> data-ahg-confirm="..."
+ *   onchange="this.form.submit()" -> data-ahg-submit-form="1"
+ *   onclick="fn(...)"        -> data-ahg-call="fn" (+ data-ahg-arg / data-ahg-on)
+ *
+ * PHP comments are skipped - a comment explaining why not to write style="" is
+ * not a style attribute (#298's complaint about the packager's grep).
+ *
+ * Usage:
+ *   bin/audit-inline-attributes [dir]        counts per plugin
+ *   bin/audit-inline-attributes list [dir]   "plugin<TAB>file<TAB>kind<TAB>count"
+ *   bin/audit-inline-attributes baseline     record per-file counts
+ *   bin/audit-inline-attributes check        exit 1 if any file's count grew
+ */
+
+$framework = dirname(__DIR__);
+$pluginsDir = getenv('PLUGINS_DIR') ?: dirname($framework).'/atom-ahg-plugins';
+$baselineFile = $framework.'/.inline-attributes-baseline.txt';
+
+$mode = 'text';
+$args = array_slice($argv, 1);
+if ($args && in_array($args[0], ['list', 'baseline', 'check'], true)) {
+    $mode = array_shift($args);
+}
+$root = $args[0] ?? $pluginsDir;
+
+// Not preceded by a word char or hyphen, so data-ahg-style= and xstyle= do not
+// count. on[a-z]+ covers onclick, onchange, onsubmit, onload, onerror...
+const STYLE_RE = '/(?<![\w-])style\s*=\s*["\']/i';
+const HANDLER_RE = '/(?<![\w-])on(?:click|dblclick|change|input|submit|reset|load|error|focus|blur|key(?:up|down|press)|mouse(?:over|out|down|up|enter|leave|move)|touch(?:start|end)|drag\w*|drop|scroll|resize|select|toggle|abort|contextmenu|wheel)\s*=\s*["\']/i';
+
+function countIn(string $src): array
+{
+    $style = 0;
+    $handler = 0;
+    foreach (@token_get_all($src) as $tok) {
+        if (!is_array($tok)) {
+            continue;
+        }
+        [$id, $text] = $tok;
+        // Markup lives in inline HTML, in strings, and in heredocs.
+        if (T_INLINE_HTML === $id || T_CONSTANT_ENCAPSED_STRING === $id || T_ENCAPSED_AND_WHITESPACE === $id) {
+            $style += preg_match_all(STYLE_RE, $text);
+            $handler += preg_match_all(HANDLER_RE, $text);
+        }
+    }
+
+    return [$style, $handler];
+}
+
+$rows = [];
+$it = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($root, FilesystemIterator::SKIP_DOTS));
+foreach ($it as $file) {
+    $path = $file->getPathname();
+    // Templates only: modules/*/templates and the theme's top-level templates.
+    if ('php' !== $file->getExtension() || false === strpos($path, '/templates/')
+        || false !== strpos($path, '/ahgRuntimePlugin/') || false !== strpos($path, '/vendor/')) {
+        continue;
+    }
+    [$style, $handler] = countIn((string) file_get_contents($path));
+    $rel = ltrim(substr($path, strlen(rtrim($root, '/'))), '/');
+    $plugin = strtok($rel, '/');
+    if ($style) {
+        $rows[] = [$plugin, $rel, 'style', $style];
+    }
+    if ($handler) {
+        $rows[] = [$plugin, $rel, 'handler', $handler];
+    }
+}
+usort($rows, fn ($a, $b) => [$a[1], $a[2]] <=> [$b[1], $b[2]]);
+
+$key = fn ($r) => "$r[1]\t$r[2]";
+
+switch ($mode) {
+    case 'list':
+        foreach ($rows as $r) {
+            echo implode("\t", $r), "\n";
+        }
+        exit(0);
+
+    case 'baseline':
+        file_put_contents($baselineFile, implode('', array_map(fn ($r) => $key($r)."\t$r[3]\n", $rows)));
+        printf("%d files recorded in %s\n", count($rows), basename($baselineFile));
+        exit(0);
+
+    case 'check':
+        if (!is_file($baselineFile)) {
+            fwrite(STDERR, "No baseline at $baselineFile - run with `baseline` first.\n");
+            exit(0);
+        }
+        $known = [];
+        foreach (array_filter(explode("\n", (string) file_get_contents($baselineFile))) as $line) {
+            [$f, $k, $n] = explode("\t", $line);
+            $known["$f\t$k"] = (int) $n;
+        }
+        $grew = [];
+        foreach ($rows as $r) {
+            if ($r[3] > ($known[$key($r)] ?? 0)) {
+                $grew[] = sprintf('  %s  %s %d -> %d', $r[1], $r[2], $known[$key($r)] ?? 0, $r[3]);
+            }
+        }
+        if ($grew) {
+            echo "FAIL: inline attributes added (blocked under the enforcing CSP):\n", implode("\n", $grew), "\n";
+            echo "Use data-ahg-style / data-ahg-confirm / data-ahg-call - see the header of this script.\n";
+            exit(1);
+        }
+        printf("OK: no inline attributes added (%d style, %d handler known).\n",
+            array_sum(array_map(fn ($r) => 'style' === $r[2] ? $r[3] : 0, $rows)),
+            array_sum(array_map(fn ($r) => 'handler' === $r[2] ? $r[3] : 0, $rows)));
+        exit(0);
+
+    default:
+        $by = [];
+        foreach ($rows as [$plugin, , $kind, $n]) {
+            $by[$plugin][$kind] = ($by[$plugin][$kind] ?? 0) + $n;
+        }
+        uasort($by, fn ($a, $b) => (($b['style'] ?? 0) + ($b['handler'] ?? 0)) <=> (($a['style'] ?? 0) + ($a['handler'] ?? 0)));
+        printf("%-34s %7s %8s\n", 'plugin', 'style', 'handler');
+        foreach ($by as $plugin => $k) {
+            printf("%-34s %7d %8d\n", $plugin, $k['style'] ?? 0, $k['handler'] ?? 0);
+        }
+        printf("%-34s %7d %8d\n", 'TOTAL',
+            array_sum(array_column($by, 'style')), array_sum(array_column($by, 'handler')));
+        exit(0);
+}

@@ -1,0 +1,194 @@
+#!/usr/bin/env php
+<?php
+
+/*
+ * AtoM Heratio - unguarded cross-plugin table queries (#302)
+ *
+ * A plugin that queries a table owned by a DIFFERENT, optional plugin takes the
+ * whole page down when that plugin is not installed:
+ *
+ *   SQLSTATE[42S02]: Base table or view not found: 1146 Table 'atom.watermark_type'
+ *
+ * On 18 August 2026 that killed /informationobject/add, every description view
+ * and /research/mobile/ on one install, for three plugins nobody had enabled.
+ * The feature should have been absent; instead the page was.
+ *
+ * Ownership comes from each plugin's extension.json `tables`. A query is fine
+ * when the consumer lists the owner in `dependencies` (transitively) - the owner
+ * is then guaranteed present. Anything else must be guarded, normally with
+ * AhgDb::hasOptionalTable('<table>').
+ *
+ * ponytail: "guarded" is judged per FILE - a file that queries a table and also
+ * checks for it anywhere counts as guarded. That misses a check in one method
+ * and a query in another, but it has no false alarms on the pattern the issue
+ * recommends (guard the fetching method). A per-method parse is the upgrade.
+ *
+ * Usage:
+ *   bin/audit-cross-plugin-queries            report, grouped by consumer
+ *   bin/audit-cross-plugin-queries list       one "plugin<TAB>file<TAB>table" per line
+ *   bin/audit-cross-plugin-queries baseline   record today's list as the baseline
+ *   bin/audit-cross-plugin-queries check      exit 1 if anything new appears
+ */
+
+$framework = dirname(__DIR__);
+$atomRoot = getenv('ATOM_ROOT') ?: dirname($framework);
+$pluginsDir = getenv('PLUGINS_DIR') ?: $atomRoot.'/atom-ahg-plugins';
+$baselineFile = $framework.'/.cross-plugin-queries-baseline.txt';
+$mode = $argv[1] ?? 'text';
+
+if (!is_dir($pluginsDir)) {
+    fwrite(STDERR, "No plugins directory at $pluginsDir (set PLUGINS_DIR)\n");
+    exit(2);
+}
+
+// ---- who owns what, and who may assume what -------------------------------
+$owner = [];
+$deps = [];
+foreach (glob($pluginsDir.'/ahg*Plugin/extension.json') as $manifest) {
+    $plugin = basename(dirname($manifest));
+    $json = json_decode((string) file_get_contents($manifest), true);
+    if (!is_array($json)) {
+        fwrite(STDERR, "Unreadable extension.json: $manifest\n");
+        exit(2);
+    }
+    foreach ((array) ($json['tables'] ?? []) as $table) {
+        if (is_string($table)) {
+            $owner[$table] = $plugin;
+        }
+    }
+    $deps[$plugin] = array_values(array_filter((array) ($json['dependencies'] ?? []), 'is_string'));
+}
+
+if (!$owner) {
+    fwrite(STDERR, "No table ownership found - nothing was scanned.\n");
+    exit(2);
+}
+
+// Always present, so never optional: tables the framework's own SQL creates, and
+// those of the plugins every install carries. ahgRuntimePlugin IS the framework
+// in plugin form. The theme and ahgDisplayPlugin are NOT here - themeless stock
+// installs are a supported configuration (#273).
+$alwaysPresent = ['ahgCorePlugin' => true, 'ahgRuntimePlugin' => true];
+$sqlFiles = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($framework.'/database', FilesystemIterator::SKIP_DOTS));
+foreach ($sqlFiles as $sql) {
+    if ('sql' === $sql->getExtension()
+        && preg_match_all('/CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?`?([a-z0-9_]+)/i', (string) file_get_contents($sql->getPathname()), $m)) {
+        foreach ($m[1] as $table) {
+            unset($owner[strtolower($table)]);
+        }
+    }
+}
+
+function reachable(string $plugin, array $deps): array
+{
+    $seen = [];
+    $stack = $deps[$plugin] ?? [];
+    while ($stack) {
+        $p = array_pop($stack);
+        if (!isset($seen[$p])) {
+            $seen[$p] = true;
+            array_push($stack, ...($deps[$p] ?? []));
+        }
+    }
+
+    return $seen;
+}
+
+// ---- scan ------------------------------------------------------------------
+// The framework is a consumer too: it depends on no plugin, so every
+// plugin-owned table it reads must be guarded (AccessFilterService is the
+// precedent, v2.18.5).
+$roots = ['atom-framework' => $framework.'/src'];
+foreach (glob($pluginsDir.'/ahg*Plugin', GLOB_ONLYDIR) as $dir) {
+    if ('ahgRuntimePlugin' !== basename($dir)) {      // generated copy of the framework
+        $roots[basename($dir)] = $dir;
+    }
+}
+
+$queryRe = '/(?:DB::table|->table|->from|->join|->leftJoin|->rightJoin)\(\s*[\'"]([a-z0-9_]+)(?:\s+as\s+[a-z0-9_]+)?[\'"]/i';
+$findings = [];
+
+foreach ($roots as $consumer => $dir) {
+    $allowed = reachable($consumer, $deps);
+    $files = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($dir, FilesystemIterator::SKIP_DOTS));
+    foreach ($files as $file) {
+        if ('php' !== $file->getExtension() || false !== strpos($file->getPathname(), '/vendor/')) {
+            continue;
+        }
+        $src = (string) file_get_contents($file->getPathname());
+        if (!preg_match_all($queryRe, $src, $m)) {
+            continue;
+        }
+        foreach (array_unique($m[1]) as $table) {
+            $tableOwner = $owner[$table] ?? null;
+            if (null === $tableOwner || $tableOwner === $consumer
+                || isset($allowed[$tableOwner]) || isset($alwaysPresent[$tableOwner])) {
+                continue;
+            }
+            // Guarded if the same file checks for this table by name - either
+            // directly, hasOptionalTable('t'), or by passing the name through a
+            // list the check loops over (AccessFilterService does this). The
+            // second shape shows up as the name appearing more often than the
+            // queries themselves account for.
+            $q = preg_quote($table, '/');
+            if (preg_match('/(?:hasOptionalTable|hasTable|tableExists)\(\s*[\'"]'.$q.'[\'"]/', $src)) {
+                continue;
+            }
+            if (preg_match('/(?:hasOptionalTable|hasTable|tableExists)\(/', $src)
+                && preg_match_all('/[\'"]'.$q.'(?:\s+as\s+[a-z0-9_]+)?[\'"]/i', $src)
+                    > preg_match_all('/(?:DB::table|->table|->from|->join|->leftJoin|->rightJoin)\(\s*[\'"]'.$q.'(?:\s+as\s+[a-z0-9_]+)?[\'"]/i', $src)) {
+                continue;
+            }
+            $rel = ltrim(substr($file->getPathname(), strlen('atom-framework' === $consumer ? $framework : $pluginsDir)), '/');
+            $findings[] = [$consumer, ('atom-framework' === $consumer ? 'atom-framework/' : '').$rel, $table, $tableOwner];
+        }
+    }
+}
+
+sort($findings);
+$lines = array_map(fn ($f) => "$f[0]\t$f[1]\t$f[2]", $findings);
+
+switch ($mode) {
+    case 'list':
+        echo $lines ? implode("\n", $lines)."\n" : '';
+        exit(0);
+
+    case 'baseline':
+        file_put_contents($baselineFile, $lines ? implode("\n", $lines)."\n" : '');
+        echo count($lines)." unguarded cross-plugin queries recorded in ".basename($baselineFile)."\n";
+        exit(0);
+
+    case 'check':
+        if (!is_file($baselineFile)) {
+            fwrite(STDERR, "No baseline at $baselineFile - run with `baseline` first.\n");
+            exit(0);
+        }
+        $known = array_flip(array_filter(explode("\n", (string) file_get_contents($baselineFile))));
+        $new = array_values(array_filter($lines, fn ($l) => !isset($known[$l])));
+        $fixed = count($known) - (count($lines) - count($new));
+        if ($fixed > 0) {
+            echo "$fixed fixed since the baseline - re-run `baseline` to lock that in.\n";
+        }
+        if ($new) {
+            echo "FAIL: ".count($new)." new unguarded cross-plugin queries:\n";
+            foreach ($new as $l) {
+                echo "  $l\n";
+            }
+            echo "Guard with AhgDb::hasOptionalTable('<table>'), or declare the owner in `dependencies`.\n";
+            exit(1);
+        }
+        echo "OK: no new unguarded cross-plugin queries (".count($lines)." known).\n";
+        exit(0);
+
+    default:
+        $byConsumer = [];
+        foreach ($findings as [$consumer, $file, $table, $tableOwner]) {
+            $byConsumer[$consumer][] = sprintf('  %-60s %s (%s)', $file, $table, $tableOwner);
+        }
+        ksort($byConsumer);
+        foreach ($byConsumer as $consumer => $rows) {
+            echo "$consumer\n".implode("\n", $rows)."\n\n";
+        }
+        echo count($findings).' unguarded cross-plugin queries in '.count($byConsumer)." consumers\n";
+        exit(0);
+}

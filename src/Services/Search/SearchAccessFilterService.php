@@ -29,7 +29,10 @@ class SearchAccessFilterService
         $today = date('Y-m-d');
 
         // Classification restricted
-        $classRestricted = DB::table('object_security_classification as osc')
+        // Each source of restriction belongs to an optional plugin. Where its
+        // tables are absent that plugin cannot have restricted anything, so the
+        // source contributes no ids - it must not throw and take search down (#302).
+        $classRestricted = !$this->has('object_security_classification', 'security_classification') ? [] : DB::table('object_security_classification as osc')
             ->join('security_classification as sc', 'sc.id', '=', 'osc.classification_id')
             ->where('osc.active', 1)
             ->where('sc.level', '>', $userContext['clearance_level'])
@@ -37,7 +40,7 @@ class SearchAccessFilterService
             ->toArray();
 
         // Donor restricted (closed items)
-        $donorRestricted = DB::table('object_rights_holder as orh')
+        $donorRestricted = !$this->has('object_rights_holder', 'donor_agreement', 'donor_agreement_restriction') ? [] : DB::table('object_rights_holder as orh')
             ->join('donor_agreement as da', 'da.donor_id', '=', 'orh.donor_id')
             ->join('donor_agreement_restriction as dar', 'dar.donor_agreement_id', '=', 'da.id')
             ->whereIn('dar.restriction_type', ['closure', 'permission_only', 'time_embargo', 'popia_restricted', 'legal_hold'])
@@ -49,6 +52,10 @@ class SearchAccessFilterService
             })
             ->pluck('orh.object_id')
             ->toArray();
+
+        if (!$this->has('rights_embargo')) {
+            return array_values(array_unique(array_merge($classRestricted, $donorRestricted)));
+        }
 
         // Embargoed - query rights_embargo table for full embargoes
         // Only full embargoes should hide from search; other types allow metadata viewing
@@ -62,7 +69,7 @@ class SearchAccessFilterService
             });
 
         // If user is authenticated, check for embargo exceptions
-        if ($userId) {
+        if ($userId && $this->has('embargo_exception')) {
             $userExceptions = DB::table('embargo_exception as ee')
                 ->join('rights_embargo as re', 're.id', '=', 'ee.embargo_id')
                 ->where('ee.exception_type', 'user')
@@ -89,13 +96,34 @@ class SearchAccessFilterService
         return array_unique(array_merge($classRestricted, $donorRestricted, $embargoed));
     }
 
+    /** Table presence, cached for the request. */
+    private function has(string ...$tables): bool
+    {
+        static $known = [];
+
+        foreach ($tables as $t) {
+            if (!isset($known[$t])) {
+                try {
+                    $known[$t] = DB::schema()->hasTable($t);
+                } catch (\Throwable $e) {
+                    $known[$t] = false;
+                }
+            }
+            if (!$known[$t]) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     private function getUserContext(?int $userId): array
     {
         if (null === $userId) {
             return ['user_id' => null, 'is_administrator' => false, 'clearance_level' => 0];
         }
 
-        $clearance = DB::table('user_security_clearance as usc')
+        $clearance = !$this->has('user_security_clearance', 'security_classification') ? 0 : DB::table('user_security_clearance as usc')
             ->join('security_classification as sc', 'sc.id', '=', 'usc.classification_id')
             ->where('usc.user_id', $userId)
             ->where(function ($q) {
