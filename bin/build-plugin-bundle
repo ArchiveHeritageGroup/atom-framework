@@ -306,20 +306,28 @@ if [ -d "$STAGE/$PLUGIN/modules" ]; then
     # The pattern excludes data-ahg-style="...", which legitimately carries a
     # declaration for the CSSOM applier to set. Matching bare 'style="' caught
     # those too and refused plugins that had already been fixed.
-    INLINE_FILES="$(grep -rlE '(^|[^-[:alnum:]])style="[^"]*"' "$STAGE/$PLUGIN"/modules/*/templates --include='*.php' 2>/dev/null || true)"
-    INLINE="$( { grep -rhoE '(^|[^-[:alnum:]])style="[^"]*"' "$STAGE/$PLUGIN"/modules/*/templates --include='*.php' 2>/dev/null || true; } | wc -l | tr -d ' ')"
+    # bin/audit-inline-attributes reads templates with PHP's tokenizer, so a
+    # commented-out block is not counted (a grep counted it, and so refused
+    # plugins whose only "style attribute" was in a comment). It also counts
+    # inline event handlers, which the same policy blocks - a dead button is
+    # worse than a mis-sized one.
+    AUDIT_OUT="$(php "$(dirname "$0")/audit-inline-attributes" list "$STAGE/$PLUGIN" 2>/dev/null || true)"
+    INLINE="$(printf '%s\n' "$AUDIT_OUT" | awk -F'\t' 'NF==4 {n+=$4} END {print n+0}')"
+    INLINE_FILES="$(printf '%s\n' "$AUDIT_OUT" | awk -F'\t' 'NF==4 {print $2 " (" $4 " " $3 ")"}')"
 fi
 
 if [ "${INLINE:-0}" -gt 0 ]; then
     echo "" >&2
-    echo "  REFUSING to package $PLUGIN: $INLINE inline style attribute(s)." >&2
+    echo "  REFUSING to package $PLUGIN: $INLINE inline style attribute(s) or event handler(s)." >&2
     echo "" >&2
-    echo "$INLINE_FILES" | sed "s|$STAGE/|    |" | head -10 >&2
+    echo "$INLINE_FILES" | sed "s|^|    |" | head -10 >&2
     echo "" >&2
     echo "  A CSP nonce covers <style> and <script> elements, never a style" >&2
     echo "  attribute, so these are dropped on any site running the enforcing" >&2
     echo "  header. Use a class, or ahg_style_block() from ahgCorePlugin, or set" >&2
-    echo "  the property through the CSSOM for a computed value." >&2
+    echo "  the property through the CSSOM for a computed value (data-ahg-style)." >&2
+    echo "  Handlers: data-ahg-call / data-ahg-confirm and the other data-ahg-*" >&2
+    echo "  shims in ahgCorePlugin." >&2
     echo "" >&2
     echo "  AHG_ALLOW_INLINE_STYLES=1 to package anyway." >&2
     echo "" >&2
