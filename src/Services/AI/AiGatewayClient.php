@@ -219,6 +219,11 @@ class AiGatewayClient
         if ($ollamaOptions !== []) {
             $body['options'] = $ollamaOptions;
         }
+        // Reasoning models (qwen3) otherwise spend num_predict on a hidden
+        // thinking pass and can return an empty answer.
+        if (isset($options['think'])) {
+            $body['think'] = (bool) $options['think'];
+        }
 
         $timeout = (int) ($options['timeout'] ?? $this->timeout);
         $data = $this->postJson('/ollama/api/chat', json_encode($body), $timeout);
