@@ -109,8 +109,16 @@ class HttpClientService
             return $result;
         }
 
-        // Check all resolved IPs for private ranges
-        foreach ($resolvedIps as $ip) {
+        // Check all resolved IPs for private ranges - unless the caller vouches
+        // for exactly this host. The guard exists for URLs a user can influence;
+        // an administrator-configured service on this network is not that. The
+        // AHG AI gateway is the case in point: /etc/hosts pins ai.theahg.co.za
+        // to 127.0.0.1 so its traffic stays on the box, and from 2026-08-24
+        // this check refused every gateway call - chat, embeddings, vision -
+        // with each feature quietly falling back. Only the named host is
+        // exempt; a redirect elsewhere is re-checked in full.
+        $trusted = isset($options['trustedHost']) && 0 === strcasecmp((string) $options['trustedHost'], $host);
+        foreach ($trusted ? [] : $resolvedIps as $ip) {
             if (self::isPrivateIp($ip)) {
                 $result['error'] = 'Target resolves to private IP: ' . $ip;
                 return $result;

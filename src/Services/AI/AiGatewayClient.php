@@ -125,7 +125,7 @@ class AiGatewayClient
             $res = HttpClientService::get(
                 $this->baseUrl . '/health',
                 $this->authHeaders(),
-                ['timeout' => 5, 'connectTimeout' => 3]
+                ['timeout' => 5, 'connectTimeout' => 3, 'trustedHost' => $this->trustedHost()]
             );
 
             return ($res['status'] ?? 0) === 200;
@@ -345,7 +345,7 @@ class AiGatewayClient
             $res = HttpClientService::get(
                 $this->baseUrl . '/translate/languages',
                 $this->authHeaders(),
-                ['timeout' => 10, 'connectTimeout' => 5]
+                ['timeout' => 10, 'connectTimeout' => 5, 'trustedHost' => $this->trustedHost()]
             );
         } catch (\Throwable $e) {
             return null;
@@ -365,6 +365,18 @@ class AiGatewayClient
     // =========================================================================
 
     /**
+     * The gateway is an administrator-configured service, not a user-supplied
+     * URL, so its own host is exempt from HttpClientService's private-IP guard.
+     * This host pins ai.theahg.co.za to 127.0.0.1 in /etc/hosts (2026-08-24),
+     * and without the exemption every gateway call was refused. Only this
+     * exact host is trusted; a redirect elsewhere is checked in full.
+     */
+    private function trustedHost(): string
+    {
+        return (string) parse_url($this->baseUrl, PHP_URL_HOST);
+    }
+
+    /**
      * @return array<string,mixed>|null Decoded JSON object, or null on any failure.
      */
     private function postJson(string $path, string $body, int $timeout): ?array
@@ -374,7 +386,7 @@ class AiGatewayClient
                 $this->baseUrl . $path,
                 $body,
                 $this->authHeaders(['Content-Type' => 'application/json']),
-                ['timeout' => $timeout]
+                ['timeout' => $timeout, 'trustedHost' => $this->trustedHost()]
             );
         } catch (\Throwable $e) {
             return null;
