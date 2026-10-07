@@ -193,6 +193,10 @@ class SearchService
                 'bool' => array_filter([
                     'must' => $must,
                     'filter' => $filterClauses ?: null,
+                    // Ids the caller may not see, excluded in the query itself
+                    // so totals and pages are right too.
+                    'must_not' => empty($options['excludeIds']) ? null
+                        : [['ids' => ['values' => array_map('strval', $options['excludeIds'])]]],
                 ]),
             ],
             'sort' => $sortArray,
