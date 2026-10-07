@@ -18,7 +18,16 @@ class SearchAccessFilterService
         return self::$instance;
     }
 
-    public function getRestrictedObjectIds(?int $userId): array
+    /**
+     * Descriptions hidden from this user in lists and search.
+     *
+     * @param bool $withIcipOdrl include ICIP restrictions/notices and ODRL
+     *                           prohibitions. Lists pass true. A record page
+     *                           passes false: ahgICIPPlugin and ahgResearchPlugin
+     *                           run their own page flows there (an ICIP notice
+     *                           is lifted by acknowledging it on that page).
+     */
+    public function getRestrictedObjectIds(?int $userId, bool $withIcipOdrl = true): array
     {
         $userContext = $this->getUserContext($userId);
 
@@ -53,8 +62,11 @@ class SearchAccessFilterService
             ->pluck('orh.object_id')
             ->toArray();
 
+        $icipRestricted = $withIcipOdrl ? $this->icipRestricted($today, $userId) : [];
+        $odrlRestricted = $withIcipOdrl ? $this->odrlRestricted() : [];
+
         if (!$this->has('rights_embargo')) {
-            return array_values(array_unique(array_merge($classRestricted, $donorRestricted)));
+            return array_values(array_unique(array_merge($classRestricted, $donorRestricted, $icipRestricted, $odrlRestricted)));
         }
 
         // Embargoed - query rights_embargo table for full embargoes
@@ -70,10 +82,17 @@ class SearchAccessFilterService
 
         // If user is authenticated, check for embargo exceptions
         if ($userId && $this->has('embargo_exception')) {
+            // An exception can name the user or one of their groups.
             $userExceptions = DB::table('embargo_exception as ee')
                 ->join('rights_embargo as re', 're.id', '=', 'ee.embargo_id')
-                ->where('ee.exception_type', 'user')
-                ->where('ee.exception_id', $userId)
+                ->where(function ($q) use ($userId) {
+                    $q->where(function ($u) use ($userId) {
+                        $u->where('ee.exception_type', 'user')->where('ee.exception_id', $userId);
+                    })->orWhere(function ($g) use ($userId) {
+                        $g->where('ee.exception_type', 'group')
+                            ->whereIn('ee.exception_id', DB::table('acl_user_group')->where('user_id', $userId)->select('group_id'));
+                    });
+                })
                 ->where(function ($q) {
                     $now = date('Y-m-d');
                     $q->whereNull('ee.valid_from')->orWhere('ee.valid_from', '<=', $now);
@@ -93,7 +112,93 @@ class SearchAccessFilterService
 
         $embargoed = $embargoedQuery->pluck('object_id')->toArray();
 
-        return array_unique(array_merge($classRestricted, $donorRestricted, $embargoed));
+        return array_values(array_unique(array_merge($classRestricted, $donorRestricted, $embargoed, $icipRestricted, $odrlRestricted)));
+    }
+
+    /**
+     * Whether a record page must be refused: classification, donor
+     * restriction, full embargo. ICIP and ODRL are left to their plugins'
+     * own page flows (see getRestrictedObjectIds).
+     */
+    public function isRestricted(int $objectId, ?int $userId): bool
+    {
+        return in_array($objectId, $this->getRestrictedObjectIds($userId, false), true);
+    }
+
+    /**
+     * ICIP (Indigenous cultural and intellectual property, ahgICIPPlugin): an
+     * active access restriction, or an active cultural notice whose type
+     * blocks access, on the record or on an ancestor whose entry applies to
+     * descendants. A blocking notice the user has already acknowledged no
+     * longer hides the record from them.
+     *
+     * @return int[]
+     */
+    private function icipRestricted(string $today, ?int $userId): array
+    {
+        $ids = [];
+        $sources = [];
+        if ($this->has('icip_access_restriction')) {
+            $sources[] = DB::table('icip_access_restriction as e')
+                ->where(function ($q) use ($today) {
+                    $q->whereNull('e.start_date')->orWhere('e.start_date', '<=', $today);
+                })
+                ->where(function ($q) use ($today) {
+                    $q->whereNull('e.end_date')->orWhere('e.end_date', '>=', $today);
+                });
+        }
+        if ($this->has('icip_cultural_notice', 'icip_cultural_notice_type')) {
+            $sources[] = DB::table('icip_cultural_notice as e')
+                ->join('icip_cultural_notice_type as t', 't.id', '=', 'e.notice_type_id')
+                ->where('t.is_active', 1)->where('t.blocks_access', 1)
+                ->when($userId && $this->has('icip_notice_acknowledgement'), function ($q) use ($userId) {
+                    $q->whereNotExists(function ($a) use ($userId) {
+                        $a->select(DB::raw(1))->from('icip_notice_acknowledgement as ack')
+                            ->whereColumn('ack.notice_id', 'e.id')->where('ack.user_id', $userId);
+                    });
+                })
+                ->where(function ($q) use ($today) {
+                    $q->whereNull('e.start_date')->orWhere('e.start_date', '<=', $today);
+                })
+                ->where(function ($q) use ($today) {
+                    $q->whereNull('e.end_date')->orWhere('e.end_date', '>=', $today);
+                });
+        }
+
+        foreach ($sources as $source) {
+            foreach ((clone $source)->get(['e.information_object_id', 'e.applies_to_descendants']) as $row) {
+                $ids[(int) $row->information_object_id] = true;
+                if ((int) $row->applies_to_descendants) {
+                    $node = DB::table('information_object')->where('id', $row->information_object_id)->first(['lft', 'rgt']);
+                    if ($node) {
+                        foreach (DB::table('information_object')->whereBetween('lft', [$node->lft, $node->rgt])->pluck('id') as $id) {
+                            $ids[(int) $id] = true;
+                        }
+                    }
+                }
+            }
+        }
+
+        return array_keys($ids);
+    }
+
+    /**
+     * ODRL "use" prohibitions (ahgResearchPlugin research_rights_policy) - the
+     * rule ahgPortableExportPlugin's DisclosureGate already applies.
+     *
+     * @return int[]
+     */
+    private function odrlRestricted(): array
+    {
+        if (!$this->has('research_rights_policy')) {
+            return [];
+        }
+
+        return array_map('intval', DB::table('research_rights_policy')
+            ->whereIn('target_type', ['archival_description', 'information_object'])
+            ->where('policy_type', 'prohibition')
+            ->where('action_type', 'use')
+            ->pluck('target_id')->all());
     }
 
     /** Table presence, cached for the request. */
