@@ -10,6 +10,20 @@ class SearchAccessFilterService
 {
     private static ?self $instance = null;
 
+    /** @var callable[] fn(?int $userId): int[] - extra ids to hide, from plugins */
+    private static array $sources = [];
+
+    /**
+     * Let a plugin hide further descriptions from non-administrators (for
+     * example ahgMultiTenantPlugin: other tenants' records). The source gets
+     * the user id and returns description ids. Every list, search, API and
+     * record-page check that uses this service then applies it too.
+     */
+    public static function addRestrictionSource(callable $source): void
+    {
+        self::$sources[] = $source;
+    }
+
     public static function getInstance(): self
     {
         if (null === self::$instance) {
@@ -112,7 +126,14 @@ class SearchAccessFilterService
 
         $embargoed = $embargoedQuery->pluck('object_id')->toArray();
 
-        return array_values(array_unique(array_merge($classRestricted, $donorRestricted, $embargoed, $icipRestricted, $odrlRestricted)));
+        $fromSources = [];
+        foreach (self::$sources as $source) {
+            // Not caught: like the sources above, a failure propagates, and the
+            // record-page check fails closed on it rather than showing the record.
+            $fromSources = array_merge($fromSources, array_map('intval', (array) $source($userId)));
+        }
+
+        return array_values(array_unique(array_merge($classRestricted, $donorRestricted, $embargoed, $icipRestricted, $odrlRestricted, $fromSources)));
     }
 
     /**

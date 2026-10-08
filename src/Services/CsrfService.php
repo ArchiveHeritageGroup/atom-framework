@@ -136,6 +136,16 @@ class CsrfService
             return true;
         }
 
+        // SAML sign-in reply (#200): the identity provider posts it from its own
+        // site, so it cannot carry our token. php-saml instead requires it to be
+        // signed by the configured provider and to answer the request id held in
+        // this user's session, which is what the token would have proved.
+        $path = parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_PATH) ?: '';
+        if ('POST' === $method && !empty($_POST['SAMLResponse'])
+            && in_array($path, ['/sso/saml/acs', '/index.php/sso/saml/acs'], true)) {
+            return true;
+        }
+
         // Base AtoM forms carry their own CSRF token ('_csrf_token'), validated by
         // AtoM's own sfForm CSRF filter. They are already protected and must NOT
         // also carry the M12 token - the extra field breaks strict sfForm
