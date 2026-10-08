@@ -41,6 +41,16 @@ class AhgApiController extends AhgController
         if (class_exists('\AhgAPIPlugin\Service\ApiKeyService', true)) {
             $this->apiKeyService = new \AhgAPIPlugin\Service\ApiKeyService();
         }
+
+        // 34 apiv2 actions read $this->repository and none create it, so each
+        // one failed with "call to a member function on null" (an empty 200).
+        if (null === $this->repository && class_exists('\AhgAPIPlugin\Repository\ApiRepository', true)) {
+            $culture = 'en';
+            if (class_exists('\sfContext', false) && \sfContext::hasInstance()) {
+                $culture = \sfContext::getInstance()->getUser()->getCulture() ?: 'en';
+            }
+            $this->repository = new \AhgAPIPlugin\Repository\ApiRepository($culture);
+        }
     }
 
     /**
@@ -56,13 +66,23 @@ class AhgApiController extends AhgController
         if (strncmp($name, 'execute', 7) === 0) {
             $request = $arguments[0] ?? (method_exists($this, 'getRequest') ? $this->getRequest() : null);
             $this->boot();
+            // Identify the caller (signed-in session or X-API-Key). Not a gate:
+            // public reads stay public; actions that need a user check for one.
+            $this->authenticate();
             $verb = strtoupper(
                 ($request && method_exists($request, 'getMethod'))
                     ? $request->getMethod()
                     : ($_SERVER['REQUEST_METHOD'] ?? 'GET')
             );
             if (method_exists($this, $verb)) {
-                return $this->{$verb}($request);
+                // Pass the JSON body as the standalone dispatcher does. Actions
+                // written as POST($request, $data) got null under Symfony, so
+                // every create or update through index.php failed as if no
+                // fields had been sent. Actions that read the body themselves
+                // simply ignore the extra argument.
+                $data = in_array($verb, ['POST', 'PUT', 'PATCH'], true) ? $this->getJsonBody() : null;
+
+                return $this->{$verb}($request, $data);
             }
 
             return $this->error(405, 'method_not_allowed', 'HTTP ' . $verb . ' not supported on this endpoint');
@@ -89,9 +109,14 @@ class AhgApiController extends AhgController
                 if (file_exists($repoFile)) {
                     require_once $repoFile;
                 }
-                $serviceFile = $apiLib . '/service/ApiKeyService.php';
-                if (file_exists($serviceFile)) {
-                    require_once $serviceFile;
+                // The file lives in lib/Services/; the old lib/service/ path never
+                // existed, so the key service was never loaded and API keys were
+                // never checked.
+                foreach (['/Services/ApiKeyService.php', '/service/ApiKeyService.php'] as $rel) {
+                    if (file_exists($apiLib . $rel)) {
+                        require_once $apiLib . $rel;
+                        break;
+                    }
                 }
             }
         }

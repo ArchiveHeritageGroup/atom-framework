@@ -44,6 +44,28 @@ class RouteLoader
     }
 
     /**
+     * Register a route for the given HTTP methods only, e.g. ['put', 'patch'].
+     * Use this rather than any() when another route shares the path: routes
+     * are prepended, so a later any() would take every verb on that path.
+     */
+    public function methods(array $methods, string $name, string $url, string $action, array $requirements = [], array $defaults = []): self
+    {
+        return $this->addRoute($name, $url, $action, $requirements, array_map('strtolower', $methods), $defaults);
+    }
+
+    /** Register a PUT/PATCH route. */
+    public function put(string $name, string $url, string $action, array $requirements = [], array $defaults = []): self
+    {
+        return $this->methods(['put', 'patch'], $name, $url, $action, $requirements, $defaults);
+    }
+
+    /** Register a DELETE route. */
+    public function delete(string $name, string $url, string $action, array $requirements = [], array $defaults = []): self
+    {
+        return $this->methods(['delete'], $name, $url, $action, $requirements, $defaults);
+    }
+
+    /**
      * Register a route for any HTTP method.
      */
     public function any(string $name, string $url, string $action, array $requirements = [], array $defaults = []): self
