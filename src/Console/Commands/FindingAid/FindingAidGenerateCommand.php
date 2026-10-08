@@ -63,7 +63,8 @@ EOF;
             $options['authLevel'] = 'private';
         }
 
-        $generator = new \QubitFindingAidGenerator($resource, $options);
+        // Base generator plus custom fields in the EAD (#202).
+        $generator = new \AtomFramework\FindingAid\AhgFindingAidGenerator($resource, $options);
         $generator->generate();
 
         $this->success('Finding aid generated successfully');

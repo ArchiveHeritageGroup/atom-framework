@@ -17,6 +17,17 @@ class CsvAccessionImportCommand extends BaseCommand
     protected string $detailedDescription = <<<'EOF'
     Import CSV accession data into AtoM. Supports accession numbers, donor info,
     alternative identifiers, accession events, physical objects, and search indexing.
+
+    Rows are matched to existing accessions by accession number. Without options a
+    matched accession is updated and its alternative identifiers and events are
+    added to (so a second import of the same file repeats them).
+
+      --update=match-and-update  for a matched accession, replace the alternative
+                                 identifiers and accession events given in the file
+                                 (only the lists that have a column), and update
+                                 events in place instead of adding new ones
+      --skip-matched             leave existing accessions untouched
+      --skip-unmatched           only update existing accessions; create nothing
     EOF;
 
     protected function configure(): void
@@ -29,6 +40,9 @@ class CsvAccessionImportCommand extends BaseCommand
         $this->addOption('source-name', null, 'Source name to use when inserting keymap entries');
         $this->addOption('index', null, 'Index for search during import');
         $this->addOption('assign-id', null, 'Assign identifier based on mask and counter if no accession number specified');
+        $this->addOption('update', null, 'Update mode for matched accessions: match-and-update');
+        $this->addOption('skip-matched', null, 'Skip rows whose accession number already exists');
+        $this->addOption('skip-unmatched', null, 'Skip rows whose accession number does not exist yet');
     }
 
     protected function handle(): int
@@ -42,6 +56,9 @@ class CsvAccessionImportCommand extends BaseCommand
             'source-name' => $this->option('source-name'),
             'index' => $this->hasOption('index'),
             'assign-id' => $this->hasOption('assign-id'),
+            'update' => $this->option('update'),
+            'skip-matched' => $this->hasOption('skip-matched'),
+            'skip-unmatched' => $this->hasOption('skip-unmatched'),
         ];
 
         $this->validateImportOptions($options);
@@ -86,6 +103,9 @@ class CsvAccessionImportCommand extends BaseCommand
                 'alternativeIdentifierTypes' => $termData['alternativeIdentifierTypes'],
                 'accessionEventTypes' => $termData['accessionEventTypes'],
                 'assignId' => $options['assign-id'],
+                'replaceLists' => 'match-and-update' === $options['update'],
+                'skipMatched' => $options['skip-matched'],
+                'skipUnmatched' => $options['skip-unmatched'],
             ],
 
             'standardColumns' => [
@@ -167,7 +187,14 @@ class CsvAccessionImportCommand extends BaseCommand
                 );
 
                 $result = $statement->fetch(\PDO::FETCH_OBJ);
-                if ($result) {
+                $self->rowStatusVars['__matched'] = (bool) $result;
+                if ($result && $self->getStatus('skipMatched')) {
+                    echo $self->logError(sprintf('Accession %s exists, skipping (--skip-matched)', $accessionNumber));
+                    $self->object = null;
+                } elseif (!$result && $self->getStatus('skipUnmatched')) {
+                    echo $self->logError(sprintf('Accession %s does not exist, skipping (--skip-unmatched)', $accessionNumber ?: '(none)'));
+                    $self->object = null;
+                } elseif ($result) {
                     echo $self->logError(sprintf('Found accession ID %d with identifier %s', $result->id, $accessionNumber));
                     $self->object = \QubitAccession::getById($result->id);
                 } elseif (!empty($accessionNumber)) {
@@ -200,6 +227,24 @@ class CsvAccessionImportCommand extends BaseCommand
                         foreach ($self->rowStatusVars['creators'] as $creator) {
                             $actor = $self->createOrFetchActor($creator);
                             $self->createRelation($actor->id, $self->object->id, \QubitTerm::CREATION_ID);
+                        }
+                    }
+
+                    // --update=match-and-update: a matched accession's lists that the
+                    // file carries are replaced, not added to.
+                    $replacing = $self->getStatus('replaceLists') && !empty($self->rowStatusVars['__matched']);
+                    if ($replacing && array_intersect(['alternativeIdentifiers', 'alternativeIdentifierNotes'], $self->columnNames)) {
+                        $criteria = new \Criteria();
+                        $criteria->add(\QubitOtherName::OBJECT_ID, $self->object->id);
+                        foreach (\QubitOtherName::get($criteria) as $old) {
+                            $old->delete();
+                        }
+                    }
+                    if ($replacing && array_intersect(['accessionEventTypes', 'accessionEventDates'], $self->columnNames)) {
+                        $criteria = new \Criteria();
+                        $criteria->add(\QubitAccessionEvent::ACCESSION_ID, $self->object->id);
+                        foreach (\QubitAccessionEvent::get($criteria) as $old) {
+                            $old->delete();
                         }
                     }
 
@@ -430,6 +475,9 @@ class CsvAccessionImportCommand extends BaseCommand
 
         $import->searchIndexingDisabled = ($options['index']) ? false : true;
 
+        // Events (creators and other dates) are updated in place, not repeated.
+        $import->matchAndUpdate = 'match-and-update' === $options['update'];
+
         $import->csv($fh, $skipRows);
 
         $this->success('Accession CSV import complete.');
@@ -449,6 +497,14 @@ class CsvAccessionImportCommand extends BaseCommand
 
         if ($options['error-log'] && !is_dir(dirname($options['error-log']))) {
             throw new \sfException('Path to error log is invalid.');
+        }
+
+        if ($options['update'] && 'match-and-update' !== $options['update']) {
+            throw new \sfException('--update only takes match-and-update');
+        }
+
+        if ($options['skip-matched'] && $options['skip-unmatched']) {
+            throw new \sfException('--skip-matched and --skip-unmatched together would skip every row');
         }
     }
 }

@@ -78,6 +78,8 @@ EOF;
 
         $this->info('Exporting as ' . strtoupper($standard) . '.');
 
+        $exportStarted = time();
+
         // Instantiate CSV writer
         $writer = new \csvInformationObjectExport($path, $standard, $rowsPerFile);
         $writer->user = $context->getUser();
@@ -99,6 +101,17 @@ EOF;
 
             $this->indicateProgress($itemsExported, $itemsUntilUpdate);
             ++$itemsExported;
+        }
+
+        // Custom fields (#202): one column per field, appended to each file this
+        // run wrote. --public keeps to the fields marked visible to the public.
+        if (class_exists('\\AtomFramework\\Services\\CustomFieldValues')) {
+            $written = is_dir($path) ? (glob(rtrim($path, '/').'/*.csv') ?: []) : [$path];
+            foreach ($written as $file) {
+                if (filemtime($file) >= $exportStarted) {
+                    \AtomFramework\Services\CustomFieldValues::appendToCsv($file, 'informationobject', (bool) $isPublic);
+                }
+            }
         }
 
         $this->newline();
