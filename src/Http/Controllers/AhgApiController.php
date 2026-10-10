@@ -8,8 +8,9 @@ use Illuminate\Http\JsonResponse;
 /**
  * API-specific base controller for AHG plugins.
  *
- * Extends AhgController with the SAME API as AhgApiAction so that
- * API action classes can swap base class with minimal changes.
+ * Extends AhgController with the API helpers every apiv2 action uses (key
+ * authentication, scopes, JSON success/error). It replaced the older
+ * AhgApiAction base class, which has been removed.
  *
  * Dual-stack compatible: works through both Symfony index.php and heratio.php.
  */
