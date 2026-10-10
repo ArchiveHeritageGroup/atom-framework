@@ -82,7 +82,24 @@ class AhgApiController extends AhgController
                 // simply ignore the extra argument.
                 $data = in_array($verb, ['POST', 'PUT', 'PATCH'], true) ? $this->getJsonBody() : null;
 
-                return $this->{$verb}($request, $data);
+                try {
+                    return $this->{$verb}($request, $data);
+                } catch (\sfStopException $e) {
+                    throw $e;
+                } catch (\Throwable $e) {
+                    // An API answers in JSON, never with the site's HTML error page.
+                    error_log('API '.$verb.' '.get_class($this).': '.$e->getMessage().' at '.$e->getFile().':'.$e->getLine());
+
+                    return $this->error(500, 'server_error', get_class($e).': '.$e->getMessage());
+                } finally {
+                    // A key signs its owner in for THIS request only. Left signed in, the
+                    // session cookie outlived the key (a revoked key kept working) and the
+                    // next request took the session branch with full scopes (a read-only
+                    // key could write and delete).
+                    if (($this->apiKeyInfo['type'] ?? null) === 'ahg_api_key' && $this->getUser()->isAuthenticated()) {
+                        $this->getUser()->signOut();
+                    }
+                }
             }
 
             return $this->error(405, 'method_not_allowed', 'HTTP ' . $verb . ' not supported on this endpoint');
@@ -169,7 +186,10 @@ class AhgApiController extends AhgController
         if ($this->apiKeyService) {
             $this->apiKeyInfo = $this->apiKeyService->authenticate();
             if ($this->apiKeyInfo) {
-                if (class_exists('\QubitUser', false)) {
+                // Autoload allowed: with false, QubitUser was usually not loaded yet,
+                // the else branch returned without signing the key's owner in, and every
+                // ACL check after it (create, update, delete) ran as an anonymous visitor.
+                if (class_exists('\QubitUser')) {
                     $user = \QubitUser::getById($this->apiKeyInfo['user_id']);
                     if ($user) {
                         $sfUser->signIn($user);

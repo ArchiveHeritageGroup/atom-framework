@@ -63,8 +63,10 @@ class EntityDeleteService
             'StorageCrudService',
             'lib/Services/StorageCrudService.php',
         ],
+        // The description CRUD service moved to ahgCorePlugin (namespace AhgCore\Services);
+        // the old path made every description delete through this service fail.
         'QubitInformationObject' => [
-            'ahgInformationObjectManagePlugin',
+            'ahgCorePlugin',
             'InformationObjectCrudService',
             'lib/Services/InformationObjectCrudService.php',
         ],
@@ -307,7 +309,7 @@ class EntityDeleteService
                 break;
 
             case 'QubitInformationObject':
-                \AhgInformationObjectManage\Services\InformationObjectCrudService::delete($id);
+                \AhgCore\Services\InformationObjectCrudService::delete($id);
                 break;
 
             case 'QubitUser':
