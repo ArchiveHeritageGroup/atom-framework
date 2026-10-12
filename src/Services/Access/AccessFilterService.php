@@ -422,7 +422,25 @@ class AccessFilterService
         }
 
         $today = $this->today();
-        
+
+        // Embargoes set from the record (ahgExtendedRightsPlugin's Add embargo) live in
+        // rights_embargo. This only read extended_rights.expiry_date, so a visitor turned
+        // away by a full embargo got a bare "Access denied" with no reason or date.
+        if (DB::schema()->hasTable('rights_embargo')) {
+            $row = DB::table('rights_embargo as e')
+                ->leftJoin('rights_embargo_i18n as ei', 'ei.id', '=', 'e.id')
+                ->where('e.object_id', $objectId)->where('e.status', 'active')->where('e.embargo_type', 'full')
+                ->where('e.start_date', '<=', $today)
+                ->where(function ($q) use ($today) {
+                    $q->whereNull('e.end_date')->orWhere('e.end_date', '>=', $today);
+                })
+                ->orderByDesc('e.id')
+                ->first(['e.end_date', 'ei.reason_note']);
+            if ($row) {
+                return ['granted' => false, 'embargo' => ['end_date' => $row->end_date, 'reason' => $row->reason_note]];
+            }
+        }
+
         // extended_rights table has: object_id, expiry_date (no object_type column)
         $embargo = DB::table('extended_rights')
             ->where('object_id', $objectId)
