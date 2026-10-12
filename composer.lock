@@ -4,8 +4,72 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "b3a376e6c48c57c63dedf31a545057f8",
+    "content-hash": "f43b0597ec91fd6073bca1750271ef8b",
     "packages": [
+        {
+            "name": "ahg/inference-receipts",
+            "version": "v0.1.1",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/ArchiveHeritageGroup/inference-receipts.git",
+                "reference": "b05a608bd52cf7f67d0f2c7e0c103f9fe4268b5e"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/ArchiveHeritageGroup/inference-receipts/zipball/b05a608bd52cf7f67d0f2c7e0c103f9fe4268b5e",
+                "reference": "b05a608bd52cf7f67d0f2c7e0c103f9fe4268b5e",
+                "shasum": ""
+            },
+            "require": {
+                "ext-json": "*",
+                "ext-mbstring": "*",
+                "ext-sodium": "*",
+                "php": "^8.2"
+            },
+            "require-dev": {
+                "phpunit/phpunit": "^10.0|^11.0"
+            },
+            "type": "library",
+            "extra": {
+                "branch-alias": {
+                    "dev-main": "0.1.x-dev"
+                }
+            },
+            "autoload": {
+                "psr-4": {
+                    "AhgInferenceReceipts\\": "src/"
+                }
+            },
+            "notification-url": "https://packagist.org/downloads/",
+            "license": [
+                "Apache-2.0"
+            ],
+            "authors": [
+                {
+                    "name": "Johan Pieterse",
+                    "email": "johan@plainsailingisystems.co.za",
+                    "homepage": "https://theahg.co.za"
+                }
+            ],
+            "description": "Tamper-evident receipts for AI inference calls: SHA-256 hash chain, RFC 8785 JCS canonicalization, Ed25519 signatures. Pure PHP, zero framework dependencies. EU AI Act Article 12 / NIST AI RMF aligned.",
+            "keywords": [
+                "Ed25519",
+                "ai-act",
+                "article-12",
+                "audit-log",
+                "compliance",
+                "hash-chain",
+                "jcs",
+                "provenance",
+                "rfc8785",
+                "tamper-evident"
+            ],
+            "support": {
+                "issues": "https://github.com/ArchiveHeritageGroup/inference-receipts/issues",
+                "source": "https://github.com/ArchiveHeritageGroup/inference-receipts/tree/v0.1.1"
+            },
+            "time": "2026-05-25T17:00:53+00:00"
+        },
         {
             "name": "brick/math",
             "version": "0.12.3",
