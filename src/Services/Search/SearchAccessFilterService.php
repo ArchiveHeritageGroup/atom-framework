@@ -61,6 +61,12 @@ class SearchAccessFilterService
             ->where('sc.level', '>', $userContext['clearance_level'])
             ->pluck('osc.object_id')
             ->toArray();
+        // An approved access request (ahgAccessRequestPlugin) lifts the classification
+        // for that user and record - only the classification, never a closure or embargo.
+        // Without this an approved request changed nothing: the record stayed denied.
+        if ($classRestricted && $userId) {
+            $classRestricted = array_values(array_diff($classRestricted, $this->grantedObjectIds($userId)));
+        }
 
         // Donor restricted (closed items)
         $donorRestricted = !$this->has('object_rights_holder', 'donor_agreement', 'donor_agreement_restriction') ? [] : DB::table('object_rights_holder as orh')
@@ -144,6 +150,40 @@ class SearchAccessFilterService
     public function isRestricted(int $objectId, ?int $userId): bool
     {
         return in_array($objectId, $this->getRestrictedObjectIds($userId, false), true);
+    }
+
+    /**
+     * Records the user holds an active object access grant for (approved access
+     * requests), with descendants where the grant includes them.
+     *
+     * @return int[]
+     */
+    private function grantedObjectIds(int $userId): array
+    {
+        if (!$this->has('object_access_grant')) {
+            return [];
+        }
+        $ids = [];
+        $grants = DB::table('object_access_grant')
+            ->where('user_id', $userId)->where('object_type', 'information_object')
+            ->where('active', 1)->whereNull('revoked_at')
+            ->where(function ($q) {
+                $q->whereNull('expires_at')->orWhere('expires_at', '>=', date('Y-m-d'));
+            })
+            ->get(['object_id', 'include_descendants']);
+        foreach ($grants as $g) {
+            $ids[(int) $g->object_id] = true;
+            if ((int) $g->include_descendants) {
+                $node = DB::table('information_object')->where('id', $g->object_id)->first(['lft', 'rgt']);
+                if ($node) {
+                    foreach (DB::table('information_object')->whereBetween('lft', [$node->lft, $node->rgt])->pluck('id') as $id) {
+                        $ids[(int) $id] = true;
+                    }
+                }
+            }
+        }
+
+        return array_keys($ids);
     }
 
     /**
