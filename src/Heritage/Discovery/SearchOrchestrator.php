@@ -468,6 +468,9 @@ class SearchOrchestrator
             })
             ->where('pub_status.status_id', 160) // Published only
             ->whereNotNull('io.parent_id')
+            // Classified, embargoed, ICIP and other restricted records: every
+            // strategy builds on this query, and none of them checked access.
+            ->when($this->restrictedIds(), fn ($q, $ids) => $q->whereNotIn('io.id', $ids))
             ->select(
                 'io.id',
                 'sl.slug',
@@ -488,6 +491,26 @@ class SearchOrchestrator
                 'o.updated_at'
             )
             ->groupBy('io.id');
+    }
+
+    /** @var int[]|null restricted description ids for the current user, per request */
+    private ?array $restricted = null;
+
+    /**
+     * Descriptions the current user may not see, from the shared access filter.
+     */
+    private function restrictedIds(): array
+    {
+        if (null === $this->restricted) {
+            $userId = null;
+            if (class_exists('sfContext', false) && \sfContext::hasInstance()) {
+                $userId = \sfContext::getInstance()->getUser()->getAttribute('user_id');
+            }
+            $this->restricted = \AtomExtensions\Services\Search\SearchAccessFilterService::getInstance()
+                ->getRestrictedObjectIds($userId ? (int) $userId : null);
+        }
+
+        return $this->restricted;
     }
 
     /** @var int Counter for unique filter aliases */
