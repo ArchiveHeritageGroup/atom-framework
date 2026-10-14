@@ -41,6 +41,21 @@ class ShellCommandService
      * @param string     $errorFile  Path for stderr output
      * @param array      $extraArgs  Additional mysqldump flags
      */
+    /**
+     * A 0600 option file holding the password, removed when this process ends.
+     * Passing -p<password> put it in `ps` output for every local user to read
+     * for as long as the dump or restore ran.
+     */
+    private static function passwordFile(string $password): string
+    {
+        $file = tempnam(sys_get_temp_dir(), 'ahgmy');
+        chmod($file, 0600);
+        file_put_contents($file, "[client]\npassword=\"" . addcslashes($password, "\\\"") . "\"\n");
+        register_shutdown_function(static fn () => @unlink($file));
+
+        return $file;
+    }
+
     public static function buildMysqldumpCommand(
         string $host,
         int|string $port,
@@ -51,16 +66,12 @@ class ShellCommandService
         string $errorFile = '/dev/null',
         array $extraArgs = []
     ): string {
-        $parts = [
-            'mysqldump',
-            '-h', escapeshellarg($host),
-            '-P', escapeshellarg((string) $port),
-            '-u', escapeshellarg($user),
-        ];
-
+        $parts = ['mysqldump'];
         if ($password !== '') {
-            $parts[] = '-p' . escapeshellarg($password);
+            // Must come first; keeps the password out of the process list.
+            $parts[] = '--defaults-extra-file=' . escapeshellarg(self::passwordFile($password));
         }
+        array_push($parts, '-h', escapeshellarg($host), '-P', escapeshellarg((string) $port), '-u', escapeshellarg($user));
 
         // Default safe flags
         $defaults = [
@@ -103,16 +114,11 @@ class ShellCommandService
         string $inputFile,
         bool $isGzipped = false
     ): string {
-        $mysqlParts = [
-            'mysql',
-            '-h', escapeshellarg($host),
-            '-P', escapeshellarg((string) $port),
-            '-u', escapeshellarg($user),
-        ];
-
+        $mysqlParts = ['mysql'];
         if ($password !== '') {
-            $mysqlParts[] = '-p' . escapeshellarg($password);
+            $mysqlParts[] = '--defaults-extra-file=' . escapeshellarg(self::passwordFile($password));
         }
+        array_push($mysqlParts, '-h', escapeshellarg($host), '-P', escapeshellarg((string) $port), '-u', escapeshellarg($user));
 
         $mysqlParts[] = escapeshellarg($database);
         $mysqlCmd = implode(' ', $mysqlParts);

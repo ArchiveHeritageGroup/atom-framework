@@ -236,7 +236,8 @@ class BackupService
                 'backup_path' => $backupDir,
                 'backup_type' => $options['preset'] ?? 'manual',
                 'status' => 'in_progress',
-                'started_at' => date('Y-m-d H:i:s'),
+                // backup_history has created_at (defaulted), not started_at: naming
+                // it made every insert fail silently, so no backup was ever recorded.
             ]);
         } catch (\Exception $e) {
             // Continue without history
@@ -295,7 +296,8 @@ class BackupService
                 DB::table('backup_history')->where('backup_id', $backupId)->update([
                     'status' => 'completed',
                     'size_bytes' => $result['size'],
-                    'zip_path' => $zipFile ?? null,
+                    // No zip_path column: naming it failed this update silently and left
+                    // every backup "in_progress". The zip is in the manifest.
                     'components' => json_encode($result['components']),
                     'completed_at' => date('Y-m-d H:i:s'),
                 ]);
@@ -446,10 +448,22 @@ class BackupService
             $errorFile
         );
         
-        exec($cmd, $output, $returnCode);
-        
-        $errorContent = file_exists($errorFile) ? trim(file_get_contents($errorFile)) : '';
-        
+        // The exit code was ignored, so a dump that stopped half-way (e.g. error
+        // 1412 when the hourly facet-cache TRUNCATE lands mid-dump) was recorded
+        // as a good backup with most tables missing. Retry 1412; fail on any error.
+        for ($attempt = 1; $attempt <= 3; $attempt++) {
+            exec($cmd, $output, $returnCode);
+            $errorContent = file_exists($errorFile) ? trim(file_get_contents($errorFile)) : '';
+            if (0 === $returnCode || !str_contains($errorContent, 'Error 1412')) {
+                break;
+            }
+            $this->log("Database dump interrupted by a table rebuild (attempt {$attempt}); retrying");
+            sleep(30);
+        }
+
+        if (0 !== $returnCode) {
+            throw new \Exception('Database backup failed (mysqldump exit ' . $returnCode . '): ' . $errorContent);
+        }
         if (!file_exists($sqlFile) || filesize($sqlFile) === 0) {
             throw new \Exception("Database backup failed: SQL file not created. Error: " . $errorContent);
         }
@@ -676,6 +690,11 @@ class BackupService
 
         $this->log("Deleting backup: {$backupId}");
         exec("rm -rf " . escapeshellarg($backupDir), $output, $returnCode);
+        // Its zip sits beside the folder (createZipArchive); deleting only the
+        // folder left every backup's full-size copy behind, retention included.
+        foreach (glob($backupPath . '/atom_backup_*_' . $backupId . '.zip') ?: [] as $zip) {
+            @unlink($zip);
+        }
         
         try {
             DB::table('backup_history')->where('backup_id', $backupId)->delete();
@@ -730,6 +749,7 @@ class BackupService
             true
         );
 
+        $this->assertGzipIntact($sqlGzFile);
         exec($cmd, $output, $returnCode);
 
         if ($returnCode !== 0) {
@@ -802,6 +822,19 @@ class BackupService
     /**
      * Restore database from file (supports .sql and .sql.gz)
      */
+    /**
+     * The restore pipes gunzip into mysql, and the pipe's exit code is mysql's: a
+     * damaged archive could load half a database without an error. Test it first,
+     * before anything is touched.
+     */
+    private function assertGzipIntact(string $file): void
+    {
+        exec('gzip -t ' . escapeshellarg($file) . ' 2>&1', $out, $rc);
+        if (0 !== $rc) {
+            throw new \Exception('Database restore refused: the archive is damaged (' . trim(implode(' ', $out)) . '). Nothing was changed.');
+        }
+    }
+
     private function restoreDatabaseFile(string $sqlFile): void
     {
         $dbConfig = $this->settings->getDbConfigFromFile();
@@ -825,6 +858,9 @@ class BackupService
             $isGzipped
         );
 
+        if ($isGzipped) {
+            $this->assertGzipIntact($sqlFile);
+        }
         exec($cmd, $output, $returnCode);
 
         if ($returnCode !== 0) {
