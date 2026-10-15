@@ -172,7 +172,7 @@ class ExtensionCommand
         $this->line("  Version:       {$extension['version']}");
         $this->line("  Status:        {$this->formatStatus($extension['status'])}");
         $this->line("  Author:        " . ($extension['author'] ?? 'Unknown'));
-        $this->line("  License:       " . ($extension['license'] ?? 'GPL-3.0'));
+        $this->line("  License:       " . ($extension['license'] ?? 'AGPL-3.0-or-later'));
 
         if (!empty($extension['description'])) {
             $this->line('');

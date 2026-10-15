@@ -1,6 +1,6 @@
 {
     "name": "atom-ahg-framework",
-    "version": "2.19.11",
+    "version": "2.19.12",
     "release_date": "2026-10-15",
     "min_atom_version": "2.8",
     "max_atom_version": "2.10",
@@ -8,7 +8,7 @@
     "framework": "atom-framework",
     "description": "AtoM AHG Framework - Extension system for Access to Memory",
     "author": "The Archive and Heritage Group (Pty) Ltd",
-    "license": "GPL-3.0",
+    "license": "AGPL-3.0-or-later",
     "homepage": "https://github.com/ArchiveHeritageGroup/atom-framework",
     "updated": "2026-01-22"
 }

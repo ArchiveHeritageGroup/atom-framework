@@ -616,4 +616,4 @@ For full security features:
 ---
 
 **Author:** AtoM AHG Framework Team
-**License:** GPL-3.0
+**License:** AGPL-3.0-or-later

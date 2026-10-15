@@ -326,7 +326,7 @@ class ExtensionManager implements ExtensionManagerContract
             'version' => $manifest['version'] ?? '1.0.0',
             'description' => $manifest['description'] ?? null,
             'author' => $manifest['author'] ?? null,
-            'license' => $manifest['license'] ?? 'GPL-3.0',
+            'license' => $manifest['license'] ?? 'AGPL-3.0-or-later',
             'status' => 'installed',
             'theme_support' => json_encode($manifest['theme_support'] ?? []),
             'requires_framework' => $manifest['requires']['atom_framework'] ?? null,
