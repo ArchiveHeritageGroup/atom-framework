@@ -358,9 +358,12 @@ class Model3DService
                 return false;
             }
             
-            // Delete file
-            $fullPath = \sfConfig::get('sf_upload_dir') . '/' . $model->file_path;
-            if (file_exists($fullPath)) {
+            // Delete the file only if the 3D plugin stored it (uploads/3d/...). A
+            // model registered from a digital object points at that object's
+            // master file, which must survive the removal of its 3D settings.
+            $relative = self::relativeUploadPath((string) $model->file_path);
+            $fullPath = \sfConfig::get('sf_upload_dir') . '/' . $relative;
+            if (str_starts_with($relative, '3d/') && is_file($fullPath)) {
                 unlink($fullPath);
             }
             
@@ -558,7 +561,7 @@ class Model3DService
                                 'type' => 'Annotation',
                                 'motivation' => 'painting',
                                 'body' => [
-                                    'id' => "{$baseUrl}/uploads/{$model->file_path}",
+                                    'id' => self::modelUrl($model, $baseUrl),
                                     'type' => 'Model',
                                     'format' => self::SUPPORTED_FORMATS[$model->format] ?? 'model/gltf-binary',
                                     'label' => ['en' => [$model->title ?? 'Model']]
@@ -729,6 +732,43 @@ class Model3DService
             ? trim((string) $value) : $fallback;
     }
 
+    /**
+     * The URL a viewer loads a model from.
+     *
+     * A model backed by a digital object is served through ahg3DModelPlugin's
+     * /3d/file/<digital object id> route: 3D files are masters, so the raw
+     * /uploads/r/* URL is readMaster-gated and 404s for anonymous visitors.
+     * Otherwise (a model uploaded through the 3D plugin, stored as 3d/<id>/<file>)
+     * the file is under /uploads. file_path is normalised either way: rows
+     * registered by ThreeDAutoConfigService carried a doubled
+     * "/uploads/r//uploads/r/..." prefix, which no viewer could load.
+     */
+    public static function modelUrl(object $model, string $baseUrl = ''): string
+    {
+        $doId = DB::table('digital_object')
+            ->where('object_id', $model->object_id ?? 0)
+            ->where('usage_id', \QubitTerm::MASTER_ID)
+            ->where('name', $model->filename ?? '')
+            ->value('id');
+        if ($doId) {
+            return $baseUrl . '/3d/file/' . (int) $doId;
+        }
+
+        return $baseUrl . '/uploads/' . self::relativeUploadPath((string) ($model->file_path ?? ''));
+    }
+
+    /** A path relative to the uploads directory, whatever prefix it was stored with. */
+    public static function relativeUploadPath(string $path): string
+    {
+        $path = preg_replace('#/{2,}#', '/', $path);
+        // Keep only what follows the last "/uploads/" (or a leading "uploads/").
+        if (false !== ($i = strrpos($path, '/uploads/'))) {
+            $path = substr($path, $i + strlen('/uploads/'));
+        }
+
+        return ltrim(preg_replace('#^uploads/#', '', $path), '/');
+    }
+
     public function getModelViewerHtml(int $modelId, array $options = []): string
     {
         $model = $this->getModel($modelId);
@@ -739,7 +779,7 @@ class Model3DService
         $hotspots = $options['show_hotspots'] ?? true ? $this->getHotspots($modelId) : [];
         
         $baseUrl = $options['base_url'] ?? '';
-        $modelUrl = "{$baseUrl}/uploads/{$model->file_path}";
+        $modelUrl = self::modelUrl($model, $baseUrl);
         $posterUrl = $model->poster_image ? "{$baseUrl}/uploads/{$model->poster_image}" : '';
         $height = $options['height'] ?? '500px';
         $containerId = 'model-viewer-' . $modelId;
@@ -963,7 +1003,7 @@ HTML;
         }
         
         $baseUrl = $options['base_url'] ?? '';
-        $modelUrl = "{$baseUrl}/uploads/{$model->file_path}";
+        $modelUrl = self::modelUrl($model, $baseUrl);
         $height = $options['height'] ?? '500px';
         $containerId = 'threejs-viewer-' . $modelId;
         $bgColor = ltrim($model->background_color, '#');

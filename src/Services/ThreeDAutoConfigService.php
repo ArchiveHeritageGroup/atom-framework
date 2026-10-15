@@ -100,7 +100,11 @@ class ThreeDAutoConfigService
         $format = self::$formatMap[$ext] ?? 'glb';
         
         // Build file path
-        $filePath = '/uploads/r/' . ($digitalObject->path ?? '') . '/' . $digitalObject->name;
+        // Relative to the uploads directory, as uploaded models are stored and as
+        // the viewers expect. digital_object.path already starts with /uploads/r/,
+        // so prefixing it again stored "/uploads/r//uploads/r/...", which no viewer
+        // could load.
+        $filePath = Model3DService::relativeUploadPath(($digitalObject->path ?? '') . '/' . $digitalObject->name);
         
         // Insert config with defaults
         DB::table('object_3d_model')->insert([
