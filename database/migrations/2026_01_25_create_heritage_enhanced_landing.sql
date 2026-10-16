@@ -10,13 +10,18 @@ CREATE TABLE IF NOT EXISTS heritage_featured_collection (
     id INT AUTO_INCREMENT PRIMARY KEY,
     institution_id INT DEFAULT NULL,
 
-    -- Content
-    title VARCHAR(255) NOT NULL,
+    -- Curated source (Admin > Heritage > Featured collections, the landing page)
+    source_type VARCHAR(23) DEFAULT NULL COMMENT 'iiif, archival',
+    source_id INT DEFAULT NULL COMMENT 'iiif_collection.id or information_object.id',
+
+    -- Content (title, description and thumbnail_path override the source's own)
+    title VARCHAR(255) DEFAULT NULL,
     subtitle VARCHAR(500) DEFAULT NULL,
     description TEXT DEFAULT NULL,
     curator_note TEXT DEFAULT NULL,
 
     -- Visual
+    thumbnail_path VARCHAR(500) DEFAULT NULL,
     cover_image VARCHAR(500) DEFAULT NULL,
     thumbnail_image VARCHAR(500) DEFAULT NULL,
     background_color VARCHAR(7) DEFAULT NULL,
@@ -48,6 +53,7 @@ CREATE TABLE IF NOT EXISTS heritage_featured_collection (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
 
+    UNIQUE KEY uk_source (source_type, source_id, institution_id),
     INDEX idx_institution (institution_id),
     INDEX idx_featured (is_featured),
     INDEX idx_enabled (is_enabled),
