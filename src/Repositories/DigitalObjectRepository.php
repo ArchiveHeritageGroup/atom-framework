@@ -374,6 +374,7 @@ class DigitalObjectRepository
                 'id' => $propId,
                 'object_id' => $objectId,
                 'name' => $name,
+                'source_culture' => \AtomExtensions\Helpers\CultureHelper::getCulture(),
             ]);
 
             DB::table('property_i18n')->insert([
