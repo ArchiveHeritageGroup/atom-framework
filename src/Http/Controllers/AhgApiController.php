@@ -205,9 +205,28 @@ class AhgApiController extends AhgController
         return false;
     }
 
+    /** The public catalogue reads; each applies visitor visibility itself (ApiVisibility). */
+    private const PUBLIC_READ = [
+        'apiv2DescriptionsBrowseAction', 'apiv2DescriptionsReadAction', 'apiv2DescriptionsCitationAction',
+        'apiv2SearchAction', 'apiv2AuthoritiesBrowseAction', 'apiv2AuthoritiesReadAction',
+        'apiv2RepositoriesBrowseAction', 'apiv2TaxonomiesBrowseAction', 'apiv2TaxonomyTermsAction',
+    ];
+
     protected function hasScope(string $scope): bool
     {
-        return in_array($scope, $this->apiKeyInfo['scopes'] ?? []);
+        if (!in_array($scope, $this->apiKeyInfo['scopes'] ?? [], true)) {
+            return false;
+        }
+
+        // Scope is not permission: any signed-in user can hold a session or issue
+        // themselves a key at /api/keys, so a self-registered researcher could read
+        // DSARs and valuations or write conditions, assets and webhooks. Non-staff
+        // may only read the public catalogue; anything else fails closed, including
+        // endpoints added later until they are listed above.
+        $user = $this->getUser();
+        $staff = $user->isAuthenticated() && $user->hasCredential(['administrator', 'editor', 'contributor'], false);
+
+        return $staff || ('read' === $scope && in_array(static::class, self::PUBLIC_READ, true));
     }
 
     protected function isAdmin(): bool
