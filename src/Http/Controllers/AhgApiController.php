@@ -210,6 +210,8 @@ class AhgApiController extends AhgController
         'apiv2DescriptionsBrowseAction', 'apiv2DescriptionsReadAction', 'apiv2DescriptionsCitationAction',
         'apiv2SearchAction', 'apiv2AuthoritiesBrowseAction', 'apiv2AuthoritiesReadAction',
         'apiv2RepositoriesBrowseAction', 'apiv2TaxonomiesBrowseAction', 'apiv2TaxonomyTermsAction',
+        // File text; checks record visibility and readReference itself.
+        'apiv2DescriptionTextAction',
     ];
 
     protected function hasScope(string $scope): bool
