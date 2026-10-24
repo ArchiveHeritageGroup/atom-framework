@@ -85,26 +85,29 @@ class StandaloneUserWriteService implements UserWriteServiceInterface
 
     public function savePasswordResetToken(int $userId, string $token, string $expiry): void
     {
-        try {
-            DB::table('user')->where('id', $userId)->update([
-                'reset_token' => $token,
-                'reset_token_expiry' => $expiry,
-            ]);
-        } catch (\Exception $e) {
-            error_log('StandaloneUserWriteService: Could not save reset token: ' . $e->getMessage());
+        // Throws on failure: a token that was not stored must not be emailed.
+        DB::table('ahg_password_reset')->updateOrInsert(
+            ['user_id' => $userId],
+            ['token_hash' => hash('sha256', $token), 'expires_at' => $expiry, 'created_at' => date('Y-m-d H:i:s')]
+        );
+    }
+
+    public function findPasswordResetUserId(string $token): ?int
+    {
+        if ('' === $token) {
+            return null;
         }
+        $id = DB::table('ahg_password_reset')
+            ->where('token_hash', hash('sha256', $token))
+            ->where('expires_at', '>', date('Y-m-d H:i:s'))
+            ->value('user_id');
+
+        return null === $id ? null : (int) $id;
     }
 
     public function clearPasswordResetToken(int $userId): void
     {
-        try {
-            DB::table('user')->where('id', $userId)->update([
-                'reset_token' => null,
-                'reset_token_expiry' => null,
-            ]);
-        } catch (\Exception $e) {
-            error_log('StandaloneUserWriteService: Could not clear reset token: ' . $e->getMessage());
-        }
+        DB::table('ahg_password_reset')->where('user_id', $userId)->delete();
     }
 
     public function newUser(): object

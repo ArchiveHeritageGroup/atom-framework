@@ -62,6 +62,11 @@ interface UserWriteServiceInterface
     public function clearPasswordResetToken(int $userId): void;
 
     /**
+     * The user a password-reset token belongs to, or null when it is unknown or expired.
+     */
+    public function findPasswordResetUserId(string $token): ?int;
+
+    /**
      * Get a new unsaved QubitUser object (for form binding in Propel mode).
      *
      * In Propel mode, returns a new QubitUser instance.
