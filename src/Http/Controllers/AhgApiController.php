@@ -70,6 +70,19 @@ class AhgApiController extends AhgController
             // Identify the caller (signed-in session or X-API-Key). Not a gate:
             // public reads stay public; actions that need a user check for one.
             $this->authenticate();
+            // A key's hourly limit and daily cap apply to every request it makes
+            // (ahgAPIPlugin's ApiKeyService decides; atom-ahg-plugins#223).
+            if (($this->apiKeyInfo['type'] ?? null) === 'ahg_api_key' && $this->apiKeyService
+                && method_exists($this->apiKeyService, 'overLimit')
+                && null !== $limited = $this->apiKeyService->overLimit($this->apiKeyInfo)) {
+                // The key signed its owner in; do not leave the session behind (see finally below).
+                if ($this->getUser()->isAuthenticated()) {
+                    $this->getUser()->signOut();
+                }
+                $this->getResponse()->setHttpHeader('Retry-After', (string) $limited['retry_after']);
+
+                return $this->error(429, 'rate_limited', $limited['message']);
+            }
             $verb = strtoupper(
                 ($request && method_exists($request, 'getMethod'))
                     ? $request->getMethod()
