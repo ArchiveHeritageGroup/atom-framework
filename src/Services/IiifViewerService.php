@@ -123,6 +123,6 @@ class IiifViewerService
     public function getManifestUrl(string $slug): string
     {
         $baseUrl = \sfConfig::get('app_siteBaseUrl', '');
-        return "{$baseUrl}/iiif-manifest.php?slug={$slug}";
+        return "{$baseUrl}/iiif/manifest/{$slug}";
     }
 }

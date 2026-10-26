@@ -62,7 +62,7 @@ HTML;
         $viewerId = "mirador-viewer-{$objId}";
         $siteBaseUrl = \QubitSetting::getByName('siteBaseUrl') ?: $request->getUriPrefix();
         $baseUrl = rtrim($siteBaseUrl, '/') . $root;
-        $manifestUrl = "{$baseUrl}/iiif-manifest.php?id={$objId}";
+        $manifestUrl = "{$baseUrl}/iiif/manifest/id/{$objId}";
 
         $frameCss = \AtomFramework\Helpers\InformationObjectHelper::mediaBaseStyles();
 

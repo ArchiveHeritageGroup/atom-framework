@@ -323,7 +323,7 @@ class IiifCollectionService
             } else {
                 $manifestUri = $item->manifest_uri;
                 if (!$manifestUri && $item->slug) {
-                    $manifestUri = $this->baseUrl . '/iiif-manifest.php?slug=' . $item->slug;
+                    $manifestUri = $this->baseUrl . '/iiif/manifest/' . $item->slug;
                 }
 
                 $manifestItem = [
