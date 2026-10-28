@@ -8,7 +8,7 @@ use Illuminate\Database\Capsule\Manager as DB;
 /**
  * Reset a user's password.
  *
- * Generates a new salt, hashes the password with SHA1, and updates the user record.
+ * Generates a new salt and stores password_hash(sha1(salt.password)), the form stock AtoM verifies.
  */
 class ResetPasswordCommand extends BaseCommand
 {
@@ -44,13 +44,16 @@ class ResetPasswordCommand extends BaseCommand
             return 1;
         }
 
-        // Argon2id over plaintext, empty salt (migration 2026-06-15; fixes prior
-        // raw-sha1 storage that AuthService could not verify).
-        $ph = \AtomFramework\Core\Security\PasswordService::hash($password);
+        // A random salt and password_hash(sha1(salt.plaintext)): the shape stock
+        // AtoM's QubitUser::checkCredentials() verifies. PasswordService::hash()
+        // (Argon2id, empty salt) locked users out on stock AtoM sites such as RARI
+        // (28 Oct 2026). PasswordService::verify() reads this as legacy, and sign-in
+        // upgrades it to Argon2id where base verifies through the framework.
+        $salt = bin2hex(random_bytes(16));
 
         $updates = [
-            'password_hash' => $ph['password_hash'],
-            'salt' => $ph['salt'],
+            'password_hash' => password_hash(sha1($salt.$password), PASSWORD_DEFAULT),
+            'salt' => $salt,
         ];
 
         // Optionally activate the account
