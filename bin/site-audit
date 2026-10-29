@@ -1,0 +1,166 @@
+#!/bin/bash
+# Check an AtoM site running the AHG extensions against docs/SITE-REQUIREMENTS.md.
+#
+#   bash atom-framework/bin/site-audit [atom-root] [--no-fetch] [--no-db]
+#
+# Read-only: prints PASS, FAIL, WARN or SKIP per requirement, with the fix, and
+# changes nothing. The one write is `git fetch` (remote refs only, as the checkout
+# owner) to see whether a newer release exists; --no-fetch skips it. Database
+# checks ask for the MySQL password; --no-db skips them. Needs sudo (nginx -T,
+# cron files, the owners' git). Exit code 1 if anything FAILs.
+#
+# A new per-site requirement goes in docs/SITE-REQUIREMENTS.md AND gets a check here.
+set -uo pipefail
+
+ROOT='' FETCH=1 USEDB=1
+for a in "$@"; do
+  case "$a" in
+    --no-fetch) FETCH=0 ;;
+    --no-db) USEDB=0 ;;
+    *) ROOT=$a ;;
+  esac
+done
+if [ -z "$ROOT" ]; then
+  for c in "$PWD" /usr/share/nginx/atom /usr/share/nginx/archeology /usr/share/nginx/archive; do
+    [ -f "$c/symfony" ] && [ -e "$c/plugins/ahgCorePlugin" ] && { ROOT=$c; break; }
+  done
+fi
+[ -n "$ROOT" ] && [ -f "$ROOT/symfony" ] || { echo "No AtoM root found; pass it as the first argument."; exit 2; }
+ROOT=$(cd "$ROOT" && pwd)
+INST=$(basename "$ROOT")
+PLUGINS=$(dirname "$(readlink -f "$ROOT/plugins/ahgCorePlugin")")
+FRAMEWORK=$(readlink -f "$ROOT/atom-framework")
+
+P=0 F=0 W=0 S=0
+pass() { P=$((P+1)); printf '  PASS  %s\n' "$*"; }
+fail() { F=$((F+1)); printf '  FAIL  %s\n' "$*"; }
+warn() { W=$((W+1)); printf '  WARN  %s\n' "$*"; }
+skip() { S=$((S+1)); printf '  SKIP  %s\n' "$*"; }
+fix()  { printf '        fix: %s\n' "$*"; }
+head1() { printf '\n%s\n' "$*"; }
+
+echo "Site audit: $(hostname), $ROOT, $(date '+%Y-%m-%d %H:%M')"
+NGINX=$(sudo nginx -T 2>/dev/null)
+
+# --- R1 versions and local changes ---------------------------------------------
+head1 "R1  Latest release, no local changes"
+for repo in "$PLUGINS" "$FRAMEWORK"; do
+  name=$(basename "$repo")
+  if [ ! -d "$repo/.git" ]; then fail "$name: $repo is not a git checkout"; continue; fi
+  own=$(stat -c %U "$repo/.git")
+  g() { sudo -u "$own" git -C "$repo" "$@"; }
+  [ "$FETCH" = 1 ] && g fetch -q --tags 2>/dev/null
+  tag=$(g describe --tags --abbrev=0 2>/dev/null)
+  behind=$(g rev-list --count HEAD..@{u} 2>/dev/null || echo '?')
+  dirty=$(g status --porcelain --untracked-files=no | wc -l)
+  if [ "$behind" = 0 ] && [ "$dirty" = 0 ]; then pass "$name $tag, up to date"
+  else
+    [ "$behind" != 0 ] && { fail "$name $tag is $behind commit(s) behind origin"; fix "sudo -u $own git -C $repo pull --ff-only"; }
+    [ "$dirty" != 0 ] && { fail "$name has $dirty locally changed file(s)"; fix "sudo -u $own git -C $repo status --short (commit or stash before pulling)"; }
+  fi
+done
+
+# --- R2 php-fpm restarted after the last update ----------------------------------
+head1 "R2  php-fpm restarted after the last update"
+FPM=$(systemctl list-units --type=service --state=active --no-legend 'php*-fpm*' | awk '{print $1}' | sort -V | tail -1)
+if [ -z "$FPM" ]; then fail "no php-fpm service is running"
+else
+  started=$(date -d "$(systemctl show "$FPM" -p ActiveEnterTimestamp --value)" +%s 2>/dev/null || echo 0)
+  updated=$(stat -c %Y "$PLUGINS/.git/index" "$FRAMEWORK/.git/index" 2>/dev/null | sort -n | tail -1)
+  if [ "${updated:-0}" -le "$started" ]; then pass "$FPM started after the last checkout change"
+  else fail "$FPM started $(date -d @"$started" '+%d %b %H:%M'), code changed $(date -d @"$updated" '+%d %b %H:%M')"; fix "sudo systemctl restart $FPM (restart, not reload)"; fi
+fi
+
+# --- R3 nginx's PHP socket ---------------------------------------------------
+head1 "R3  nginx's PHP socket exists and belongs to www-data"
+socks=$(echo "$NGINX" | grep -oE '(fastcgi_pass|server)\s+unix:[^; ]+' | sed 's/.*unix://' | sort -u)
+if [ -z "$NGINX" ]; then skip "nginx -T gave no output (needs sudo)"
+elif [ -z "$socks" ]; then skip "no unix socket found in nginx -T"
+else
+  for s in $socks; do
+    if [ ! -S "$s" ]; then fail "nginx points at $s, which does not exist"; fix "compare the pool's listen = line in /etc/php/*/fpm/pool.d/ with nginx"
+    elif [ "$(stat -c %U "$s")" != www-data ]; then fail "$s belongs to $(stat -c %U "$s")"; fix "sudo systemctl restart $FPM"
+    else pass "$s (www-data)"; fi
+  done
+fi
+
+# --- R4 private uploads blocked ------------------------------------------------
+head1 "R4  Private folders under uploads/ return 404"
+if [ -z "$NGINX" ]; then skip "nginx -T gave no output (needs sudo)"
+elif echo "$NGINX" | grep -q 'location ~ \^/uploads/(ingest|'; then pass "ahg-deny-private-uploads rules are loaded in nginx"
+else fail "nginx has no rule blocking private uploads folders"; fix "run stuff/ahg-private-uploads-site.sh"; fi
+
+# --- R6 facet cron (file part; the cache rows are checked with the database) ---
+head1 "R6  A cron refreshes the GLAM browse filters"
+if [ ! -e "$ROOT/plugins/ahgDisplayPlugin" ]; then skip "ahgDisplayPlugin not installed"
+else
+  cron=$(sudo grep -lsE "refresh-facet-cache" /etc/cron.d/* /var/spool/cron/crontabs/* 2>/dev/null \
+         | xargs -r sudo grep -lsE "($ROOT|$PLUGINS)/" 2>/dev/null | tr '\n' ' ')
+  if [ -n "$cron" ]; then pass "scheduled in $cron"
+  else fail "no cron refreshes display_facet_cache for $ROOT"; fix "bash ahg-facet-cron.sh $ROOT"; fi
+fi
+
+# --- database checks -------------------------------------------------------------
+if [ "$USEDB" = 0 ]; then
+  head1 "R5-R9 database checks"; skip "--no-db given"
+else
+  read -r DB DBUSER DBHOST DBPORT < <(sudo php -r '
+    $c = include $argv[1]; $p = $c["all"]["propel"]["param"];
+    preg_match("/dbname=([^;]+)/", $p["dsn"], $d); preg_match("/host=([^;]+)/", $p["dsn"], $h);
+    preg_match("/port=([^;]+)/", $p["dsn"], $o);
+    echo $d[1], " ", $p["username"], " ", $h[1] ?? "localhost", " ", $o[1] ?? 3306, "\n";' "$ROOT/config/config.php")
+  echo
+  read -rp "MySQL user for $DB [$DBUSER]: " u; DBUSER=${u:-$DBUSER}
+  read -rsp "MySQL password for $DBUSER: " PW; echo
+  CNFDIR=$(mktemp -d); trap 'rm -rf "$CNFDIR"' EXIT
+  ( umask 077; printf '[client]\nuser=%s\npassword="%s"\nhost=%s\nport=%s\n' "$DBUSER" "${PW//\"/\\\"}" "$DBHOST" "$DBPORT" > "$CNFDIR/my.cnf" )
+  q() { mysql --defaults-extra-file="$CNFDIR/my.cnf" "$DB" -N -B -e "$1" 2>/dev/null; }
+  has() { [ "$(q "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = '$1'")" = 1 ]; }
+  if ! q "SELECT 1" >/dev/null; then
+    head1 "R5-R9 database checks"; fail "cannot connect to $DB as $DBUSER"
+  else
+    head1 "R5  27 Oct 2026 migrations"
+    if has user_security_clearance; then
+      if [ "$(q "SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'user_security_clearance' AND column_name = 'vetting_reference'")" = 1 ]
+      then pass "security clearance vetting columns present"
+      else fail "user_security_clearance lacks the vetting columns"; fix "run stuff/ahg-private-uploads-site.sh (applies 2026_10_27_clearance_vetting_renewal_templates.sql)"; fi
+    else skip "security clearance plugin tables not installed"; fi
+
+    head1 "R6  GLAM browse filter cache"
+    if has display_facet_cache; then
+      read -r n age < <(q "SELECT COUNT(*), COALESCE(TIMESTAMPDIFF(HOUR, MAX(created_at), NOW()), -1) FROM display_facet_cache")
+      if [ "$n" = 0 ]; then fail "display_facet_cache is empty: the browse filters show nothing"; fix "bash ahg-facet-cron.sh $ROOT (fills it now and schedules it)"
+      elif [ "$age" -gt 25 ]; then warn "display_facet_cache last built $age hours ago ($n rows)"; fix "check the cron and /var/log/facet-cache.log"
+      else pass "$n rows, built $age hour(s) ago"; fi
+    else skip "no display_facet_cache table"; fi
+
+    head1 "R7  Every active user can sign in (stock AtoM password form)"
+    if grep -qs "PasswordService::verify" "$ROOT/lib/model/QubitUser.php"; then
+      skip "base verifies through the framework; Argon2id hashes are accepted"
+    else
+      bad=$(q "SELECT GROUP_CONCAT(username ORDER BY username SEPARATOR ', ') FROM user WHERE active = 1 AND (salt IS NULL OR salt = '')")
+      if [ -z "$bad" ] || [ "$bad" = NULL ]; then pass "no active user has an empty salt"
+      else fail "cannot sign in (empty salt): $bad"; fix "each uses 'Request password reset', or: sudo -u www-data php symfony tools:reset-password <user>"; fi
+    fi
+
+    head1 "R8  New researcher notifications go to the client's staff"
+    if has email_setting; then
+      to=$(q "SELECT setting_value FROM email_setting WHERE setting_key = 'notify_new_researcher'")
+      if [ -z "$to" ] || [ "$to" = NULL ]; then fail "New Researcher has no recipients"; fix "Admin > Settings > Email: New Researcher (comma-separated)"
+      elif ! echo "$to" | tr ',; ' '\n\n\n' | grep -q '@' ; then fail "New Researcher holds no email address: $to"
+      elif ! echo "$to" | tr ',; ' '\n\n\n' | grep '@' | grep -qv '@theahg\.co\.za$'; then warn "New Researcher goes only to AHG: $to"; fix "add the client's staff in Admin > Settings > Email"
+      else pass "New Researcher: $to"; fi
+    else skip "no email_setting table"; fi
+
+    head1 "R9  Access request approvers are notified"
+    if has access_request_approver; then
+      read -r total off < <(q "SELECT COUNT(*), COALESCE(SUM(email_notifications = 0), 0) FROM access_request_approver a JOIN user u ON u.id = a.user_id WHERE a.active = 1 AND u.active = 1")
+      if [ "$total" = 0 ]; then warn "no active approvers"; fix "Security > Approvers"
+      elif [ "$off" != 0 ]; then fail "$off of $total active approvers have Email Notify off"; fix "Security > Approvers: tick Email Notify"
+      else pass "$total active approver(s), all notified"; fi
+    else skip "no access_request_approver table"; fi
+  fi
+fi
+
+printf '\n%s PASS, %s FAIL, %s WARN, %s SKIP  (requirements: atom-framework/docs/SITE-REQUIREMENTS.md)\n' "$P" "$F" "$W" "$S"
+[ "$F" = 0 ]
