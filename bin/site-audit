@@ -112,13 +112,18 @@ else
     echo $d[1], " ", $p["username"], " ", $h[1] ?? "localhost", " ", $o[1] ?? 3306, "\n";' "$ROOT/config/config.php")
   echo
   read -rp "MySQL user for $DB [$DBUSER]: " u; DBUSER=${u:-$DBUSER}
-  read -rsp "MySQL password for $DBUSER: " PW; echo
   CNFDIR=$(mktemp -d); trap 'rm -rf "$CNFDIR"' EXIT
-  ( umask 077; printf '[client]\nuser=%s\npassword="%s"\nhost=%s\nport=%s\n' "$DBUSER" "${PW//\"/\\\"}" "$DBHOST" "$DBPORT" > "$CNFDIR/my.cnf" )
   q() { mysql --defaults-extra-file="$CNFDIR/my.cnf" "$DB" -N -B -e "$1" 2>/dev/null; }
   has() { [ "$(q "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = '$1'")" = 1 ]; }
+  # Three tries, showing MySQL's own error: a mistyped password looked like a broken site (Archaeology, 29 Oct 2026).
+  for try in 1 2 3; do
+    read -rsp "MySQL password for $DBUSER: " PW; echo
+    ( umask 077; printf '[client]\nuser=%s\npassword="%s"\nhost=%s\nport=%s\n' "$DBUSER" "${PW//\"/\\\"}" "$DBHOST" "$DBPORT" > "$CNFDIR/my.cnf" )
+    err=$(mysql --defaults-extra-file="$CNFDIR/my.cnf" "$DB" -N -e "SELECT 1" 2>&1 >/dev/null) && break
+    echo "  $err"
+  done
   if ! q "SELECT 1" >/dev/null; then
-    head1 "R5-R10 database checks"; fail "cannot connect to $DB as $DBUSER"
+    head1 "R5-R10 database checks"; fail "cannot connect to $DB as $DBUSER: $err"
   else
     head1 "R5  27 Oct 2026 migrations"
     if has user_security_clearance; then
