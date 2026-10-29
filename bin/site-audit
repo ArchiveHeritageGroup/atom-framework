@@ -102,7 +102,7 @@ fi
 
 # --- database checks -------------------------------------------------------------
 if [ "$USEDB" = 0 ]; then
-  head1 "R5-R9 database checks"; skip "--no-db given"
+  head1 "R5-R10 database checks"; skip "--no-db given"
 else
   read -r DB DBUSER DBHOST DBPORT < <(sudo php -r '
     $c = include $argv[1]; $p = $c["all"]["propel"]["param"];
@@ -117,7 +117,7 @@ else
   q() { mysql --defaults-extra-file="$CNFDIR/my.cnf" "$DB" -N -B -e "$1" 2>/dev/null; }
   has() { [ "$(q "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = '$1'")" = 1 ]; }
   if ! q "SELECT 1" >/dev/null; then
-    head1 "R5-R9 database checks"; fail "cannot connect to $DB as $DBUSER"
+    head1 "R5-R10 database checks"; fail "cannot connect to $DB as $DBUSER"
   else
     head1 "R5  27 Oct 2026 migrations"
     if has user_security_clearance; then
@@ -151,6 +151,11 @@ else
       elif ! echo "$to" | tr ',; ' '\n\n\n' | grep '@' | grep -qv '@theahg\.co\.za$'; then warn "New Researcher goes only to AHG: $to"; fix "add the client's staff in Admin > Settings > Email"
       else pass "New Researcher: $to"; fi
     else skip "no email_setting table"; fi
+
+    head1 "R10 object_term_relation has the term/object index"
+    if [ "$(q "SELECT COUNT(*) FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = 'object_term_relation' AND index_name = 'idx_otr_term_object'")" -gt 0 ]
+    then pass "idx_otr_term_object present"
+    else fail "idx_otr_term_object missing: filtered browse counts are slow on large catalogues"; fix "ALTER TABLE object_term_relation ADD INDEX idx_otr_term_object (term_id, object_id), ALGORITHM=INPLACE, LOCK=NONE;"; fi
 
     head1 "R9  Access request approvers are notified"
     if has access_request_approver; then

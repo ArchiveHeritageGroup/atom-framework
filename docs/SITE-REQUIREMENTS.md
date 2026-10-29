@@ -24,6 +24,7 @@ bash atom-framework/bin/site-audit
 | R7 | On stock AtoM, every active user's password is in the salted form base verifies | Argon2id hashes with an empty salt cannot sign in on stock AtoM (RARI, 28 Oct 2026) | The user resets by email, or `sudo -u www-data php symfony tools:reset-password <user>` |
 | R8 | New researcher notifications go to the client's staff | Notices went to AHG staff or to nobody (RARI, 28 Oct 2026) | Admin > Settings > Email: New Researcher, several addresses separated by commas |
 | R9 | Access request approvers have email notifications on | Approvers are not told about requests | Security > Approvers: tick Email Notify |
+| R10 | `object_term_relation` has the index `idx_otr_term_object (term_id, object_id)` | Without it, filtered browse counts on a large catalogue run for minutes (RARI, 29 Oct 2026); stock AtoM has only single-column indexes | `ALTER TABLE object_term_relation ADD INDEX idx_otr_term_object (term_id, object_id), ALGORITHM=INPLACE, LOCK=NONE;` (approved by Dr Johan Pieterse, 29 Oct 2026; online, the site stays up) |
 
 ## Notes on running commands on a client site
 
