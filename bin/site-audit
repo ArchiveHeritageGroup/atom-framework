@@ -66,7 +66,8 @@ FPM=$(systemctl list-units --type=service --state=active --no-legend 'php*-fpm*'
 if [ -z "$FPM" ]; then fail "no php-fpm service is running"
 else
   started=$(date -d "$(systemctl show "$FPM" -p ActiveEnterTimestamp --value)" +%s 2>/dev/null || echo 0)
-  updated=$(stat -c %Y "$PLUGINS/.git/index" "$FRAMEWORK/.git/index" 2>/dev/null | sort -n | tail -1)
+  # .git/logs/HEAD changes only when HEAD moves (a pull); .git/index is rewritten by R1's git status.
+  updated=$(stat -c %Y "$PLUGINS/.git/logs/HEAD" "$FRAMEWORK/.git/logs/HEAD" 2>/dev/null | sort -n | tail -1)
   if [ "${updated:-0}" -le "$started" ]; then pass "$FPM started after the last checkout change"
   else fail "$FPM started $(date -d @"$started" '+%d %b %H:%M'), code changed $(date -d @"$updated" '+%d %b %H:%M')"; fix "sudo systemctl restart $FPM (restart, not reload)"; fi
 fi
@@ -152,11 +153,6 @@ else
       else pass "New Researcher: $to"; fi
     else skip "no email_setting table"; fi
 
-    head1 "R10 object_term_relation has the term/object index"
-    if [ "$(q "SELECT COUNT(*) FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = 'object_term_relation' AND index_name = 'idx_otr_term_object'")" -gt 0 ]
-    then pass "idx_otr_term_object present"
-    else fail "idx_otr_term_object missing: filtered browse counts are slow on large catalogues"; fix "ALTER TABLE object_term_relation ADD INDEX idx_otr_term_object (term_id, object_id), ALGORITHM=INPLACE, LOCK=NONE;"; fi
-
     head1 "R9  Access request approvers are notified"
     if has access_request_approver; then
       read -r total off < <(q "SELECT COUNT(*), COALESCE(SUM(email_notifications = 0), 0) FROM access_request_approver a JOIN user u ON u.id = a.user_id WHERE a.active = 1 AND u.active = 1")
@@ -164,6 +160,11 @@ else
       elif [ "$off" != 0 ]; then fail "$off of $total active approvers have Email Notify off"; fix "Security > Approvers: tick Email Notify"
       else pass "$total active approver(s), all notified"; fi
     else skip "no access_request_approver table"; fi
+
+    head1 "R10 object_term_relation has the term/object index"
+    if [ "$(q "SELECT COUNT(*) FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = 'object_term_relation' AND index_name = 'idx_otr_term_object'")" -gt 0 ]
+    then pass "idx_otr_term_object present"
+    else fail "idx_otr_term_object missing: filtered browse counts are slow on large catalogues"; fix "SET SESSION lock_wait_timeout = 10; ALTER TABLE object_term_relation ADD INDEX idx_otr_term_object (term_id, object_id), ALGORITHM=INPLACE, LOCK=NONE;"; fi
   fi
 fi
 
