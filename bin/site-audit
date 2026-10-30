@@ -101,6 +101,21 @@ else
   else fail "no cron refreshes display_facet_cache for $ROOT"; fix "bash ahg-facet-cron.sh $ROOT"; fi
 fi
 
+# --- R11 composer packages match composer.lock -----------------------------------
+head1 "R11 Framework composer packages match composer.lock"
+if [ ! -f "$FRAMEWORK/vendor/composer/installed.json" ]; then
+  fail "no vendor/ in $FRAMEWORK"; fix "sudo -u $(stat -c %U "$FRAMEWORK/.git") composer install --no-dev -d $FRAMEWORK"
+else
+  stale=$(php -r '
+    $l = json_decode(file_get_contents($argv[1]), true); $i = json_decode(file_get_contents($argv[2]), true);
+    $have = []; foreach ($i["packages"] ?? $i as $p) { $have[$p["name"]] = $p["version"]; }
+    foreach ($l["packages"] as $p) { if (($have[$p["name"]] ?? "missing") !== $p["version"]) { echo $p["name"], " ", $have[$p["name"]] ?? "missing", " (lock ", $p["version"], ")\n"; } }' \
+    "$FRAMEWORK/composer.lock" "$FRAMEWORK/vendor/composer/installed.json" 2>&1)
+  if [ -z "$stale" ]; then pass "vendor/ matches composer.lock"
+  else fail "$(echo "$stale" | wc -l) package(s) differ from composer.lock: $(echo "$stale" | head -3 | tr '\n' ';')"
+    fix "sudo -u $(stat -c %U "$FRAMEWORK/vendor") composer install --no-dev -d $FRAMEWORK, then restart php-fpm"; fi
+fi
+
 # --- database checks -------------------------------------------------------------
 if [ "$USEDB" = 0 ]; then
   head1 "R5-R10 database checks"; skip "--no-db given"

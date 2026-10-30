@@ -25,6 +25,7 @@ bash atom-framework/bin/site-audit
 | R8 | New researcher notifications go to the client's staff | Notices went to AHG staff or to nobody (RARI, 28 Oct 2026) | Admin > Settings > Email: New Researcher, several addresses separated by commas |
 | R9 | Access request approvers have email notifications on | Approvers are not told about requests | Security > Approvers: tick Email Notify |
 | R10 | `object_term_relation` has the index `idx_otr_term_object (term_id, object_id)` | Without it, filtered browse counts on a large catalogue run for minutes (RARI, 29 Oct 2026); stock AtoM has only single-column indexes | `SET SESSION lock_wait_timeout = 10; ALTER TABLE object_term_relation ADD INDEX idx_otr_term_object (term_id, object_id), ALGORITHM=INPLACE, LOCK=NONE;` (approved by Dr Johan Pieterse, 29 Oct 2026; online, the site stays up). First check `SHOW FULL PROCESSLIST` and `KILL` any long-running SELECT on the table: the ALTER waits for its metadata lock and every new query queues behind it (RARI, 29 Oct 2026). With the 10-second lock wait it gives up instead of queueing the site; rerun once the long query is gone |
+| R11 | The framework's `vendor/` matches `composer.lock` | `vendor/` is not in git, so `git pull` brings a new `composer.lock` but never the packages; security updates (#216) would sit unused | `sudo -u <vendor owner> composer install --no-dev -d <atom-root>/atom-framework`, then restart php-fpm. `stuff/ahg-site-update.sh` does this whenever `composer.lock` changed |
 
 ## Notes on running commands on a client site
 
