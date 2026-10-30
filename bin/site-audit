@@ -88,7 +88,7 @@ fi
 # --- R4 private uploads blocked ------------------------------------------------
 head1 "R4  Private folders under uploads/ return 404"
 if [ -z "$NGINX" ]; then skip "nginx -T gave no output (needs sudo)"
-elif echo "$NGINX" | grep -q 'location ~ \^/uploads/(ingest|'; then pass "ahg-deny-private-uploads rules are loaded in nginx"
+elif grep -q 'location ~ \^/uploads/(ingest|' <<<"$NGINX"; then pass "ahg-deny-private-uploads rules are loaded in nginx"
 else fail "nginx has no rule blocking private uploads folders"; fix "run stuff/ahg-private-uploads-site.sh"; fi
 
 # --- R6 facet cron (file part; the cache rows are checked with the database) ---
