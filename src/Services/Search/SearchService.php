@@ -76,9 +76,8 @@ class SearchService
      */
     private static function baseUrl(): string
     {
-        self::init();
-
-        return 'http://' . self::$host . ':' . self::$port;
+        // Scheme, host, port and credentials in one place (catalog #316).
+        return SearchConnection::baseUrl();
     }
 
     /**
@@ -888,6 +887,7 @@ class SearchService
         $url = self::baseUrl() . '/' . $index . '/_search';
 
         $ch = curl_init($url);
+        curl_setopt_array($ch, SearchConnection::curlOptions());
         curl_setopt_array($ch, [
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_POST => true,
@@ -927,6 +927,7 @@ class SearchService
         $url = self::baseUrl();
 
         $ch = curl_init($url);
+        curl_setopt_array($ch, SearchConnection::curlOptions());
         curl_setopt_array($ch, [
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_TIMEOUT => 2,
