@@ -12,7 +12,9 @@ use Illuminate\Database\Capsule\Manager as DB;
  */
 class WatermarkService
 {
-    protected static string $watermarkPath = '/images/watermarks/';
+    // The images ship with ahgCorePlugin, which every site has; nothing ever put them in
+    // the AtoM root, so system and security watermarks silently did nothing (#296).
+    protected static string $watermarkPath = '/plugins/ahgCorePlugin/web/images/watermarks/';
 
     public static function getWatermarkConfig(int $objectId): ?array
     {

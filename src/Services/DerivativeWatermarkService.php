@@ -33,7 +33,8 @@ class DerivativeWatermarkService
             $rootDir = class_exists('sfConfig')
                 ? \sfConfig::get('sf_root_dir')
                 : \sfConfig::get('sf_root_dir', dirname(__DIR__, 3));
-            self::$systemWatermarkPath = $rootDir . '/images/watermarks/';
+            // Images ship with ahgCorePlugin (#296).
+            self::$systemWatermarkPath = $rootDir . '/plugins/ahgCorePlugin/web/images/watermarks/';
         }
         return self::$systemWatermarkPath;
     }
