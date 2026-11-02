@@ -19,7 +19,8 @@
         "firebase/php-jwt": "^7.0",
         "web-auth/webauthn-lib": "^5.3",
         "tecnickcom/tc-lib-barcode": "^1.15",
-        "ahg/inference-receipts": "^0.1"
+        "ahg/inference-receipts": "^0.1",
+        "onelogin/php-saml": "^4.3"
     },
     "autoload": {
         "psr-4": {
