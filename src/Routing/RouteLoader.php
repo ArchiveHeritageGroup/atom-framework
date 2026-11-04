@@ -123,13 +123,10 @@ class RouteLoader
             // ExplicitRoute for the mechanism.
             $routeClass = !empty($route['methods']) ? \ExplicitRequestRoute::class : \ExplicitRoute::class;
 
-            $routing->prependRoute($route['name'], new $routeClass(
-                $route['url'],
-                $routeDefaults,
-                $requirements
-            ));
-
-            // Also register trailing-slash variant so /path/ matches /path
+            // Also register trailing-slash variant so /path/ matches /path.
+            // Prepended BEFORE the route itself so the route ends up in front:
+            // url_for() without a route name takes the first match, and with the
+            // variant in front every such link was generated as /path/.
             if (!str_ends_with($route['url'], '/')) {
                 $routing->prependRoute($route['name'] . '_ts', new $routeClass(
                     $route['url'] . '/',
@@ -137,6 +134,12 @@ class RouteLoader
                     $requirements
                 ));
             }
+
+            $routing->prependRoute($route['name'], new $routeClass(
+                $route['url'],
+                $routeDefaults,
+                $requirements
+            ));
         }
     }
 
