@@ -65,6 +65,44 @@ class StandaloneInformationObjectWriteService implements InformationObjectWriteS
         return $objectId;
     }
 
+    /**
+     * Give a new description its place in the hierarchy and a publication status.
+     *
+     * createInformationObject() inserts the row only: lft/rgt stay NULL and there is
+     * no publication status, and the record's page then fails ("Could not build SQL
+     * for expression: information_object.LFT > NULL", "No publication status set").
+     * Call this after creating. It is idempotent - a record that already has a
+     * place or a status is left as it is - so callers that place records themselves
+     * (ahgArchaeologyPlugin) are unaffected.
+     *
+     * ponytail: not called from createInformationObject() itself, because
+     * ArchaeologyService::placeInNestedSet() places unconditionally and would place
+     * a record twice. Once that checks lft first, call this from create.
+     */
+    public function placeInHierarchy(int $id, int $publicationStatusId = 159): void
+    {
+        $node = DB::table('information_object')->where('id', $id)->first(['lft', 'parent_id']);
+        if (!$node) {
+            return;
+        }
+        if (null === $node->lft) {
+            DB::transaction(function () use ($id, $node) {
+                $parentId = (int) ($node->parent_id ?: \QubitInformationObject::ROOT_ID);
+                $edge = DB::table('information_object')->where('id', $parentId)->lockForUpdate()->value('rgt');
+                if (null === $edge) {
+                    return; // parent outside the tree: placing would corrupt the set
+                }
+                DB::table('information_object')->where('rgt', '>=', $edge)->increment('rgt', 2);
+                DB::table('information_object')->where('lft', '>', $edge)->increment('lft', 2);
+                DB::table('information_object')->where('id', $id)->update(['lft' => $edge, 'rgt' => $edge + 1]);
+            });
+        }
+        $hasStatus = DB::table('status')->where('object_id', $id)->where('type_id', 158)->exists();
+        if (!$hasStatus) {
+            DB::table('status')->insert(['object_id' => $id, 'type_id' => 158, 'status_id' => $publicationStatusId]);
+        }
+    }
+
     public function updateInformationObject(int $id, array $data, string $culture = 'en'): void
     {
         [$core, $i18n] = $this->splitI18nFields($data, self::I18N_FIELDS);

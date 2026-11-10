@@ -216,8 +216,12 @@ class SectorRecordWriteService
     public function create(string $sector, string $title, array $fields = [], string $culture = 'en'): int
     {
         $cfg = $this->config($sector);
-        $ioId = (int) WriteServiceFactory::informationObject()
-            ->createInformationObject(['title' => $title, 'source_standard' => $cfg['sector']], $culture);
+        $writer = WriteServiceFactory::informationObject();
+        $ioId = (int) $writer->createInformationObject(['title' => $title, 'source_standard' => $cfg['sector']], $culture);
+        // Without a place in the hierarchy and a status the new record's page fails.
+        if (method_exists($writer, 'placeInHierarchy')) {
+            $writer->placeInHierarchy($ioId);
+        }
 
         $this->writeExtension($cfg, $ioId, $fields, $culture);
 
