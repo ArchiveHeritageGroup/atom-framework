@@ -113,11 +113,9 @@ jobs:
         with:
           name: installers
           path: dist/
-      - uses: softprops/action-gh-release@v1
-        if: startsWith(github.ref, 'refs/tags/v')
-        with:
-          files: dist/*
-          generate_release_notes: true
+      # The installer stays a run artifact. It was also attached to the GitHub
+      # release, which the job's read-only token cannot do; release pages are
+      # written by hand.
 
   build-docker:
     name: Build Docker
