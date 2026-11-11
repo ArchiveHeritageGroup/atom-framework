@@ -6,8 +6,8 @@
 FROM php:8.3-fpm-bookworm AS builder
 
 RUN apt-get update && apt-get install -y \
-    git unzip libzip-dev libpng-dev libjpeg-dev libwebp-dev \
-    libfreetype6-dev libxml2-dev libxslt1-dev libicu-dev libmemcached-dev \
+    git unzip zlib1g-dev libzip-dev libpng-dev libjpeg-dev libwebp-dev \
+    libfreetype6-dev libxml2-dev libxslt1-dev libicu-dev libmemcached-dev libssl-dev \
     && docker-php-ext-configure gd --with-freetype --with-jpeg --with-webp \
     && docker-php-ext-install -j$(nproc) pdo_mysql mysqli zip gd xml xsl intl opcache pcntl \
     && pecl install apcu memcached && docker-php-ext-enable apcu memcached \
@@ -17,7 +17,7 @@ COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
 
 WORKDIR /build
 
-ARG ATOM_VERSION=2.10
+ARG ATOM_VERSION=2.10.x
 RUN git clone -b stable/${ATOM_VERSION} --depth 1 https://github.com/artefactual/atom.git /build/atom
 
 WORKDIR /build/atom
@@ -43,9 +43,10 @@ RUN apt-get update && apt-get install -y \
     libzip4 libpng16-16 libjpeg62-turbo libwebp7 libfreetype6 libxml2 libxslt1.1 libicu72 libmemcached11 \
     && rm -rf /var/lib/apt/lists/*
 
-RUN docker-php-ext-configure gd --with-freetype --with-jpeg --with-webp \
-    && docker-php-ext-install -j$(nproc) pdo_mysql mysqli zip gd xml xsl intl opcache pcntl \
-    && pecl install apcu memcached && docker-php-ext-enable apcu memcached
+# The extensions are built once, in the builder (same base image), and copied:
+# compiling them here needs the -dev packages this stage leaves out.
+COPY --from=builder /usr/local/lib/php/extensions/ /usr/local/lib/php/extensions/
+COPY --from=builder /usr/local/etc/php/conf.d/ /usr/local/etc/php/conf.d/
 
 RUN echo "memory_limit = 512M" >> /usr/local/etc/php/conf.d/atom.ini \
     && echo "max_execution_time = 120" >> /usr/local/etc/php/conf.d/atom.ini \

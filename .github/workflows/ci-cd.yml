@@ -6,14 +6,10 @@ on:
     tags: ['v*']
   pull_request:
     branches: [main]
+  # Servers update from bin/release and git pull. The SSH deploy job was removed:
+  # a GitHub-hosted runner cannot reach the 192.168.0.x hosts, and it failed
+  # every release tag.
   workflow_dispatch:
-    inputs:
-      deploy_target:
-        description: 'Deploy target'
-        required: false
-        default: 'none'
-        type: choice
-        options: [none, dev, test, production]
 
 env:
   PHP_VERSION: '8.3'
@@ -155,25 +151,3 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-
-  deploy:
-    name: Deploy
-    runs-on: ubuntu-22.04
-    needs: build-packages
-    if: github.event.inputs.deploy_target != 'none' || startsWith(github.ref, 'refs/tags/v')
-    strategy:
-      matrix:
-        include:
-          - target: dev
-            host: 192.168.0.112
-            path: /usr/share/nginx/archive
-          - target: test
-            host: 192.168.0.154
-            path: /usr/share/nginx/atom
-    steps:
-      - uses: webfactory/ssh-agent@v0.8.0
-        with:
-          ssh-private-key: ${{ secrets.DEPLOY_SSH_KEY }}
-      - run: |
-          ssh-keyscan -H ${{ matrix.host }} >> ~/.ssh/known_hosts 2>/dev/null || true
-          ssh root@${{ matrix.host }} "cd ${{ matrix.path }}/atom-framework && git pull && composer install --no-dev && cd .. && php symfony cc"
