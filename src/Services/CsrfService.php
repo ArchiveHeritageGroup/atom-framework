@@ -247,8 +247,14 @@ class CsrfService
             // Also record to ahg_error_log so violations are harvestable from the
             // admin error-log UI during the log-mode observation window (the PSIS
             // php-fpm pool discards raw error_log() output). Must never throw.
+            //
+            // Not when enforcing and the request carries no cookies at all: that
+            // is no one's form (a signed-in user always sends a session cookie),
+            // it is a scanner, and the admin banner filled with them ("N open
+            // system errors" every night). The error_log() line above stays.
+            $scanner = 'enforce' === $mode && empty($_COOKIE);
             try {
-                \AtomFramework\Services\ErrorLogWriter::record([
+                $scanner || \AtomFramework\Services\ErrorLogWriter::record([
                     'level' => 'warning',
                     'status_code' => 'enforce' === $mode ? 403 : null,
                     'message' => sprintf('CSRF token %s (mode: %s)', $reason, $mode),
