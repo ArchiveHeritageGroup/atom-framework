@@ -96,7 +96,7 @@ head1 "R6  A cron refreshes the GLAM browse filters"
 if [ ! -e "$ROOT/plugins/ahgDisplayPlugin" ]; then skip "ahgDisplayPlugin not installed"
 else
   cron=$(sudo grep -lsE "refresh-facet-cache" /etc/cron.d/* /var/spool/cron/crontabs/* 2>/dev/null \
-         | xargs -r sudo grep -lsE "($ROOT|$PLUGINS)/" 2>/dev/null | tr '\n' ' ')
+         | xargs -r sudo grep -lsE "($ROOT|$PLUGINS)([/ ;&]|\$)" 2>/dev/null | tr '\n' ' ')
   if [ -n "$cron" ]; then pass "scheduled in $cron"
   else fail "no cron refreshes display_facet_cache for $ROOT"; fix "bash ahg-facet-cron.sh $ROOT"; fi
 fi
@@ -122,8 +122,9 @@ else fail "http://$sh:$sp does not answer (code ${code:-none}): search, browse a
 head1 "R14 Crons for the authority completeness scan and integrity schedule"
 for job in "authority:completeness-scan:ahgAuthorityPlugin:weekly, or the authority dashboard shows 0 scored" "integrity:schedule:ahgIntegrityPlugin:hourly with --run-due, or fixity never runs"; do
   name=${job%%:*}; rest=${job#*:}; name="$name:${rest%%:*}"; rest=${rest#*:}; plug=${rest%%:*}; why=${rest#*:}
-  if [ ! -e "$ROOT/plugins/$plug" ]; then skip "$name: $plug not installed"; continue; fi
-  if sudo grep -lsE "$name" /etc/cron.d/* /var/spool/cron/crontabs/* 2>/dev/null | xargs -r sudo grep -lsE "($ROOT|$PLUGINS)" >/dev/null 2>&1
+  # The task, not the plugin folder: every site has every plugin's folder, enabled or not.
+  if ! sudo -u www-data php "$ROOT/symfony" help "$name" >/dev/null 2>&1; then skip "$name: no such task here ($plug not enabled)"; continue; fi
+  if sudo grep -lsE "$name" /etc/cron.d/* /var/spool/cron/crontabs/* 2>/dev/null | xargs -r sudo grep -lsE "($ROOT|$PLUGINS)([/ ;&]|\$)" >/dev/null 2>&1
   then pass "$name scheduled"; else fail "no cron runs $name for $ROOT"; fix "$why: add it to /etc/cron.d as www-data (see the psis-maintenance cron on the main host)"; fi
 done
 
