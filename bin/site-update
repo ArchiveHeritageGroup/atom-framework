@@ -1,0 +1,88 @@
+#!/bin/bash
+# Bring a client AtoM site (RARI, Archaeology, WDB) up to the current AHG plugins and framework.
+#
+#   bash atom-framework/bin/site-update [atom-root]
+#
+# (Formerly stuff/ahg-site-update.sh on the main host.) It ends by running bin/site-audit,
+# which lists anything the site still needs (worker, search engine, crons, plugin tables...).
+#
+# Pulls atom-ahg-plugins and atom-framework to their latest release with --ff-only as each
+# checkout's owner, installs the framework's composer packages when composer.lock changed
+# (vendor/ is not in git, so a pull alone never updates it; #216), clears the cache and
+# restarts php-fpm (restart, not reload). It changes no database: new plugin tables and
+# hand-run migrations show up in the audit at the end (R5, R15, R16), each with its fix.
+# Stops on local changes in either checkout instead of overwriting them.
+set -euo pipefail
+
+say() { printf '\n== %s\n' "$*"; }
+die() { echo "STOP: $*"; exit 1; }
+
+ROOT=${1:-}
+if [ -z "$ROOT" ]; then
+  for c in /usr/share/nginx/atom /usr/share/nginx/archeology /usr/share/nginx/archive; do
+    [ -f "$c/symfony" ] && [ -e "$c/plugins/ahgCorePlugin" ] && { ROOT=$c; break; }
+  done
+fi
+[ -n "$ROOT" ] && [ -f "$ROOT/symfony" ] || die "no AtoM root found; pass it as the first argument"
+ROOT=$(cd "$ROOT" && pwd)
+PLUGINS=$(dirname "$(readlink -f "$ROOT/plugins/ahgCorePlugin")")
+FRAMEWORK=$(readlink -f "$ROOT/atom-framework")
+FPM=$(systemctl list-unit-files --no-legend 'php*-fpm.service' | awk '{print $1}' | sort -V | tail -1)
+[ -n "$FPM" ] || die "no php-fpm service found"
+
+ver() { sudo -u "$(stat -c %U "$1/.git")" git -C "$1" describe --tags --abbrev=0 2>/dev/null; }
+
+echo "Host:       $(hostname)"
+echo "AtoM root:  $ROOT"
+echo "Plugins:    $PLUGINS (now $(ver "$PLUGINS"))"
+echo "Framework:  $FRAMEWORK (now $(ver "$FRAMEWORK"))"
+echo "php-fpm:    $FPM"
+read -rp "Go ahead? [y/N] " ok; [ "$ok" = y ] || [ "$ok" = Y ] || die "not confirmed"
+
+for repo in "$PLUGINS" "$FRAMEWORK"; do
+  [ -d "$repo/.git" ] || die "$repo is not a git checkout"
+  own=$(stat -c %U "$repo/.git")
+  say "Pull $repo (as $own)"
+  [ -z "$(sudo -u "$own" git -C "$repo" status --porcelain --untracked-files=no)" ] \
+    || die "local changes in $repo - commit or stash them first ($(sudo -u "$own" git -C "$repo" status --short | head -5 | tr '\n' ' '))"
+  lock=$(sudo -u "$own" git -C "$repo" rev-parse HEAD:composer.lock 2>/dev/null || true)
+  sudo -u "$own" git -C "$repo" pull --ff-only
+  echo "now $(ver "$repo")"
+  [ "$repo" = "$FRAMEWORK" ] && [ "$lock" != "$(sudo -u "$own" git -C "$repo" rev-parse HEAD:composer.lock)" ] && LOCK_CHANGED=1
+done
+
+say "Composer packages"
+if [ "${LOCK_CHANGED:-0}" = 1 ] || [ "${FORCE_COMPOSER:-0}" = 1 ]; then
+  command -v composer >/dev/null || die "composer.lock changed but composer is not installed: sudo apt install composer, then rerun"
+  own=$(stat -c %U "$FRAMEWORK/vendor" 2>/dev/null || stat -c %U "$FRAMEWORK/.git")
+  sudo -u "$own" env COMPOSER_NO_INTERACTION=1 composer install --no-dev --no-progress -d "$FRAMEWORK" 2>&1 | sed '/^\s*$/d' | tail -8
+else
+  echo "composer.lock unchanged; packages left as they are (FORCE_COMPOSER=1 to install anyway)"
+fi
+
+say "Check the fixes are in"
+grep -q "function passwordFields" "$PLUGINS/ahgUserManagePlugin/lib/Services/UserCrudService.php" \
+  && echo "plugins: Admin > Users stores the salted password form" || die "plugins fix missing"
+grep -q "random_bytes(16)" "$FRAMEWORK/src/Console/Commands/Tools/ResetPasswordCommand.php" \
+  && echo "framework: tools:reset-password stores the salted password form" || die "framework fix missing"
+
+say "Cache and php-fpm"
+sudo -u www-data php "$ROOT/symfony" cc >/dev/null
+sudo systemctl restart "$FPM"
+# Only the pools of the php-fpm just restarted: RARI still has a PHP 7.4 pool file whose
+# socket no longer exists (29 Oct 2026). Which socket nginx uses is printed too.
+V=$(echo "$FPM" | grep -oE '[0-9]+\.[0-9]+')
+for sock in $(sudo grep -h '^listen\s*=' /etc/php/$V/fpm/pool.d/*.conf | awk -F= '{gsub(/ /,"",$2); print $2}' | grep '^/'); do
+  ls -lL "$sock" || echo "missing: $sock"
+done
+echo "nginx passes PHP to: $(sudo grep -rhoE 'fastcgi_pass\s+[^;]+|server\s+unix:[^;]+' /etc/nginx/sites-enabled /etc/nginx/conf.d 2>/dev/null | sort -u | tr '\n' ' ')"
+for url in https://localhost/ http://localhost/; do
+  code=$(curl -sk -o /dev/null -m 20 -w '%{http_code}' "$url" || true)
+  echo "$url -> $code"
+  [ "$code" != 000 ] && break
+done
+
+say "Done: plugins $(ver "$PLUGINS"), framework $(ver "$FRAMEWORK")"
+
+say "Site audit (read-only)"
+bash "$FRAMEWORK/bin/site-audit" "$ROOT" || true
