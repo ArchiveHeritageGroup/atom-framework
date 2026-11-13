@@ -100,7 +100,7 @@ if (!function_exists('atomParseDbConfig')) {
             $port = (int) $matches[1];
         }
 
-        return [
+        $connection = [
             'driver' => 'mysql',
             'host' => $host,
             'port' => $port,
@@ -111,6 +111,18 @@ if (!function_exists('atomParseDbConfig')) {
             'collation' => 'utf8mb4_unicode_ci',
             'prefix' => '',
         ];
+
+        // Web requests only: MySQL stops a read query after 60 s. When php-fpm cuts a
+        // request off (request_terminate_timeout, a restart) MySQL keeps executing what
+        // was sent; on RARI on 13 Nov 2026, 85 orphaned queries ran up to 25 minutes and
+        // kept every core busy. No page needs a 60 s query. Cron and CLI tasks (facet
+        // cache, imports, reindexing) are not limited.
+        // ponytail: fixed at 60 s; make it a setting if a site needs longer web reports.
+        if ('fpm-fcgi' === PHP_SAPI) {
+            $connection['options'] = [\PDO::MYSQL_ATTR_INIT_COMMAND => 'SET SESSION max_execution_time = 60000'];
+        }
+
+        return $connection;
     }
 }
 
