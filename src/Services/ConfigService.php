@@ -273,7 +273,7 @@ class ConfigService
             $port = (int) $matches[1];
         }
 
-        return [
+        $connection = [
             'driver' => 'mysql',
             'host' => $host,
             'port' => $port,
@@ -284,6 +284,16 @@ class ConfigService
             'collation' => 'utf8mb4_unicode_ci',
             'prefix' => '',
         ];
+
+        // Web requests only: MySQL stops a read query after 60 s, so a query left
+        // running when php-fpm cuts a request off cannot pile up (RARI, 13 Nov 2026).
+        // Same rule as bootstrap.php's atomParseDbConfig(); this path serves the
+        // requests the HTTP kernel handles, such as the GLAM browse. CLI is not limited.
+        if ('fpm-fcgi' === PHP_SAPI) {
+            $connection['options'] = [\PDO::MYSQL_ATTR_INIT_COMMAND => 'SET SESSION max_execution_time = 60000'];
+        }
+
+        return $connection;
     }
 
     // ─── Boot Assertions ────────────────────────────────────────────
