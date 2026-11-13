@@ -128,19 +128,20 @@ class AclService
         // Check object-specific permissions
         $actionId = self::getActionId($action);
         if ($actionId && $resource) {
-            $perm = DB::table('acl_permission')
+            $scope = self::scopeIds($resource);
+            $rows = DB::table('acl_permission')
                 ->where(function($q) use ($user, $groups) {
                     $q->where('user_id', $user->id)
                       ->orWhereIn('group_id', $groups);
                 })
                 ->where('action', $action)
-                ->where(function($q) use ($resource) {
+                ->where(function($q) use ($scope) {
                     $q->whereNull('object_id')
-                      ->orWhere('object_id', $resource->id ?? null);
+                      ->orWhereIn('object_id', $scope);
                 })
-                ->orderByRaw('object_id IS NULL')
-                ->first();
-            
+                ->get(['object_id', 'grant_deny']);
+
+            $perm = self::nearest($rows, $scope);
             if ($perm) {
                 return self::isGrant($perm->grant_deny);
             }
@@ -170,17 +171,74 @@ class AclService
      */
     private static function checkAnonymous(?object $resource, string $action): bool
     {
-        $perm = DB::table('acl_permission')
+        $scope = self::scopeIds($resource);
+        $rows = DB::table('acl_permission')
             ->where('group_id', AclConstants::ANONYMOUS_ID)
             ->where('action', $action)
-            ->where(function ($q) use ($resource) {
+            ->where(function ($q) use ($scope) {
                 $q->whereNull('object_id')
-                  ->orWhere('object_id', $resource->id ?? null);
+                  ->orWhereIn('object_id', $scope);
             })
-            ->orderByRaw('object_id IS NULL')
-            ->first();
+            ->get(['object_id', 'grant_deny']);
+
+        $perm = self::nearest($rows, $scope);
 
         return $perm ? self::isGrant($perm->grant_deny) : false;
+    }
+
+    /**
+     * The objects a permission on this resource can come from, nearest first: the
+     * resource itself, then (for an archival description) its ancestors up to the
+     * root. Base AtoM's QubitAcl inherits a grant down the tree; RARI and most sites
+     * grant readThumbnail/readReference on the root (object 1) only, so checking the
+     * record alone denied every thumbnail and term pages showed generic icons
+     * (13 Nov 2026).
+     *
+     * @return int[]
+     */
+    private static function scopeIds(?object $resource): array
+    {
+        $id = (int) ($resource->id ?? 0);
+        if ($id <= 0) {
+            return [];
+        }
+        static $cache = [];
+        if (isset($cache[$id])) {
+            return $cache[$id];
+        }
+        $ids = [$id];
+        try {
+            $node = DB::table('information_object')->where('id', $id)->first(['lft', 'rgt']);
+            if ($node) {
+                $ids = DB::table('information_object')
+                    ->where('lft', '<=', $node->lft)->where('rgt', '>=', $node->rgt)
+                    ->orderByDesc('lft')->pluck('id')->map(fn ($v) => (int) $v)->all();
+            }
+        } catch (\Throwable $e) {
+            $ids = [$id];
+        }
+        if (count($cache) > 2000) {
+            $cache = [];
+        }
+
+        return $cache[$id] = $ids;
+    }
+
+    /** The permission row from the nearest object in $scope; a global row (no object) last. */
+    private static function nearest(iterable $rows, array $scope): ?object
+    {
+        $best = null;
+        $bestRank = PHP_INT_MAX;
+        $rank = array_flip($scope);
+        foreach ($rows as $row) {
+            $r = null === $row->object_id ? count($scope) : ($rank[(int) $row->object_id] ?? PHP_INT_MAX);
+            if ($r < $bestRank) {
+                $best = $row;
+                $bestRank = $r;
+            }
+        }
+
+        return $best;
     }
 
     public static function getUserGroups(?int $userId): array
@@ -197,6 +255,11 @@ class AclService
             ->where('user_id', $userId)
             ->pluck('group_id')
             ->toArray();
+        // Base AtoM treats every signed-in user as a member of the authenticated
+        // group; without it a researcher had none of that group's grants here.
+        if (!in_array(AclConstants::AUTHENTICATED_ID, self::$userGroups)) {
+            self::$userGroups[] = AclConstants::AUTHENTICATED_ID;
+        }
         
         return self::$userGroups;
     }
