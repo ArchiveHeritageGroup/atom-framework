@@ -7,7 +7,7 @@ use AtomFramework\Contracts\QueueJobInterface;
 /**
  * Bridge handler that wraps existing Symfony CLI tasks.
  *
- * Runs `php symfony <task> <args>` via exec(), allowing plugins to queue
+ * Runs `<task> <args>` through CliTask::command() via exec(), allowing plugins to queue
  * existing CLI tasks without rewriting them as QueueJobInterface implementations.
  *
  * Expected payload keys:
@@ -29,13 +29,11 @@ class QueueCliTaskHandler implements QueueJobInterface
             $args = implode(' ', array_map('escapeshellarg', $args));
         }
 
-        $atomRoot = defined('ATOM_ROOT')
-            ? ATOM_ROOT
-            : '/usr/share/nginx/archive';
-
+        // CliTask, not `php symfony`: on a stock ProjectConfiguration symfony
+        // does not know the AHG tasks, so every queued task failed.
         $cmd = sprintf(
-            'php %s/symfony %s %s 2>&1',
-            escapeshellarg($atomRoot),
+            '%s %s %s 2>&1',
+            CliTask::command(),
             escapeshellarg($task),
             $args
         );
