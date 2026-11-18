@@ -739,9 +739,10 @@ class Model3DService
      * /3d/file/<digital object id> route: 3D files are masters, so the raw
      * /uploads/r/* URL is readMaster-gated and 404s for anonymous visitors.
      * Otherwise (a model uploaded through the 3D plugin, stored as 3d/<id>/<file>)
-     * the file is under /uploads. file_path is normalised either way: rows
-     * registered by ThreeDAutoConfigService carried a doubled
-     * "/uploads/r//uploads/r/..." prefix, which no viewer could load.
+     * it is served by the plugin's /3d/model/<model id> route: a stock AtoM nginx
+     * routes only /uploads/r/, so the file's own /uploads URL is refused (403).
+     * file_path is normalised either way: rows registered by ThreeDAutoConfigService
+     * carried a doubled "/uploads/r//uploads/r/..." prefix, which no viewer could load.
      */
     public static function modelUrl(object $model, string $baseUrl = ''): string
     {
@@ -752,6 +753,9 @@ class Model3DService
             ->value('id');
         if ($doId) {
             return $baseUrl . '/3d/file/' . (int) $doId;
+        }
+        if (!empty($model->id)) {
+            return $baseUrl . '/3d/model/' . (int) $model->id;
         }
 
         return $baseUrl . '/uploads/' . self::relativeUploadPath((string) ($model->file_path ?? ''));
