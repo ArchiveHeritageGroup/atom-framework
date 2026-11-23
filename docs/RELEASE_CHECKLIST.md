@@ -63,6 +63,10 @@ git commit -m "Description of changes"
 ./bin/release patch "Short description of changes"
 ```
 
+### Feature Freeze
+
+`bin/release` in the framework and plugins repositories calls `/usr/share/nginx/workbench/bin/release-freeze-check` before it changes anything. While `psis` is listed in `/var/lib/workbench/release-freeze`, it refuses every `minor` and `major` release, and any patch whose message starts with `feat`, `feature` or `new feature`. Only defect, security, hardening and conformance work may be released, as a patch. The check reads the message only, so a feature labelled as a fix is not caught. Only Dr Johan Pieterse lifts the freeze.
+
 ### Release Steps
 - [ ] Version bumped via `./bin/release` (never manual push)
 - [ ] Git tag created automatically by release script

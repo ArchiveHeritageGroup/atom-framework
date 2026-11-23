@@ -104,8 +104,10 @@ done
 # 4. Record the tag AFTER. It MUST have moved.
 # 5. Runtime plugin, if present - see below
 # 6. ./bin/install   (no flags)
-# 7. php symfony cc ; systemctl reload php8.3-fpm
+# 7. php symfony cc ; systemctl restart php8.3-fpm   (restart, not reload: see R3)
 ```
+
+For a client site already on the extensions, `bash atom-framework/bin/site-update [atom-root]` does the routine update. After you confirm, it pulls both checkouts with `--ff-only` as their owners, installs composer packages when `composer.lock` changed, clears the cache, restarts php-fpm and ends with `bin/site-audit`. It stops on local changes and changes no database: new plugin tables and migrations appear in the audit (R5, R15, R16), each with its fix.
 
 ⚠️ **Print the tag before AND after, every time.** A fetch that fails still lets
 `reset --hard` exit 0 with the tag unmoved. On 1 Sep a framework deploy failed
@@ -211,7 +213,7 @@ AtoM discovers tasks at **project** level. On stock `ProjectConfiguration`,
 `php symfony help:import` and every other AHG namespace **does not exist**, while
 the plugins run fine in the web app. This is permanent by design, not a fault.
 
-Drive the task with a runner:
+The framework ships a runner for this: `php atom-framework/bin/ahg-cli.php <task> [options]`. The web screens that start ingest, backup, restore and portable tasks use it through `CliTask`. If you need your own runner, this is the shape:
 
 ```php
 <?php
@@ -272,6 +274,8 @@ LEFT JOIN status s ON s.object_id = io.id AND s.type_id = 158
 LEFT JOIN term_i18n ti ON ti.id = d.media_type_id AND ti.culture='en'
 GROUP BY ti.name, s.status_id;
 ```
+
+The AHG media routes no longer rely on that check (plugins v3.121.235): a document master there needs a signed-in user with `readMaster`, unless the site sets `allow_public_text_masters`. Base AtoM's own routes are unchanged.
 
 `status_id 159` = draft. Text objects on drafts are exposed. Also check whether
 nginx serves `/uploads/` directly, which bypasses the application entirely.

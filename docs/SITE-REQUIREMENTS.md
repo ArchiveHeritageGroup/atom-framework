@@ -34,6 +34,8 @@ bash atom-framework/bin/site-audit
 
 ## Notes on running commands on a client site
 
+- **To update a site, use `bash atom-framework/bin/site-update [atom-root]`.** It ends by running this audit. `bin/site-audit` takes `--no-fetch` (skip the `git fetch`) and `--no-db` (skip the database checks), needs sudo, and exits 1 if anything FAILs.
+- **Web requests stop a MySQL read query after 60 seconds** (php-fpm only). CLI tasks are not limited. A GLAM browse stopped this way shows an empty page; its `X-Display-Counts` response header reads `live`, `stored` or `cached`.
 - **Stock AtoM does not load plugin symfony tasks.** `php symfony display:auto-detect` answers "There are no tasks defined in the display namespace". Use the framework CLI, `php atom-framework/bin/atom <command>`.
 - **Never boot the Symfony app from the command line as anyone but www-data.** It can write the real cache and leave the site serving 500s. For the facet cache, use the standalone `ahgDisplayPlugin/bin/refresh-facet-cache.php`, which loads only the database layer.
 - **Checkouts belong to their owner.** Run git as that user, not as yourself and not as root.
