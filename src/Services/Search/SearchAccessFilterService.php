@@ -61,6 +61,7 @@ class SearchAccessFilterService
             ->where('sc.level', '>', $userContext['clearance_level'])
             ->pluck('osc.object_id')
             ->toArray();
+        $classRestricted = $this->withDescendants($classRestricted);
         // An approved access request (ahgAccessRequestPlugin) lifts the classification
         // for that user and record - only the classification, never a closure or embargo.
         // Without this an approved request changed nothing: the record stayed denied.
@@ -81,6 +82,7 @@ class SearchAccessFilterService
             })
             ->pluck('orh.object_id')
             ->toArray();
+        $donorRestricted = $this->withDescendants($donorRestricted);
 
         $icipRestricted = $withIcipOdrl ? $this->icipRestricted($today, $userId) : [];
         $odrlRestricted = $withIcipOdrl ? $this->odrlRestricted() : [];
@@ -130,7 +132,7 @@ class SearchAccessFilterService
             }
         }
 
-        $embargoed = $embargoedQuery->pluck('object_id')->toArray();
+        $embargoed = $this->withDescendants($embargoedQuery->pluck('object_id')->toArray());
 
         $fromSources = [];
         foreach (self::$sources as $source) {
@@ -184,6 +186,41 @@ class SearchAccessFilterService
         }
 
         return array_keys($ids);
+    }
+
+    /**
+     * A restriction on a description also covers everything below it. The
+     * root description is never expanded, so a stray row cannot hide the catalogue.
+     *
+     * @param int[] $ids
+     *
+     * @return int[]
+     */
+    private function withDescendants(array $ids): array
+    {
+        if (!$ids) {
+            return [];
+        }
+        $nodes = DB::table('information_object')->whereIn('id', $ids)->where('id', '<>', 1)
+            ->whereRaw('rgt > lft + 1')->orderBy('lft')->get(['lft', 'rgt']);
+        $ranges = [];
+        $end = 0;
+        foreach ($nodes as $node) {
+            if ((int) $node->lft > $end) { // skips nodes already inside a wider range
+                $ranges[] = [(int) $node->lft, (int) $node->rgt];
+                $end = (int) $node->rgt;
+            }
+        }
+        if (!$ranges) {
+            return $ids;
+        }
+        $below = DB::table('information_object')->where(function ($q) use ($ranges) {
+            foreach ($ranges as $range) {
+                $q->orWhereBetween('lft', $range);
+            }
+        })->pluck('id')->all();
+
+        return array_values(array_unique(array_merge(array_map('intval', $ids), array_map('intval', $below))));
     }
 
     /**
