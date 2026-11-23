@@ -24,6 +24,10 @@ for arg in "$@"; do
     fi
 done
 
+# Feature freeze gate (Dr Johan Pieterse, 23 November 2026). Runs before anything changes.
+G=/usr/share/nginx/workbench/bin/release-freeze-check
+if [ -x "$G" ]; then "$G" psis "$TYPE" "$MSG" || exit 1; fi
+
 cd "$(dirname "$0")/.."
 FRAMEWORK_PATH="$(pwd)"
 REPO="ArchiveHeritageGroup/atom-extensions-catalog"
