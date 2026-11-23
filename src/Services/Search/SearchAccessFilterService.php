@@ -263,8 +263,21 @@ class SearchAccessFilterService
                 });
         }
 
+        // A steward is exempt only from their own community's entries, so a record
+        // also restricted by another community stays hidden from them.
+        $stewarded = $userId && $this->has('icip_community_steward');
+
         foreach ($sources as $source) {
-            foreach ((clone $source)->get(['e.information_object_id', 'e.applies_to_descendants']) as $row) {
+            $rows = (clone $source)
+                ->when($stewarded, function ($q) use ($userId) {
+                    $q->whereNotExists(function ($s) use ($userId) {
+                        $s->select(DB::raw(1))->from('icip_community_steward as cs')
+                            ->whereColumn('cs.community_id', 'e.community_id')
+                            ->where('cs.user_id', $userId);
+                    });
+                })
+                ->get(['e.information_object_id', 'e.applies_to_descendants']);
+            foreach ($rows as $row) {
                 $ids[(int) $row->information_object_id] = true;
                 if ((int) $row->applies_to_descendants) {
                     $node = DB::table('information_object')->where('id', $row->information_object_id)->first(['lft', 'rgt']);
