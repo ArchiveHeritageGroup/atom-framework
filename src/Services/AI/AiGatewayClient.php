@@ -137,9 +137,11 @@ class AiGatewayClient
     /**
      * Generate an embedding vector for a single piece of text.
      *
+     * @param int|null $timeout Seconds to wait; web requests pass a short limit.
+     *
      * @return float[]|null The embedding vector, or null on failure / no key.
      */
-    public function embed(string $text, ?string $model = null): ?array
+    public function embed(string $text, ?string $model = null, ?int $timeout = null): ?array
     {
         $text = trim($text);
         if ($text === '' || !$this->isConfigured()) {
@@ -151,7 +153,7 @@ class AiGatewayClient
             'prompt' => $text,
         ]);
 
-        $data = $this->postJson('/ollama/api/embeddings', $payload, $this->timeout);
+        $data = $this->postJson('/ollama/api/embeddings', $payload, $timeout ?? $this->timeout);
         if ($data === null) {
             return null;
         }
