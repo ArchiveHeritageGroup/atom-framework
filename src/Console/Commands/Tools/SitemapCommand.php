@@ -96,7 +96,8 @@ EOF;
         $writer = new \SitemapWriter($outputDirectory, $baseUrl, $indent, $compress);
 
         $this->info('Indexing information objects');
-        $writer->addSet(new \SitemapInformationObjectSet());
+        require_once __DIR__.'/VisibleSitemapInformationObjectSet.php';
+        $writer->addSet(new VisibleSitemapInformationObjectSet());
 
         $this->info('Indexing actors');
         $writer->addSet(new \SitemapActorSet());
