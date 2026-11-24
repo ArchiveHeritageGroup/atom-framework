@@ -253,7 +253,11 @@ class IiifCollectionService
     /**
      * Generate IIIF Collection JSON (Presentation API 3.0).
      */
-    public function generateCollectionJson(int $collectionId): array
+    /**
+     * @param callable|null $showItem       given an item row, false leaves it out
+     * @param callable|null $showCollection given a subcollection row, false leaves it out
+     */
+    public function generateCollectionJson(int $collectionId, ?callable $showItem = null, ?callable $showCollection = null): array
     {
         $collection = $this->getCollection($collectionId);
         if (!$collection) {
@@ -305,6 +309,9 @@ class IiifCollectionService
 
         // Add subcollections first
         foreach ($collection->subcollections as $sub) {
+            if ($showCollection && !$showCollection($sub)) {
+                continue;
+            }
             $json['items'][] = [
                 'id' => $this->baseUrl . '/iiif/collection/' . $sub->slug,
                 'type' => 'Collection',
@@ -314,6 +321,9 @@ class IiifCollectionService
 
         // Add manifests
         foreach ($collection->items as $item) {
+            if ($showItem && !$showItem($item)) {
+                continue;
+            }
             if ($item->item_type === 'collection') {
                 $json['items'][] = [
                     'id' => $item->manifest_uri,
