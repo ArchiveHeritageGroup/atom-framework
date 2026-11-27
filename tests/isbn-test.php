@@ -12,7 +12,7 @@ $capsule->addConnection([
     'host' => '127.0.0.1',
     'database' => 'archive',
     'username' => 'root',
-    'password' => 'Merlot@123',
+    'password' => getenv('ATOM_DB_PASSWORD') ?: '',
     'charset' => 'utf8mb4',
     'collation' => 'utf8mb4_unicode_ci',
 ]);
